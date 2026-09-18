@@ -211,6 +211,17 @@ input.row-select { direction: ltr; }
 .chev.up { transform: rotate(180deg); }
 .drawer-sep { height: 1px; background: var(--line); margin: 8px 12px; }
 .sec-head .meta { font-size: 12px; }
+.ci.sq { border-radius: 8px; }
+.opt-row .check-ico { color: var(--accent); font-size: 22px; margin-left: auto; }
+.opt-row[aria-pressed="true"] .n { font-weight: 600; }
+.lbl { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.lbls { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.lchip[aria-pressed="true"] { background: var(--lc); border-color: var(--lc); color: #fff; }
+.lchip { border-color: var(--lc); color: var(--lc); }
+.bare-input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 16px; height: 40px; }
+.row-date { margin-left: auto; border: 0; background: none; font-size: 16px; color: var(--sub); height: 36px; }
+.set-item .v .lbl { vertical-align: middle; }
+.sheet .set-item .v { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -721,11 +732,11 @@ function viewTx(params) {
     }
     const c = S.cats[t.categoryId]; const acc = S.accounts[t.accountId];
     const inflow = t.amount < 0;
-    const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => ` <span class="tag">${esc(S.labels[l].name)}</span>`).join('');
+    const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
     html += `<div class="tx${t.isTransfer ? ' transfer' : ''}">
       <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c)}</button>
       <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(t.note || t.merchant || t.name)}</span>
-      <span class="meta">${esc(t.isTransfer ? 'Transfer' : c ? c.name : 'Uncategorized')} · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}${lbls}</span></span>
+      <span class="meta">${esc(t.isTransfer ? 'Transfer' : c ? c.name : 'Uncategorized')} · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}</span>${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
       <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
@@ -771,7 +782,7 @@ function viewLabels() {
   const list = sortedLabels();
   return `<div class="page">
     <div class="meta" style="padding:0 4px">Labels are tags on individual records. A record keeps its category and can have several labels.</div>
-    ${list.length ? `<div class="set-list">${list.map((l) => `<button class="set-item" data-act="edit-label" data-id="${l.id}">${icon('sell')}<span class="n">${esc(l.name)}</span><span class="v">${counts[l.id] || ''}</span>${icon('chevron_right')}</button>`).join('')}</div>` : '<div class="empty">No labels yet</div>'}
+    ${list.length ? `<div class="set-list">${list.map((l) => `<button class="set-item" data-act="edit-label" data-id="${l.id}"><span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span><span class="n">${esc(l.name)}</span><span class="v">${counts[l.id] || ''}</span>${icon('chevron_right')}</button>`).join('')}</div>` : '<div class="empty">No labels yet</div>'}
     <button class="pill-btn primary wide" data-act="add-label">${icon('add')}New label</button></div>`;
 }
 function viewFilters() {
@@ -817,38 +828,59 @@ function openSheet(html) {
 function closeSheet() { $('sheet').innerHTML = ''; }
 const saveBar = (act, label = 'Done', extra = '') => `<div class="sticky-save"><button class="pill-btn primary" data-act="${act}"${extra}>${label}</button></div>`;
 
+// ---- generic option list (Wallet-style picker with icons) ----
+function openOptions(title, opts, selected, onPick) {
+  S.opt = { onPick, opts };
+  openSheet(`<h3>${title}</h3><div class="set-list">${opts.map((o, i) => `<button class="set-item opt-row" data-act="opt-pick" data-i="${i}" aria-pressed="${o.value === selected}">
+    ${o.iconHtml || ''}<span class="n">${esc(o.label)}${o.sub ? `<div class="meta">${esc(o.sub)}</div>` : ''}</span>${o.value === selected ? `<span class="ms check-ico" aria-hidden="true">check</span>` : ''}</button>`).join('')}</div>`);
+}
+const glyph = (name, bg) => `<span class="ci" style="background:${bg}">${icon(name)}</span>`;
+function accountOptionList() {
+  const accs = Object.values(S.accounts).filter((a) => a.id !== 'cash' && !a.hidden);
+  return [{ value: 'cash', label: 'Cash', iconHtml: glyph('payments', '#4DBE9F') },
+    ...accs.map((a, i) => ({ value: a.id, label: accName(a), sub: a.mask ? '••' + a.mask : '', iconHtml: `<span class="ci sq" style="background:${esc(a.color || TILE_COLORS[i % TILE_COLORS.length])}">${icon('credit_card')}</span>` }))];
+}
+function labelOptionList(noneLabel) {
+  return [{ value: '', label: noneLabel, iconHtml: glyph('block', '#C7C7CC') },
+    ...sortedLabels().map((l) => ({ value: l.id, label: l.name, iconHtml: `<span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span>` }))];
+}
+function valueRow(act, iconHtml, name, value, extra = '') {
+  return `<button class="set-item" data-act="${act}"${extra}>${iconHtml}<span class="n">${name}</span><span class="v">${value}</span>${icon('chevron_right')}</button>`;
+}
+
 // ---- card settings (⋯ on a dashboard card) ----
 function sheetCard(card) {
   const p = getPeriod(card); const [from, to] = rangeOf(p);
-  const fid = savedFilterId(card); const inst = S.instant[card];
-  const filters = Object.values(S.filters).sort((a, b) => a.name.localeCompare(b.name));
-  S.cardEdit = { card };
+  S.cardDraft = { card, key: p.key, from, to, filter: S.instant[card] ? '__instant' : savedFilterId(card) };
+  renderCard();
+}
+function cardFilterLabel(d) {
+  if (d.filter === '__instant' && S.instant[d.card]) return 'Instant: ' + specName(S.instant[d.card]);
+  return S.filters[d.filter]?.name || 'All records';
+}
+function renderCard() {
+  const d = S.cardDraft;
   openSheet(`<h3>Card settings</h3>
     <div class="set-list">
-      <label class="set-item">${icon('date_range')}<span class="n">Period</span>
-        <select id="cs-period" class="row-select">${Object.entries(PERIOD_LABEL).map(([k, l]) => `<option value="${k}"${p.key === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-      <div id="cs-custom" class="set-item" style="display:${p.key === 'custom' ? 'flex' : 'none'};gap:8px">
-        <input class="input" type="date" id="cs-from" value="${from}" aria-label="From" style="flex:1"><span class="meta">to</span><input class="input" type="date" id="cs-to" value="${to}" aria-label="To" style="flex:1"></div>
-      <label class="set-item">${icon('filter_alt')}<span class="n">Filter</span>
-        <select id="cs-filter" class="row-select"><option value="">All records</option>
-          ${inst ? `<option value="__instant" selected>Instant: ${esc(specName(inst))}</option>` : ''}
-          ${filters.map((f) => `<option value="${f.id}"${!inst && fid === f.id ? ' selected' : ''}>${esc(f.name)}</option>`).join('')}</select></label>
-      <button class="set-item" data-act="instant" data-card="${card}">${icon('bolt')}<span class="n">Instant filter</span><span class="v">Pick now</span>${icon('chevron_right')}</button>
+      ${valueRow('cs-period', glyph('date_range', '#3478F6'), 'Period', PERIOD_LABEL[d.key])}
+      ${d.key === 'custom' ? `<div class="set-item" style="gap:8px"><input class="input" type="date" id="cs-from" value="${d.from}" aria-label="From" style="flex:1"><span class="meta">to</span><input class="input" type="date" id="cs-to" value="${d.to}" aria-label="To" style="flex:1"></div>` : ''}
+      ${valueRow('cs-filter', glyph('filter_alt', '#AF52DE'), 'Filter', esc(cardFilterLabel(d)))}
+      ${valueRow('instant', glyph('bolt', '#FF9500'), 'Instant filter', 'Pick now', ` data-card="${d.card}"`)}
     </div>
     <div class="meta" style="padding:0 4px">An instant filter applies to this card until you close the app. Saved filters are managed in Menu → Filters.</div>
-    ${saveBar('save-card', 'Done', ` data-card="${card}"`)}`);
+    ${saveBar('save-card', 'Done')}`);
 }
-async function saveCard(card) {
-  const key = $('cs-period').value; const p = { key };
-  if (key === 'custom') {
-    p.from = $('cs-from').value; p.to = $('cs-to').value;
+function captureCard() { const d = S.cardDraft; if (d && $('cs-from')) { d.from = $('cs-from').value; d.to = $('cs-to').value; } }
+async function saveCard() {
+  captureCard(); const d = S.cardDraft; const p = { key: d.key };
+  if (d.key === 'custom') {
+    p.from = d.from; p.to = d.to;
     if (!p.from || !p.to || p.from > p.to) { toast('Choose a valid start and end date'); return; }
   }
-  setPeriod(card, p);
-  const f = $('cs-filter').value;
-  if (f !== '__instant') { delete S.instant[card]; if (f) localStorage.setItem('filter:' + card, f); else localStorage.removeItem('filter:' + card); }
+  setPeriod(d.card, p);
+  if (d.filter !== '__instant') { delete S.instant[d.card]; if (d.filter) localStorage.setItem('filter:' + d.card, d.filter); else localStorage.removeItem('filter:' + d.card); }
   closeSheet();
-  if (key === 'custom' && p.from < loadedSince()) setLoadAll(true);
+  if (d.key === 'custom' && p.from < loadedSince()) setLoadAll(true);
   render();
 }
 
@@ -862,7 +894,7 @@ function mselBody() {
     return `<div class="msel-top">${row(c, false)}${subs.length ? `<button class="icon-btn" data-act="msel-open" data-id="${c.id}" aria-expanded="${open}" aria-label="Show subcategories of ${esc(c.name)}"><span class="ms chev${open ? ' up' : ''}" aria-hidden="true">expand_more</span></button>` : ''}</div>
       ${open ? subs.map((x) => row(x, true)).join('') : ''}`;
   }).join('');
-  const labels = sortedLabels().map((l) => `<label class="msel-row"><input type="checkbox" data-msel="l:${l.id}" ${sel.has('l:' + l.id) ? 'checked' : ''}><span class="ci" style="background:#8A8A8E">${icon('sell')}</span><span class="n">${esc(l.name)}</span></label>`).join('');
+  const labels = sortedLabels().map((l) => `<label class="msel-row"><input type="checkbox" data-msel="l:${l.id}" ${sel.has('l:' + l.id) ? 'checked' : ''}><span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span><span class="n">${esc(l.name)}</span></label>`).join('');
   return `<div class="sec-head">Categories <span class="meta">A main category includes all its subcategories</span></div><div class="set-list">${cats}</div>
     ${labels ? `<div class="sec-head">Labels</div><div class="set-list">${labels}</div>` : ''}`;
 }
@@ -903,17 +935,17 @@ function sheetFilter(id) {
 function openPicker(opts) {
   const t = S.txById[opts.txId];
   S.picker = { ...opts };
-  const cur = opts.mode === 'edit' ? S.edit.categoryId : t?.categoryId;
+  const cur = opts.mode === 'edit' ? S.edit.categoryId : opts.mode === 'rule' ? S.ruleDraft.categoryId : t?.categoryId;
   const c = S.cats[cur]; if (c?.parentId) S.pickOpen.add(c.parentId);
   openSheet(`<h3>Category</h3>
     <div class="searchbar">${icon('search')}<input id="catq" type="search" placeholder="Search categories" autocomplete="off" aria-label="Search categories"></div>
     ${opts.mode === 'direct' && t && !t.manual ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply to other uncategorized records from this merchant</label>` : ''}
     <div id="catpick">${pickerBody('')}</div>
-    <button class="pill-btn wide" data-act="pick-cat" data-id="">Set as uncategorized</button>`);
+    <button class="pill-btn wide" data-act="pick-cat" data-id="">${opts.mode === 'rule' ? 'No change' : 'Set as uncategorized'}</button>`);
 }
 function pickerBody(q) {
   const t = S.txById[S.picker.txId];
-  const sel = S.picker.mode === 'edit' ? S.edit.categoryId : t?.categoryId;
+  const sel = S.picker.mode === 'edit' ? S.edit.categoryId : S.picker.mode === 'rule' ? S.ruleDraft.categoryId : t?.categoryId;
   const vt = visibleTops();
   const pickBtn = (c, sub = false) => `<button class="pick${sub ? ' sub' : ''}" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)}</span></button>`;
   if (q) {
@@ -936,7 +968,7 @@ function pickerBody(q) {
   return `${freqHtml}<div class="sec-head">All categories</div>${list}`;
 }
 
-// ---- record sheet (tap a record anywhere except its icon) ----
+// ---- record sheet: new record, or tap a record anywhere except its icon ----
 function openEdit(txId) {
   const t = S.txById[txId]; if (!t) return;
   S.edit = {
@@ -947,59 +979,71 @@ function openEdit(txId) {
   };
   renderEdit();
 }
+function openNew() {
+  S.edit = { txId: null, manual: true, type: 'expense', categoryId: null, labels: [], note: '', amount: 0, date: ymd(new Date()), accountId: 'cash' };
+  renderEdit();
+}
 function captureEdit() {
   const e = S.edit; if (!e || !$('ed-note')) return;
   e.note = $('ed-note').value;
   e.labels = [...document.querySelectorAll('#lblbox [data-act="toggle-label"][aria-pressed="true"]')].map((b) => b.dataset.id);
   if ($('same-merchant')) S.sameMerchant = $('same-merchant').checked;
   if (e.manual) {
-    const v = Math.abs(parseFloat(($('ed-amt').value || '').replace(/[$,]/g, ''))); if (v) e.amount = v;
-    e.date = $('ed-date').value || e.date; e.accountId = $('ed-acct').value;
+    const v = Math.abs(parseFloat(($('ed-amt').value || '').replace(/[$,]/g, ''))); e.amount = v || 0;
+    e.date = $('ed-date').value || e.date;
   }
 }
+function labelColor(l) { return l?.color || '#8E8E93'; }
+function labelPill(l) { return `<span class="lbl" style="background:${esc(labelColor(l))}">${esc(l.name)}</span>`; }
 function labelChips(selected, txId) {
-  return `<div class="chips wrap" id="lblbox">${sortedLabels().map((l) => `<button class="chip" data-act="toggle-label" data-id="${l.id}" data-tx="${txId || ''}" aria-pressed="${selected.includes(l.id)}">${esc(l.name)}</button>`).join('')}
+  return `<div class="chips wrap" id="lblbox">${sortedLabels().map((l) => `<button class="chip lchip" data-act="toggle-label" data-id="${l.id}" data-tx="${txId || ''}" aria-pressed="${selected.includes(l.id)}" style="--lc:${esc(labelColor(l))}">${esc(l.name)}</button>`).join('')}
     <button class="chip" data-act="new-label" data-tx="${txId || ''}">${icon('add')} New label</button></div>`;
 }
-function accountOptions(selId) {
-  const accs = Object.values(S.accounts).filter((a) => a.id !== 'cash' && (!a.hidden || a.id === selId));
-  return `<option value="cash"${selId === 'cash' ? ' selected' : ''}>Cash</option>${accs.map((a) => `<option value="${a.id}"${a.id === selId ? ' selected' : ''}>${esc(accName(a))}${a.mask ? ' ••' + esc(a.mask) : ''}</option>`).join('')}`;
-}
 function renderEdit() {
-  const e = S.edit; const t = S.txById[e.txId];
-  const inflow = t.amount < 0;
+  const e = S.edit; const t = e.txId ? S.txById[e.txId] : null;
+  const inflow = t ? t.amount < 0 : false;
   const types = e.manual ? [['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']] : [[inflow ? 'income' : 'expense', inflow ? 'Income' : 'Expense'], ['transfer', 'Transfer']];
   const color = e.type === 'transfer' ? 'var(--grey)' : e.type === 'income' ? 'var(--inc)' : 'var(--exp)';
   const sign = e.type === 'income' ? '+' : e.type === 'expense' ? '-' : '';
   const c = S.cats[e.categoryId]; const acc = S.accounts[e.accountId];
-  openSheet(`<div class="seg" style="align-self:stretch">${types.map(([k, l]) => `<button style="flex:1" data-act="edit-type" data-type="${k}" aria-pressed="${e.type === k}">${l}</button>`).join('')}</div>
+  const accIdx = Object.values(S.accounts).indexOf(acc);
+  const accIcon = e.accountId === 'cash' ? glyph('payments', '#4DBE9F') : `<span class="ci sq" style="background:${esc(acc?.color || TILE_COLORS[Math.max(accIdx, 0) % TILE_COLORS.length])}">${icon('credit_card')}</span>`;
+  openSheet(`<h3>${t ? 'Edit record' : 'New record'}</h3>
+    <div class="seg" style="align-self:stretch">${types.map(([k, l]) => `<button style="flex:1" data-act="edit-type" data-type="${k}" aria-pressed="${e.type === k}">${l}</button>`).join('')}</div>
     ${e.manual
-      ? `<div class="amount-row"><span style="color:${color}">${sign}$</span><input id="ed-amt" class="num" inputmode="decimal" value="${e.amount.toFixed(2)}" style="color:${color}" aria-label="Amount"></div>`
+      ? `<div class="amount-row"><span style="color:${color}">${sign}$</span><input id="ed-amt" class="num" inputmode="decimal" placeholder="0.00" value="${e.amount ? e.amount.toFixed(2) : ''}" style="color:${color}" aria-label="Amount"></div>`
       : `<div class="amount-row num" style="color:${color}">${sign}$${fmt.format(e.amount)}</div>`}
+    <div class="sec-head">General</div>
     <div class="set-list">
-      <div class="set-item">${icon('account_balance_wallet')}<span class="n">Account</span>
-        ${e.manual ? `<select id="ed-acct" class="row-select">${accountOptions(e.accountId)}</select>` : `<span class="v">${esc(accName(acc))}</span>`}</div>
-      ${e.type === 'transfer' ? '' : `<button class="set-item" data-act="edit-cat">${catIcon(c)}<span class="n">Category</span><span class="v">${esc(c ? c.name : 'Uncategorized')}</span>${icon('chevron_right')}</button>`}
-      <div class="set-item">${icon('calendar_today')}<span class="n">Date</span>
-        ${e.manual ? `<input id="ed-date" type="date" class="row-select" value="${e.date}">` : `<span class="v">${shortDate(e.date)}${t.pending ? ' (pending)' : ''}</span>`}</div>
+      ${e.manual ? valueRow('ed-acc', accIcon, 'Account', esc(e.accountId === 'cash' ? 'Cash' : accName(acc)))
+        : `<div class="set-item">${accIcon}<span class="n">Account</span><span class="v">${esc(accName(acc))}</span></div>`}
+      ${e.type === 'transfer' ? '' : valueRow('edit-cat', catIcon(c), 'Category', esc(c ? c.name : 'Uncategorized'))}
+      <div class="set-item">${glyph('calendar_today', '#FF3B30')}<span class="n">Date</span>
+        ${e.manual ? `<input id="ed-date" type="date" class="row-date" value="${e.date}">` : `<span class="v">${shortDate(e.date)}${t.pending ? ' (pending)' : ''}</span>`}</div>
     </div>
-    ${!e.manual && e.type !== 'transfer' ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply the category to other uncategorized records from this merchant</label>` : ''}
-    <div class="field"><label>Labels</label>${labelChips(e.labels, '')}</div>
-    <div class="field"><label for="ed-note">Note</label><input class="input" id="ed-note" value="${esc(e.note)}" placeholder="${esc(t.merchant || t.name || '')}" autocomplete="off"></div>
-    ${e.manual ? '' : `<div class="meta">Bank description: ${esc(t.name)}</div>`}
-    ${e.manual || t.demo ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
-    ${saveBar('save-edit')}`);
+    ${t && !e.manual && e.type !== 'transfer' ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply the category to other uncategorized records from this merchant</label>` : ''}
+    <div class="sec-head">Labels</div>${labelChips(e.labels, '')}
+    <div class="sec-head">Note</div><input class="input" id="ed-note" value="${esc(e.note)}" placeholder="${esc(t ? (t.merchant || t.name || '') : 'Add a note')}" autocomplete="off" aria-label="Note">
+    ${t && !e.manual ? `<div class="meta">Bank description: ${esc(t.name)}</div>` : ''}
+    ${t && (e.manual || t.demo) ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
+    ${saveBar('save-edit', 'Save')}`);
 }
 async function saveEdit() {
   captureEdit();
-  const e = S.edit; const t = S.txById[e.txId]; if (!t) { closeSheet(); return; }
+  const e = S.edit; const t = e.txId ? S.txById[e.txId] : null;
+  if (e.txId && !t) { closeSheet(); return; }
+  if (e.manual && !e.amount) { toast('Enter an amount'); return; }
   const upd = { isTransfer: e.type === 'transfer', labels: e.labels, note: e.note.trim() };
-  if (e.type !== 'transfer') upd.categoryId = e.categoryId || null;
+  upd.categoryId = e.type === 'transfer' ? (t?.categoryId || null) : (e.categoryId || null);
   if (e.manual) {
-    upd.amount = e.type === 'income' ? -e.amount : e.type === 'expense' ? e.amount : (t.amount < 0 ? -e.amount : e.amount);
+    upd.amount = e.type === 'income' ? -e.amount : e.type === 'expense' ? e.amount : (t && t.amount < 0 ? -e.amount : e.amount);
     upd.date = e.date; upd.accountId = e.accountId;
     upd.name = upd.note || S.cats[upd.categoryId]?.name || 'Manual record';
     await ensureCash(e.accountId);
+  }
+  if (!t) {
+    await setDoc(doc(collection(db, 'transactions')), { ...upd, itemId: null, merchant: '', currency: 'USD', pending: false, manual: true, ruled: true, createdAt: serverTimestamp() });
+    closeSheet(); toast('Record added'); return;
   }
   await updateDoc(doc(db, 'transactions', e.txId), upd);
   closeSheet();
@@ -1034,80 +1078,58 @@ function sheetName(title, value, act, id, extra = '') {
     ${saveBar(act, 'Save', ` data-id="${id || ''}"`)}`);
   setTimeout(() => $('nm')?.focus(), 50);
 }
-function catOptions(sel, emptyLabel = 'Uncategorized') {
-  return `<option value="">${emptyLabel}</option>` + visibleTops().map((c) => `<option value="${c.id}"${sel === c.id ? ' selected' : ''}>${esc(c.name)}</option>`
-    + subsOf(c.id).filter((x) => !x.hidden).map((x) => `<option value="${x.id}"${sel === x.id ? ' selected' : ''}>　└ ${esc(x.name)}</option>`).join('')).join('');
-}
-function sheetAdd() {
-  openSheet(`<h3>New record</h3>
-    <div class="seg" style="align-self:stretch">
-      <button style="flex:1" data-act="add-type" data-type="expense" aria-pressed="true">Expense</button>
-      <button style="flex:1" data-act="add-type" data-type="income" aria-pressed="false">Income</button>
-      <button style="flex:1" data-act="add-type" data-type="transfer" aria-pressed="false">Transfer</button></div>
-    <div class="field"><label for="amt">Amount</label><input class="input num" id="amt" inputmode="decimal" placeholder="0.00" style="font-size:24px;font-weight:600;height:56px"></div>
-    <div class="field"><label for="acct">Account</label><select class="input" id="acct">${accountOptions('cash')}</select></div>
-    <div class="field" id="catfield"><label for="cat">Category</label><select class="input" id="cat">${catOptions('')}</select></div>
-    <div class="field"><label for="dt">Date</label><input class="input" type="date" id="dt" value="${ymd(new Date())}"></div>
-    <div class="field"><label for="note">Note</label><input class="input" id="note" autocomplete="off"></div>
-    <div class="field"><label>Labels</label>${labelChips([], '')}</div>
-    ${saveBar('save-add', 'Save')}`);
-  $('sheet').dataset.type = 'expense';
-}
-async function saveAdd() {
-  const sheet = $('sheet'); const type = sheet.dataset.type;
-  const amount = Math.abs(parseFloat(($('amt').value || '').replace(/[$,]/g, '')));
-  if (!amount) { toast('Enter an amount'); return; }
-  const date = $('dt').value; if (!date) { toast('Choose a date'); return; }
-  const accountId = $('acct').value; await ensureCash(accountId);
-  const categoryId = type === 'transfer' ? null : ($('cat').value || null);
-  const note = $('note').value.trim();
-  const labels = [...sheet.querySelectorAll('[data-act="toggle-label"][aria-pressed="true"]')].map((b) => b.dataset.id);
-  await setDoc(doc(collection(db, 'transactions')), {
-    accountId, itemId: null, date, name: note || S.cats[categoryId]?.name || 'Manual record', merchant: '', note,
-    amount: type === 'income' ? -amount : amount, currency: 'USD', pending: false,
-    categoryId, labels, isTransfer: type === 'transfer', manual: true, ruled: true, createdAt: serverTimestamp(),
-  });
-  closeSheet(); toast('Record added');
-}
+const LABEL_COLORS = ['#E5484D', '#F76B15', '#F5A623', '#30A46C', '#12A594', '#0090FF', '#3E63DD', '#8E4EC6', '#D6409F', '#8E8E93'];
 function sheetLabel(id) {
-  const l = S.labels[id]; if (!l) return;
-  sheetName('Edit label', l.name, 'save-label', id, `<button class="pill-btn danger wide" data-act="del-label" data-id="${id}">${icon('delete')}Delete label</button>`);
+  const l = id ? S.labels[id] : null;
+  openSheet(`<h3>${l ? 'Edit label' : 'New label'}</h3>
+    <div class="field"><label for="nm">Name</label><input class="input" id="nm" value="${esc(l?.name || '')}" autocomplete="off"></div>
+    <div class="field"><label>Color</label><div class="swatches">${LABEL_COLORS.map((col) => `<button data-act="pick-color" data-color="${col}" aria-pressed="${labelColor(l) === col}" style="background:${col}" aria-label="Color ${col}"></button>`).join('')}</div></div>
+    <div class="field"><label>Preview</label><div id="lbl-prev">${labelPill({ name: l?.name || 'Label', color: labelColor(l) })}</div></div>
+    ${l ? `<button class="pill-btn danger wide" data-act="del-label" data-id="${id}">${icon('delete')}Delete label</button>` : ''}
+    ${saveBar('save-label', 'Save', ` data-id="${id || ''}"`)}`);
+  $('sheet').dataset.color = l?.color || LABEL_COLORS[0];
+  if (!l) setTimeout(() => $('nm')?.focus(), 50);
 }
+
+// ---- automatic rule editor ----
 function sheetRule(id) {
-  const r = id ? S.rules[id] : { field: 'description', keywords: [] };
-  const accs = Object.values(S.accounts);
-  const lblOpts = `<option value="">No label</option>${sortedLabels().map((l) => `<option value="${l.id}"${r.labelId === l.id ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}`;
-  openSheet(`<h3>${id ? 'Edit rule' : 'New rule'}</h3>
+  const r = id ? S.rules[id] : {};
+  S.ruleDraft = { id: id || null, field: r.field || 'description', keywords: (r.keywords || []).join(', '), accountId: r.accountId || null, categoryId: r.categoryId || null, labelId: r.labelId || null, transfer: !!r.transfer };
+  renderRule();
+}
+function captureRule() { const d = S.ruleDraft; if (!d) return; if ($('ru-kw')) d.keywords = $('ru-kw').value; if ($('ru-tr')) d.transfer = $('ru-tr').checked; }
+function renderRule() {
+  const d = S.ruleDraft; const c = S.cats[d.categoryId]; const l = S.labels[d.labelId]; const a = S.accounts[d.accountId];
+  openSheet(`<h3>${d.id ? 'Edit rule' : 'New rule'}</h3>
     <div class="sec-head">When</div>
     <div class="set-list">
-      <label class="set-item"><span class="n">Match by</span><select id="ru-field" class="row-select">
-        <option value="description"${r.field !== 'account' ? ' selected' : ''}>Description contains</option>
-        <option value="account"${r.field === 'account' ? ' selected' : ''}>Account is</option></select></label>
-      <div class="set-item" id="ru-kw-row" style="display:${r.field === 'account' ? 'none' : 'flex'}"><input class="input" id="ru-kw" style="flex:1" value="${esc((r.keywords || []).join(', '))}" placeholder="e.g. animal hospital, petco" autocomplete="off" aria-label="Keywords"></div>
-      <div class="set-item" id="ru-acc-row" style="display:${r.field === 'account' ? 'flex' : 'none'}"><select id="ru-acc" class="input" style="flex:1" aria-label="Account">${accs.map((a) => `<option value="${a.id}"${r.accountId === a.id ? ' selected' : ''}>${esc(accName(a))}${a.mask ? ' ••' + esc(a.mask) : ''}</option>`).join('')}</select></div>
+      ${valueRow('ru-field', glyph(d.field === 'account' ? 'credit_card' : 'text_fields', '#3478F6'), 'Match by', d.field === 'account' ? 'Account' : 'Description')}
+      ${d.field === 'account'
+        ? valueRow('ru-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(a ? accName(a) : 'Choose'))
+        : `<div class="set-item">${glyph('search', '#8E8E93')}<input class="bare-input" id="ru-kw" value="${esc(d.keywords)}" placeholder="Keywords, e.g. animal hospital, petco" autocomplete="off" aria-label="Keywords"></div>`}
     </div>
-    <div class="meta" style="padding:0 4px">Separate several keywords with commas. Any one of them matches. Not case-sensitive.</div>
+    ${d.field === 'account' ? '' : '<div class="meta" style="padding:0 4px">Separate keywords with commas. Any one of them matches. Not case-sensitive.</div>'}
     <div class="sec-head">Then</div>
     <div class="set-list">
-      <label class="set-item"><span class="n">Category</span><select id="ru-cat" class="row-select">${catOptions(r.categoryId || '', 'No change')}</select></label>
-      <label class="set-item"><span class="n">Add label</span><select id="ru-lbl" class="row-select">${lblOpts}</select></label>
-      <label class="set-item"><span class="n">Mark as transfer</span><input type="checkbox" class="switch" id="ru-tr" ${r.transfer ? 'checked' : ''}></label>
+      ${valueRow('ru-cat', c ? catIcon(c) : glyph('category', '#C7C7CC'), 'Category', esc(c ? c.name : 'No change'))}
+      ${valueRow('ru-lbl', l ? `<span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span>` : glyph('sell', '#C7C7CC'), 'Label', l ? labelPill(l) : 'No label')}
+      <label class="set-item">${glyph('swap_horiz', '#8E8E93')}<span class="n">Mark as transfer</span><input type="checkbox" class="switch" id="ru-tr" ${d.transfer ? 'checked' : ''}></label>
     </div>
-    ${id ? `<button class="pill-btn danger wide" data-act="del-rule" data-id="${id}">${icon('delete')}Delete rule</button>` : ''}
-    ${saveBar('save-rule', 'Save', ` data-id="${id || ''}"`)}`);
+    ${d.id ? `<button class="pill-btn danger wide" data-act="del-rule" data-id="${d.id}">${icon('delete')}Delete rule</button>` : ''}
+    ${saveBar('save-rule', 'Save')}`);
 }
-async function saveRule(id) {
-  const field = $('ru-field').value;
+async function saveRule() {
+  captureRule(); const d = S.ruleDraft;
   const data = {
-    field,
-    keywords: field === 'description' ? $('ru-kw').value.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : [],
-    accountId: field === 'account' ? $('ru-acc').value : null,
-    categoryId: $('ru-cat').value || null, labelId: $('ru-lbl').value || null, transfer: $('ru-tr').checked,
+    field: d.field,
+    keywords: d.field === 'description' ? d.keywords.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : [],
+    accountId: d.field === 'account' ? d.accountId : null,
+    categoryId: d.categoryId || null, labelId: d.labelId || null, transfer: d.transfer,
   };
-  if (field === 'description' && !data.keywords.length) { toast('Enter at least one keyword'); return; }
-  if (field === 'account' && !data.accountId) { toast('Choose an account'); return; }
+  if (d.field === 'description' && !data.keywords.length) { toast('Enter at least one keyword'); return; }
+  if (d.field === 'account' && !data.accountId) { toast('Choose an account'); return; }
   if (!data.categoryId && !data.labelId && !data.transfer) { toast('Choose at least one action'); return; }
-  if (id) await updateDoc(doc(db, 'rules', id), data);
+  if (d.id) await updateDoc(doc(db, 'rules', d.id), data);
   else await setDoc(doc(collection(db, 'rules')), { ...data, order: ruleList().reduce((m, x) => Math.max(m, x.order ?? 0), 0) + 1 });
   closeSheet(); toast('Rule saved. It applies to new records; use “Apply rules to existing records” for older ones.', 4500);
 }
@@ -1237,8 +1259,9 @@ async function addCategory(name, parentId) {
 async function newLabel() {
   const name = (prompt('Label name') || '').trim(); if (!name) return null;
   const ref = doc(collection(db, 'labels'));
-  await setDoc(ref, { name, createdAt: serverTimestamp() });
-  return { id: ref.id, name };
+  const color = LABEL_COLORS[Object.keys(S.labels).length % LABEL_COLORS.length];
+  await setDoc(ref, { name, color, createdAt: serverTimestamp() });
+  return { id: ref.id, name, color };
 }
 
 document.addEventListener('click', async (e) => {
@@ -1257,7 +1280,16 @@ document.addEventListener('click', async (e) => {
       case 'reconnect': await openLink(id); break;
       case 'acc': sheetAccount(id); break;
       case 'card-settings': sheetCard(el.dataset.card); break;
-      case 'save-card': await saveCard(el.dataset.card); break;
+      case 'save-card': await saveCard(); break;
+      case 'cs-period': captureCard(); openOptions('Period', Object.entries(PERIOD_LABEL).map(([k, l]) => ({ value: k, label: l, iconHtml: glyph('date_range', '#3478F6') })), S.cardDraft.key, (v) => { S.cardDraft.key = v; renderCard(); }); break;
+      case 'cs-filter': {
+        captureCard(); const d = S.cardDraft;
+        const opts = [{ value: '', label: 'All records', iconHtml: glyph('select_all', '#8E8E93') }];
+        if (S.instant[d.card]) opts.push({ value: '__instant', label: 'Instant: ' + specName(S.instant[d.card]), iconHtml: glyph('bolt', '#FF9500') });
+        Object.values(S.filters).sort((a, b) => a.name.localeCompare(b.name)).forEach((f) => opts.push({ value: f.id, label: f.name, sub: specName(f), iconHtml: glyph('filter_alt', '#AF52DE') }));
+        openOptions('Filter', opts, d.filter, (v) => { d.filter = v; renderCard(); }); break;
+      }
+      case 'opt-pick': { const o = S.opt.opts[+el.dataset.i]; S.opt.onPick(o.value); break; }
       case 'instant': sheetInstant(el.dataset.card); break;
       case 'instant-recent': applyInstant(el.dataset.card, recentInstant()[+el.dataset.i]); break;
       case 'apply-instant': applyInstant(el.dataset.card, mselSpec()); break;
@@ -1273,15 +1305,22 @@ document.addEventListener('click', async (e) => {
       case 'pick-cat': {
         const p = S.picker;
         if (p?.mode === 'edit') { S.edit.categoryId = id || null; renderEdit(); break; }
+        if (p?.mode === 'rule') { S.ruleDraft.categoryId = id || null; renderRule(); break; }
         if ($('same-merchant')) S.sameMerchant = $('same-merchant').checked;
         closeSheet(); await setTxCategory(p.txId, id, S.sameMerchant); break;
       }
       case 'edit-cat': captureEdit(); openPicker({ mode: 'edit', txId: S.edit.txId }); break;
       case 'edit-type': captureEdit(); S.edit.type = el.dataset.type; renderEdit(); break;
       case 'save-edit': await saveEdit(); break;
+      case 'ed-acc': captureEdit(); openOptions('Account', accountOptionList(), S.edit.accountId, (v) => { S.edit.accountId = v; renderEdit(); }); break;
+      case 'ru-field': captureRule(); openOptions('Match by', [{ value: 'description', label: 'Description contains', iconHtml: glyph('text_fields', '#3478F6') }, { value: 'account', label: 'Account is', iconHtml: glyph('credit_card', '#3478F6') }], S.ruleDraft.field, (v) => { S.ruleDraft.field = v; renderRule(); }); break;
+      case 'ru-acc': captureRule(); openOptions('Account', accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash), S.ruleDraft.accountId, (v) => { S.ruleDraft.accountId = v; renderRule(); }); break;
+      case 'ru-cat': captureRule(); openPicker({ mode: 'rule' }); break;
+      case 'ru-lbl': captureRule(); openOptions('Label', labelOptionList('No label'), S.ruleDraft.labelId || '', (v) => { S.ruleDraft.labelId = v || null; renderRule(); }); break;
       case 'pick-color':
         sheet.dataset.color = el.dataset.color;
         sheet.querySelectorAll('[data-act="pick-color"]').forEach((b) => b.setAttribute('aria-pressed', b === el));
+        if ($('lbl-prev')) $('lbl-prev').innerHTML = labelPill({ name: $('nm').value || 'Label', color: el.dataset.color });
         break;
       case 'pick-icon':
         sheet.dataset.icon = el.dataset.icon;
@@ -1305,14 +1344,7 @@ document.addEventListener('click', async (e) => {
       case 'add-cat': sheetName('New category', '', 'save-top', ''); break;
       case 'save-top': { const name = $('nm').value.trim(); if (!name) { toast('Name can’t be empty'); return; } const nid = await addCategory(name, null); closeSheet(); location.hash = `#/cat/${nid}`; break; }
       case 'del-cat': await deleteCategory(id); break;
-      case 'add-tx': sheetAdd(); break;
-      case 'add-type': {
-        const type = el.dataset.type; sheet.dataset.type = type;
-        sheet.querySelectorAll('[data-act="add-type"]').forEach((x) => x.setAttribute('aria-pressed', x === el));
-        $('catfield').style.display = type === 'transfer' ? 'none' : '';
-        break;
-      }
-      case 'save-add': await saveAdd(); break;
+      case 'add-tx': openNew(); break;
       case 'toggle-label': {
         const on = el.getAttribute('aria-pressed') !== 'true';
         el.setAttribute('aria-pressed', on);
@@ -1330,9 +1362,14 @@ document.addEventListener('click', async (e) => {
         break;
       }
       case 'del-tx': if (!confirm('Delete this record?')) break; await deleteDoc(doc(db, 'transactions', id)); closeSheet(); toast('Deleted'); break;
-      case 'add-label': await newLabel(); break;
+      case 'add-label': sheetLabel(null); break;
       case 'edit-label': sheetLabel(id); break;
-      case 'save-label': { const name = $('nm').value.trim(); if (!name) { toast('Name can’t be empty'); return; } await updateDoc(doc(db, 'labels', id), { name }); closeSheet(); break; }
+      case 'save-label': {
+        const name = $('nm').value.trim(); if (!name) { toast('Name can’t be empty'); return; }
+        const color = sheet.dataset.color || LABEL_COLORS[0];
+        if (id) await updateDoc(doc(db, 'labels', id), { name, color }); else await setDoc(doc(collection(db, 'labels')), { name, color, createdAt: serverTimestamp() });
+        closeSheet(); break;
+      }
       case 'del-label': await deleteLabel(id); break;
       case 'add-filter': sheetFilter(null); break;
       case 'edit-filter': sheetFilter(id); break;
@@ -1350,7 +1387,7 @@ document.addEventListener('click', async (e) => {
       }
       case 'add-rule': sheetRule(null); break;
       case 'edit-rule': sheetRule(id); break;
-      case 'save-rule': await saveRule(id); break;
+      case 'save-rule': await saveRule(); break;
       case 'del-rule': if (!confirm('Delete this rule?')) break; await deleteDoc(doc(db, 'rules', id)); closeSheet(); toast('Rule deleted'); break;
       case 'run-rules': { toast('Applying rules…'); const n = await applyRules(true); toast(n ? `Updated ${n} record${n === 1 ? '' : 's'}` : 'No records needed changes'); break; }
       case 'demo-add': closeDrawer(); await addDemo(); break;
@@ -1362,6 +1399,7 @@ document.addEventListener('click', async (e) => {
 
 let searchTimer;
 document.addEventListener('input', (e) => {
+  if (e.target.id === 'nm' && $('lbl-prev')) { $('lbl-prev').innerHTML = labelPill({ name: e.target.value || 'Label', color: $('sheet').dataset.color }); return; }
   if (e.target.id === 'catq') { $('catpick').innerHTML = pickerBody(e.target.value.trim().toLowerCase()); return; }
   if (e.target.id !== 'txsearch') return;
   S.search = e.target.value;
@@ -1370,8 +1408,6 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', async (e) => {
   const el = e.target;
   if (el.dataset.msel) { el.checked ? S.msel.add(el.dataset.msel) : S.msel.delete(el.dataset.msel); return; }
-  if (el.id === 'cs-period') { $('cs-custom').style.display = el.value === 'custom' ? 'flex' : 'none'; return; }
-  if (el.id === 'ru-field') { const acc = el.value === 'account'; $('ru-kw-row').style.display = acc ? 'none' : 'flex'; $('ru-acc-row').style.display = acc ? 'flex' : 'none'; return; }
   try {
     if (el.dataset.act === 'cat-show') await updateDoc(doc(db, 'categories', el.dataset.id), { hidden: !el.checked });
   } catch (err) { toast('Could not save: ' + errMsg(err)); }
