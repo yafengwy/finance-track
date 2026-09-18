@@ -214,8 +214,14 @@ input.row-select { direction: ltr; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
-.login { max-width: 360px; margin: 18vh auto 0; padding: 24px; display: flex; flex-direction: column; gap: 14px; }
-.login h1 { margin: 0 0 8px; font-size: 30px; font-weight: 700; color: var(--text); }
+.login-wrap { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: calc(var(--safe-top) + 24px) 20px calc(var(--safe-bottom) + 48px);
+  background: radial-gradient(120% 60% at 50% 0%, #DDF3EA 0%, var(--bg) 60%); }
+.login-brand { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 28px; text-align: center; }
+.login-logo { width: 84px; height: 84px; border-radius: 20px; box-shadow: 0 8px 24px rgba(24,120,104,.28); margin-bottom: 10px; }
+.login-brand h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.5px; }
+.login-brand p { margin: 0; color: var(--sub); font-size: 15px; }
+.login { width: 100%; max-width: 360px; background: var(--card); border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 2px 16px rgba(0,0,0,.05); }
+.link-btn { border: 0; background: none; color: var(--accent); font-size: 14px; padding: 6px; align-self: center; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 </style>
@@ -228,7 +234,7 @@ input.row-select { direction: ltr; }
 <div id="toast" role="status" aria-live="polite"></div>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import {
   getFirestore, collection, doc, onSnapshot, query, where, orderBy, writeBatch, updateDoc, setDoc, deleteDoc, deleteField,
   arrayUnion, arrayRemove, serverTimestamp,
@@ -1376,10 +1382,19 @@ function viewLogin() {
   S.unsub.forEach((u) => u()); S.unsub = [];
   if (S.txUnsub) { S.txUnsub(); S.txUnsub = null; }
   S.loadAll = false; S.instant = {};
-  $('app').innerHTML = `<form class="login" id="lf"><h1>${APP_NAME}</h1>
-    <div class="field"><label for="em">Email</label><input class="input" id="em" type="email" autocomplete="username" required></div>
-    <div class="field"><label for="pw">Password</label><input class="input" id="pw" type="password" autocomplete="current-password" required></div>
-    <button class="pill-btn primary wide" type="submit">Sign in</button></form>`;
+  $('app').innerHTML = `<div class="login-wrap"><div class="login-brand">
+      <img src="icon-192.png" alt="" width="84" height="84" class="login-logo">
+      <h1>${APP_NAME}</h1><p>Every card, one place.</p></div>
+    <form class="login" id="lf">
+      <div class="field"><label for="em">Email</label><input class="input" id="em" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="pw">Password</label><input class="input" id="pw" type="password" autocomplete="current-password" required></div>
+      <button class="pill-btn primary wide" type="submit">Sign in</button>
+      <button class="link-btn" type="button" id="forgot">Forgot password?</button></form></div>`;
+  $('forgot').addEventListener('click', async () => {
+    const em = $('em').value.trim();
+    if (!em) { toast('Enter your email first'); $('em').focus(); return; }
+    try { await sendPasswordResetEmail(auth, em); toast('Password reset email sent. Check your inbox.', 4500); } catch { toast('Could not send the reset email. Check the address.'); }
+  });
   $('lf').addEventListener('submit', async (e) => {
     e.preventDefault();
     try { await signInWithEmailAndPassword(auth, $('em').value.trim(), $('pw').value); } catch { toast('Sign-in failed: check your email and password'); }
