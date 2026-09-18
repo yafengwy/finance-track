@@ -222,6 +222,26 @@ input.row-select { direction: ltr; }
 .row-date { margin-left: auto; border: 0; background: none; font-size: 16px; color: var(--sub); height: 36px; }
 .set-item .v .lbl { vertical-align: middle; }
 .sheet .set-item .v { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donut-wrap { position: relative; width: 220px; height: 220px; margin: 4px auto 0; }
+.donut { width: 100%; height: 100%; overflow: visible; }
+.donut circle { transition: stroke-width .15s; }
+.donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; padding: 0 56px; }
+.dn-name { font-size: 13px; color: var(--sub); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dn-val { font-size: 20px; font-weight: 600; }
+.legend-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; }
+.legend { display: flex; align-items: center; gap: 8px; min-height: 36px; border: 0; background: none; padding: 0 4px; border-radius: 8px; text-align: left; font-size: 14px; }
+.legend .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend[aria-pressed="true"] { background: var(--bg); }
+.legend .sw { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.trend { width: 100%; height: auto; display: block; }
+.legend-inline { display: flex; gap: 16px; font-size: 12px; color: var(--sub); }
+.legend-inline span { display: inline-flex; align-items: center; gap: 6px; }
+.legend-inline i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.legend-inline i.ln { height: 2px; width: 14px; background: var(--text); border-radius: 1px; }
+.top-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; border: 0; border-top: 1px solid var(--line); background: none; padding: 6px 0; text-align: left; }
+.top-row .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.top-row .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-row .r { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -367,6 +387,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
+const APP_VERSION = '1.6';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -374,9 +395,11 @@ const S = {
   expanded: new Set(), txFilter: 'all', unsub: [], loadAll: false, txUnsub: null, search: '',
   picker: null, pickOpen: new Set(), edit: null, sameMerchant: true,
   msel: new Set(), mselOpen: new Set(), instant: {}, cardEdit: null,
+  donutSel: null, donutDrill: null, trendMode: 'trend',
 };
 const TILE_COLORS = ['#1E3A8A', '#2563EB', '#6D28D9', '#B91C1C', '#475569', '#C2410C', '#B45309', '#0F766E', '#9D174D', '#1F6F54'];
-const PERIOD_LABEL = { this_month: 'This month', last_month: 'Last month', this_year: 'This year', last_30: 'Last 30 days', custom: 'Custom' };
+const PERIOD_LABEL = { this_month: 'This month', last_month: 'Last month', last_30: 'Last 30 days', last_6m: 'Last 6 months', this_year: 'This year', last_12m: 'Last 12 months', custom: 'Custom' };
+const DEFAULT_PERIOD = { trend: 'last_6m' };
 
 // ---------- helpers ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -410,7 +433,8 @@ function accName(a) { return a ? (a.customName || a.name) : ''; }
 
 // ---------- periods & card filters ----------
 function getPeriod(card) {
-  try { return JSON.parse(localStorage.getItem('period:' + card)) || { key: 'this_month' }; } catch { return { key: 'this_month' }; }
+  const def = { key: DEFAULT_PERIOD[card] || 'this_month' };
+  try { return JSON.parse(localStorage.getItem('period:' + card)) || def; } catch { return def; }
 }
 function setPeriod(card, p) { localStorage.setItem('period:' + card, JSON.stringify(p)); }
 function rangeOf(p) {
@@ -419,6 +443,8 @@ function rangeOf(p) {
     case 'last_month': return [ymd(new Date(y, m - 1, 1)), ymd(new Date(y, m, 0))];
     case 'this_year': return [ymd(new Date(y, 0, 1)), ymd(now)];
     case 'last_30': return [ymd(addDays(now, -29)), ymd(now)];
+    case 'last_6m': return [ymd(new Date(y, m - 5, 1)), ymd(now)];
+    case 'last_12m': return [ymd(new Date(y, m - 11, 1)), ymd(now)];
     case 'custom': return [p.from || ymd(new Date(y, m, 1)), p.to || ymd(now)];
     default: return [ymd(new Date(y, m, 1)), ymd(now)];
   }
@@ -679,7 +705,132 @@ function viewDash() {
     <div><div class="sec-head"><span>Income</span><span class="num">${plain(s2.income)}</span></div>${section('income')}
     <div class="sec-head" style="margin-top:8px"><span>Expenses</span><span class="num">${plain(-s2.expense)}</span></div>${section('expense')}</div>
   </section>`;
-  return `<div class="page">${cash}${detail}</div>`;
+  return `<div class="page">${cash}${detail}${cardStructure()}${cardTrend()}${cardTop()}</div>`;
+}
+
+// ---- Expenses structure (donut) ----
+function cardStructure() {
+  const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
+  const s = stats(r, spec); const prev = stats(prevRange(r), spec);
+  const drill = S.donutDrill && S.cats[S.donutDrill] ? S.cats[S.donutDrill] : null;
+  let segs;
+  if (drill) {
+    const row = s.rows[`expense:${drill.id}`];
+    segs = row ? Object.entries(row.subs).map(([k, v]) => {
+      const c = k === '_self' ? drill : S.cats[k];
+      return { id: k, name: k === '_self' ? `${drill.name} (general)` : (c?.name || 'Deleted'), value: v, color: '', cat: c };
+    }) : [];
+    const base = drill.color || '#8E8E93';
+    segs.sort((a, b) => b.value - a.value).forEach((g, i) => { g.color = shade(base, i, segs.length); });
+  } else {
+    segs = Object.values(s.rows).filter((x) => x.side === 'expense').map((x) => {
+      const c = x.catId ? S.cats[x.catId] : null;
+      return { id: x.catId || 'unknown', name: c ? c.name : 'Uncategorized', value: x.total, color: c ? catColor(c) : '#C7C7CC', cat: c, hasSubs: c && Object.keys(x.subs).some((k) => k !== '_self') };
+    }).sort((a, b) => b.value - a.value);
+  }
+  const total = segs.reduce((n, g) => n + g.value, 0);
+  const sel = segs.find((g) => g.id === S.donutSel) || null;
+  let off = 0;
+  const arcs = total ? segs.map((g) => {
+    const len = (g.value / total) * 100; const gap = segs.length > 1 ? 0.6 : 0;
+    const el = `<circle cx="90" cy="90" r="64" pathLength="100" fill="none" stroke="${g.color}" stroke-width="${sel && sel.id === g.id ? 30 : 24}"
+      stroke-dasharray="${Math.max(len - gap, 0.01)} ${100 - Math.max(len - gap, 0.01)}" stroke-dashoffset="${-off}" transform="rotate(-90 90 90)"
+      data-act="donut-sel" data-id="${g.id}" style="cursor:pointer"><title>${esc(g.name)}</title></circle>`;
+    off += len; return el;
+  }).join('') : '';
+  const center = sel
+    ? `<div class="dn-name">${esc(sel.name)}</div><div class="dn-val num">${money(sel.value)}</div><div class="meta">${Math.round((sel.value / total) * 100)}%</div>`
+    : `<div class="dn-name">${drill ? esc(drill.name) : 'All expenses'}</div><div class="dn-val num">${money(total)}</div>`;
+  const ch = drill ? null : pctChange(s.expense, prev.expense);
+  const legend = segs.slice(0, 8).map((g) => `<button class="legend" data-act="donut-sel" data-id="${g.id}" aria-pressed="${sel?.id === g.id}"><span class="sw" style="background:${g.color}"></span><span class="n">${esc(g.name)}</span><span class="meta num">${Math.round((g.value / total) * 100)}%</span></button>`).join('');
+  const deeper = !drill && sel?.hasSubs ? `<button class="pill-btn" data-act="donut-drill" data-id="${sel.id}">${icon('zoom_in')}Go deeper</button>` : '';
+  const back = drill ? `<button class="pill-btn" data-act="donut-back">${icon('chevron_left')}All categories</button>` : '';
+  return `<section class="card">${cardHead('Expenses Structure', 'structure')}
+    ${total ? `<div class="row-between"><div class="big num" style="font-size:26px">${money(total)}</div>${ch === null ? '' : `<span style="font-size:13px;color:var(${ch <= 0 ? '--good' : '--bad'})">${ch > 0 ? '+' : ''}${ch}% vs prior</span>`}</div>
+    <div class="donut-wrap"><svg viewBox="0 0 180 180" class="donut" role="img" aria-label="Expenses by category">${arcs}</svg><div class="donut-center">${center}</div></div>
+    <div class="legend-list">${legend}</div>
+    ${deeper || back ? `<div style="display:flex;gap:8px">${back}${deeper}</div>` : ''}` : '<div class="meta">No expenses in this period</div>'}
+  </section>`;
+}
+function shade(hex, i, n) {
+  const c = hex.replace('#', ''); const [r, g, b] = [0, 2, 4].map((k) => parseInt(c.slice(k, k + 2), 16));
+  const t = n > 1 ? (i / (n - 1)) * 0.65 : 0;
+  const mix = (v) => Math.round(v + (255 - v) * t);
+  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+}
+
+// ---- Cash flow trend ----
+function buckets([from, to]) {
+  const f = parseYmd(from); const t = parseYmd(to);
+  const days = Math.round((t - f) / 86400000) + 1;
+  const out = [];
+  if (days <= 31) {
+    for (let d = new Date(f); d <= t; d = addDays(d, 1)) out.push({ from: ymd(d), to: ymd(d), label: `${d.getMonth() + 1}/${d.getDate()}` });
+  } else if (days <= 120) {
+    for (let d = new Date(f); d <= t; d = addDays(d, 7)) { const e = addDays(d, 6) > t ? t : addDays(d, 6); out.push({ from: ymd(d), to: ymd(e), label: `${d.getMonth() + 1}/${d.getDate()}` }); }
+  } else {
+    for (let d = new Date(f.getFullYear(), f.getMonth(), 1); d <= t; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      const e = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      out.push({ from: ymd(d < f ? f : d), to: ymd(e > t ? t : e), label: d.toLocaleDateString('en-US', { month: 'short' }) });
+    }
+  }
+  return out;
+}
+function cardTrend() {
+  const spec = cardSpec('trend').spec; const ok = specMatcher(spec);
+  const bs = buckets(rangeOf(getPeriod('trend'))).map((b) => ({ ...b, inc: 0, exp: 0 }));
+  const idx = (date) => { let lo = 0; let hi = bs.length - 1; while (lo <= hi) { const m = (lo + hi) >> 1; if (date < bs[m].from) hi = m - 1; else if (date > bs[m].to) lo = m + 1; else return m; } return -1; };
+  for (const t of S.txs) {
+    if (t.isTransfer || !ok(t)) continue;
+    const i = idx(t.date); if (i < 0) continue;
+    if (t.amount < 0) bs[i].inc += -t.amount; else bs[i].exp += t.amount;
+  }
+  const cum = S.trendMode === 'cumulative';
+  let ci = 0; let ce = 0;
+  const pts = bs.map((b) => { ci += b.inc; ce += b.exp; return cum ? { inc: ci, exp: ce } : { inc: b.inc, exp: b.exp }; });
+  const net = pts.map((p) => p.inc - p.exp);
+  const maxV = Math.max(1, ...pts.map((p) => Math.max(p.inc, p.exp)), ...net.map(Math.abs));
+  const W = 340; const H = 190; const top = 12; const mid = 95; const half = 78; const n = bs.length;
+  const slot = (W - 20) / Math.max(n, 1); const bw = Math.max(2, Math.min(22, slot * 0.6));
+  const y = (v) => mid - (v / maxV) * half;
+  const bars = pts.map((p, i) => {
+    const x = 10 + slot * i + (slot - bw) / 2;
+    return `<rect x="${x.toFixed(1)}" y="${y(p.inc).toFixed(1)}" width="${bw.toFixed(1)}" height="${(mid - y(p.inc)).toFixed(1)}" rx="2" fill="var(--inc)" opacity=".85"></rect>
+      <rect x="${x.toFixed(1)}" y="${mid}" width="${bw.toFixed(1)}" height="${(y(-p.exp) - mid).toFixed(1)}" rx="2" fill="var(--exp)" opacity=".85"></rect>`;
+  }).join('');
+  const line = net.map((v, i) => `${(10 + slot * i + slot / 2).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const step = Math.ceil(n / 6);
+  const labels = bs.map((b, i) => (i % step === 0 || i === n - 1) && !(i !== n - 1 && n - 1 - i < step / 2) ? `<text x="${(10 + slot * i + slot / 2).toFixed(1)}" y="${H - 2}" text-anchor="middle" font-size="10" fill="var(--sub)">${b.label}</text>` : '').join('');
+  const totalNet = net.length ? (cum ? net[net.length - 1] : net.reduce((a, b) => a + b, 0)) : 0;
+  return `<section class="card">${cardHead('Cash Flow Trend', 'trend')}
+    <div class="row-between"><div class="big num" style="font-size:26px">${money(totalNet, true)}</div>
+      <div class="seg"><button data-act="trend-mode" data-mode="trend" aria-pressed="${!cum}">Trend</button><button data-act="trend-mode" data-mode="cumulative" aria-pressed="${cum}">Cumulative</button></div></div>
+    <svg viewBox="0 0 ${W} ${H}" class="trend" role="img" aria-label="Income, expenses and net cash flow over time">
+      <line x1="6" x2="${W - 6}" y1="${mid}" y2="${mid}" stroke="var(--line)" stroke-width="1"></line>${bars}
+      ${n > 1 ? `<polyline points="${line}" fill="none" stroke="var(--text)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>` : ''}${labels}</svg>
+    <div class="legend-inline"><span><i style="background:var(--inc)"></i>Income</span><span><i style="background:var(--exp)"></i>Expenses</span><span><i class="ln"></i>Net</span></div>
+  </section>`;
+}
+
+// ---- Spending + top 5 expenses ----
+function cardTop() {
+  const spec = cardSpec('top').spec; const ok = specMatcher(spec); const r = rangeOf(getPeriod('top'));
+  const list = S.txs.filter((t) => t.date >= r[0] && t.date <= r[1] && !t.isTransfer && t.amount > 0 && ok(t));
+  const bs = buckets(r).map((b) => ({ ...b, v: 0 }));
+  list.forEach((t) => { const b = bs.find((x) => t.date >= x.from && t.date <= x.to); if (b) b.v += t.amount; });
+  const max = Math.max(1, ...bs.map((b) => b.v)); const n = bs.length;
+  const W = 340; const H = 110; const slot = (W - 12) / Math.max(n, 1); const bw = Math.max(2, Math.min(20, slot * 0.65));
+  const bars = bs.map((b, i) => { const h = (b.v / max) * 86; const x = 6 + slot * i + (slot - bw) / 2; return `<rect x="${x.toFixed(1)}" y="${(92 - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(h, b.v ? 2 : 0).toFixed(1)}" rx="2" fill="var(--accent)" opacity=".8"><title>${b.label}: ${money(b.v)}</title></rect>`; }).join('');
+  const first = bs[0]?.label || ''; const last = bs[n - 1]?.label || '';
+  const top5 = [...list].sort((a, b) => b.amount - a.amount).slice(0, 5);
+  const rows = top5.map((t) => { const c = S.cats[t.categoryId]; return `<button class="top-row" data-act="tx" data-id="${t.id}">${catIcon(c)}<span class="mid"><span class="n">${esc(t.note || t.merchant || t.name)}</span><span class="meta">${esc(c ? c.name : 'Uncategorized')} · ${esc(accName(S.accounts[t.accountId]))}</span></span><span class="r"><span class="num" style="color:var(--exp)">-${money(t.amount)}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`; }).join('');
+  return `<section class="card">${cardHead('Spending', 'top')}
+    <div class="big num" style="font-size:26px">${money(list.reduce((a, t) => a + t.amount, 0))}</div>
+    <svg viewBox="0 0 ${W} ${H}" class="trend" role="img" aria-label="Spending over time"><line x1="4" x2="${W - 4}" y1="92" y2="92" stroke="var(--line)"></line>${bars}
+      <text x="6" y="${H - 2}" font-size="10" fill="var(--sub)">${first}</text><text x="${W - 6}" y="${H - 2}" font-size="10" fill="var(--sub)" text-anchor="end">${last}</text></svg>
+    <div class="sec-head">Top 5 expenses</div>
+    ${rows || '<div class="meta">No expenses in this period</div>'}
+  </section>`;
 }
 function rowHtml(row, prev) {
   const side = row.side; const sign = side === 'income' ? 1 : -1;
@@ -818,7 +969,8 @@ function openDrawer() {
     <div class="drawer-sep"></div>
     <button data-act="demo-add">${icon('science')}Add demo data</button>
     <button data-act="demo-del">${icon('delete_sweep')}Remove demo data</button>
-    <button data-act="logout">${icon('logout')}Sign out</button></nav>`;
+    <button data-act="logout">${icon('logout')}Sign out</button>
+    <div class="meta" style="padding:12px;margin-top:auto">Version ${APP_VERSION}</div></nav>`;
 }
 function closeDrawer() { $('drawer').innerHTML = ''; }
 function openSheet(html) {
@@ -1294,6 +1446,10 @@ document.addEventListener('click', async (e) => {
       case 'instant-recent': applyInstant(el.dataset.card, recentInstant()[+el.dataset.i]); break;
       case 'apply-instant': applyInstant(el.dataset.card, mselSpec()); break;
       case 'msel-open': S.mselOpen.has(id) ? S.mselOpen.delete(id) : S.mselOpen.add(id); $('msel').innerHTML = mselBody(); break;
+      case 'donut-sel': S.donutSel = S.donutSel === id ? null : id; render(); break;
+      case 'donut-drill': S.donutDrill = id; S.donutSel = null; render(); break;
+      case 'donut-back': S.donutDrill = null; S.donutSel = null; render(); break;
+      case 'trend-mode': S.trendMode = el.dataset.mode; render(); break;
       case 'toggle': { const k = el.dataset.key; S.expanded.has(k) ? S.expanded.delete(k) : S.expanded.add(k); render(); break; }
       case 'go-unknown': location.hash = '#/tx?f=unknown'; break;
       case 'go-cat-tx': location.hash = `#/tx?cat=${el.dataset.key}`; break;
@@ -1382,7 +1538,7 @@ document.addEventListener('click', async (e) => {
       case 'del-filter': {
         if (!confirm('Delete this filter?')) break;
         await deleteDoc(doc(db, 'filters', id));
-        ['cashflow', 'detail'].forEach((c) => { if (savedFilterId(c) === id) localStorage.removeItem('filter:' + c); });
+        ['cashflow', 'detail', 'structure', 'trend', 'top'].forEach((c) => { if (savedFilterId(c) === id) localStorage.removeItem('filter:' + c); });
         closeSheet(); toast('Filter deleted'); break;
       }
       case 'add-rule': sheetRule(null); break;
