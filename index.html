@@ -196,8 +196,8 @@ select.input { appearance: auto; }
 .freq .ci .ms { font-size: 22px; }
 .pick.open .chev { transform: rotate(180deg); }
 .pick .chev { margin-left: auto; }
-.amount-row { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; font-size: 44px; font-weight: 600; padding: 4px 4px 0; }
-.amount-row input { width: 60%; text-align: right; border: 0; outline: 0; background: none; font: inherit; font-size: 44px; font-weight: 600; }
+.amount-row { display: flex; align-items: baseline; justify-content: flex-end; gap: 0; font-size: 44px; font-weight: 600; padding: 4px 4px 0; }
+.amount-row input { max-width: 75%; text-align: right; padding: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 44px; font-weight: 600; }
 .set-item > .ms { color: var(--accent); width: 32px; text-align: center; }
 .wide { width: 100%; justify-content: center; height: 48px; }
 .row-select { margin-left: auto; max-width: 62%; height: 36px; border: 0; background: none; color: var(--sub); font-size: 16px; text-align: right; direction: rtl; }
@@ -390,7 +390,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '1.7';
+const APP_VERSION = '1.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1167,13 +1167,13 @@ function renderEdit() {
   openSheet(`<h3>${t ? 'Edit record' : 'New record'}</h3>
     <div class="seg" style="align-self:stretch">${types.map(([k, l]) => `<button style="flex:1" data-act="edit-type" data-type="${k}" aria-pressed="${e.type === k}">${l}</button>`).join('')}</div>
     ${e.manual
-      ? `<div class="amount-row"><span style="color:${color}">${sign}$</span><input id="ed-amt" class="num" inputmode="decimal" placeholder="0.00" value="${e.amount ? e.amount.toFixed(2) : ''}" style="color:${color}" aria-label="Amount"></div>`
+      ? `<div class="amount-row"><span style="color:${color}">${sign}$</span><input id="ed-amt" class="num" inputmode="decimal" placeholder="0.00" value="${e.amount ? e.amount.toFixed(2) : ''}" style="color:${color};width:${Math.max(4, (e.amount ? e.amount.toFixed(2) : '').length) + 0.5}ch" aria-label="Amount"></div>`
       : `<div class="amount-row num" style="color:${color}">${sign}$${fmt.format(e.amount)}</div>`}
     <div class="sec-head">General</div>
     <div class="set-list">
+      ${e.type === 'transfer' ? '' : valueRow('edit-cat', catIcon(c), 'Category', esc(c ? c.name : 'Uncategorized'))}
       ${e.manual ? valueRow('ed-acc', accIcon, 'Account', esc(e.accountId === 'cash' ? 'Cash' : accName(acc)))
         : `<div class="set-item">${accIcon}<span class="n">Account</span><span class="v">${esc(accName(acc))}</span></div>`}
-      ${e.type === 'transfer' ? '' : valueRow('edit-cat', catIcon(c), 'Category', esc(c ? c.name : 'Uncategorized'))}
       <div class="set-item">${glyph('calendar_today', '#FF3B30')}<span class="n">Date</span>
         ${e.manual ? `<input id="ed-date" type="date" class="row-date" value="${e.date}">` : `<span class="v">${shortDate(e.date)}${t.pending ? ' (pending)' : ''}</span>`}</div>
     </div>
@@ -1560,6 +1560,7 @@ document.addEventListener('click', async (e) => {
 let searchTimer;
 document.addEventListener('input', (e) => {
   if (e.target.id === 'nm' && $('lbl-prev')) { $('lbl-prev').innerHTML = labelPill({ name: e.target.value || 'Label', color: $('sheet').dataset.color }); return; }
+  if (e.target.id === 'ed-amt') { e.target.style.width = `${Math.max(4, e.target.value.length) + 0.5}ch`; return; }
   if (e.target.id === 'catq') { $('catpick').innerHTML = pickerBody(e.target.value.trim().toLowerCase()); return; }
   if (e.target.id !== 'txsearch') return;
   S.search = e.target.value;
