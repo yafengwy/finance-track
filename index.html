@@ -245,6 +245,11 @@ input.row-select { direction: ltr; }
 .top-row .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .top-row .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top-row .r { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.pill-btn.small { height: 34px; padding: 0 14px; font-size: 13px; color: var(--sub); background: transparent; border-color: var(--border); }
+.pill-btn.small .ms { font-size: 16px; }
+.reorder-row { gap: 10px; }
+.reorder-row .icon-btn { width: 40px; height: 40px; color: var(--accent); }
+.reorder-row .icon-btn:disabled { color: #D1D1D6; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -390,7 +395,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '1.8';
+const APP_VERSION = '1.9';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -611,7 +616,7 @@ function render() {
   const main = !views[r.name] || MAIN.includes(r.name);
   const body = (views[r.name] || viewAccounts)();
   $('app').innerHTML = (main ? headerMain(r.name) : headerSub(r)) + body
-    + (main ? `<button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button>` : '');
+    + (r.name === 'tx' ? `<button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button>` : '');
   window.scrollTo(0, y);
   if (focusId && $(focusId)) { const f = $(focusId); f.focus(); if (caret != null && f.setSelectionRange) f.setSelectionRange(caret, caret); }
 }
@@ -684,7 +689,21 @@ function cardHead(title, card) {
   return `<div class="card-head"><div><p class="h2">${title}</p><div class="meta">${esc(periodLabel(getPeriod(card)))}${label ? ` · ${esc(label)}` : ''}</div></div>
     <button class="icon-btn" data-act="card-settings" data-card="${card}" aria-label="${title} settings">${icon('more_horiz')}</button></div>`;
 }
+const CARDS = { cashflow: 'Cash Flow', detail: 'Income & Expenses', structure: 'Expenses Structure', trend: 'Cash Flow Trend', top: 'Spending' };
+function cardOrder() {
+  let o = []; try { o = JSON.parse(localStorage.getItem('cardOrder')) || []; } catch { /* default */ }
+  o = o.filter((k) => CARDS[k]); Object.keys(CARDS).forEach((k) => { if (!o.includes(k)) o.push(k); });
+  return o;
+}
+function cardHidden() { try { return new Set(JSON.parse(localStorage.getItem('cardHidden')) || []); } catch { return new Set(); } }
 function viewDash() {
+  const fns = { cashflow: cardCash, detail: cardDetail, structure: cardStructure, trend: cardTrend, top: cardTop };
+  const hidden = cardHidden();
+  const cards = cardOrder().filter((k) => !hidden.has(k)).map((k) => fns[k]()).join('');
+  return `<div class="page">${cards || '<div class="empty">All cards are hidden</div>'}
+    <div class="center"><button class="pill-btn small" data-act="reorder">${icon('swap_vert')}Reorder cards</button></div></div>`;
+}
+function cardCash() {
   const r1 = rangeOf(getPeriod('cashflow')); const s1 = stats(r1, cardSpec('cashflow').spec);
   const max = Math.max(s1.income, s1.expense, 1);
   const cash = `<section class="card">${cardHead('Cash Flow', 'cashflow')}
@@ -694,7 +713,9 @@ function viewDash() {
     <div class="bar-row"><div class="row-between"><span>Expenses</span><span class="num">${money(s1.expense)}</span></div>
       <div class="track"><div class="fill" style="width:${(s1.expense / max) * 100}%;background:var(--exp)"></div></div></div>
   </section>`;
-
+  return cash;
+}
+function cardDetail() {
   const spec2 = cardSpec('detail').spec;
   const r2 = rangeOf(getPeriod('detail')); const s2 = stats(r2, spec2); const p2 = stats(prevRange(r2), spec2);
   const section = (side) => {
@@ -708,7 +729,7 @@ function viewDash() {
     <div><div class="sec-head"><span>Income</span><span class="num">${plain(s2.income)}</span></div>${section('income')}
     <div class="sec-head" style="margin-top:8px"><span>Expenses</span><span class="num">${plain(-s2.expense)}</span></div>${section('expense')}</div>
   </section>`;
-  return `<div class="page">${cash}${detail}${cardStructure()}${cardTrend()}${cardTop()}</div>`;
+  return detail;
 }
 
 // ---- Expenses structure (donut) ----
@@ -983,6 +1004,18 @@ function openSheet(html) {
 }
 function closeSheet() { $('sheet').innerHTML = ''; document.body.classList.remove('sheet-open'); }
 const saveBar = (act, label = 'Done', extra = '') => `<div class="sticky-save"><button class="pill-btn primary" data-act="${act}"${extra}>${label}</button></div>`;
+
+// ---- reorder / show-hide dashboard cards ----
+function sheetReorder() {
+  const o = cardOrder(); const hidden = cardHidden();
+  openSheet(`<h3>Dashboard cards</h3><div class="set-list">${o.map((k, i) => `<div class="set-item reorder-row">
+    <input type="checkbox" class="switch" data-card-show="${k}" ${hidden.has(k) ? '' : 'checked'} aria-label="Show ${CARDS[k]}">
+    <span class="n">${CARDS[k]}</span>
+    <button class="icon-btn" data-act="card-move" data-card="${k}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${CARDS[k]} up">${icon('arrow_upward')}</button>
+    <button class="icon-btn" data-act="card-move" data-card="${k}" data-dir="1" ${i === o.length - 1 ? 'disabled' : ''} aria-label="Move ${CARDS[k]} down">${icon('arrow_downward')}</button></div>`).join('')}</div>
+    <div class="meta" style="padding:0 4px">Use the arrows to move a card. Turn a card off to hide it.</div>
+    ${saveBar('close-sheet', 'Done')}`);
+}
 
 // ---- generic option list (Wallet-style picker with icons) ----
 function openOptions(title, opts, selected, onPick) {
@@ -1450,6 +1483,13 @@ document.addEventListener('click', async (e) => {
       case 'instant-recent': applyInstant(el.dataset.card, recentInstant()[+el.dataset.i]); break;
       case 'apply-instant': applyInstant(el.dataset.card, mselSpec()); break;
       case 'msel-open': S.mselOpen.has(id) ? S.mselOpen.delete(id) : S.mselOpen.add(id); $('msel').innerHTML = mselBody(); break;
+      case 'reorder': sheetReorder(); break;
+      case 'card-move': {
+        const o = cardOrder(); const i = o.indexOf(el.dataset.card); const j = i + Number(el.dataset.dir);
+        if (j < 0 || j >= o.length) break;
+        [o[i], o[j]] = [o[j], o[i]]; localStorage.setItem('cardOrder', JSON.stringify(o));
+        const y = document.querySelector('.sheet')?.scrollTop; sheetReorder(); if (y) document.querySelector('.sheet').scrollTop = y; render(); break;
+      }
       case 'donut-sel': S.donutSel = S.donutSel === id ? null : id; render(); break;
       case 'donut-drill': S.donutDrill = id; S.donutSel = null; render(); break;
       case 'donut-back': S.donutDrill = null; S.donutSel = null; render(); break;
@@ -1568,6 +1608,10 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('change', async (e) => {
   const el = e.target;
+  if (el.dataset.cardShow) {
+    const h = cardHidden(); el.checked ? h.delete(el.dataset.cardShow) : h.add(el.dataset.cardShow);
+    localStorage.setItem('cardHidden', JSON.stringify([...h])); render(); return;
+  }
   if (el.dataset.msel) { el.checked ? S.msel.add(el.dataset.msel) : S.msel.delete(el.dataset.msel); return; }
   try {
     if (el.dataset.act === 'cat-show') await updateDoc(doc(db, 'categories', el.dataset.id), { hidden: !el.checked });
