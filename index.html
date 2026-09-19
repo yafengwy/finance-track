@@ -452,7 +452,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '4.0';
+const APP_VERSION = '4.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -463,8 +463,8 @@ const S = {
   donutSel: null, donutDrill: null, trendMode: 'trend',
 };
 const TILE_COLORS = ['#1E3A8A', '#2563EB', '#6D28D9', '#B91C1C', '#475569', '#C2410C', '#B45309', '#0F766E', '#9D174D', '#1F6F54'];
-const PERIOD_LABEL = { this_month: 'This month', last_month: 'Last month', last_30: 'Last 30 days', last_6m: 'Last 6 months', this_year: 'This year', last_12m: 'Last 12 months', custom: 'Custom' };
-const DEFAULT_PERIOD = { trend: 'last_6m' };
+const PERIOD_LABEL = { this_month: 'This month', last_month: 'Last month', this_year: 'This year', last_year: 'Last year', custom: 'Custom' };
+const DEFAULT_PERIOD = { trend: 'this_year' };
 
 // ---------- helpers ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -506,7 +506,7 @@ function accName(a) { return a ? (a.customName || a.name) : ''; }
 // ---------- periods & card filters ----------
 function getPeriod(card) {
   const def = { key: DEFAULT_PERIOD[card] || 'this_month' };
-  try { return JSON.parse(localStorage.getItem('period:' + card)) || def; } catch { return def; }
+  try { const p = JSON.parse(localStorage.getItem('period:' + card)); return p && PERIOD_LABEL[p.key] ? p : def; } catch { return def; }
 }
 function setPeriod(card, p) { localStorage.setItem('period:' + card, JSON.stringify(p)); }
 function rangeOf(p) {
@@ -514,6 +514,7 @@ function rangeOf(p) {
   switch (p.key) {
     case 'last_month': return [ymd(new Date(y, m - 1, 1)), ymd(new Date(y, m, 0))];
     case 'this_year': return [ymd(new Date(y, 0, 1)), ymd(now)];
+    case 'last_year': return [ymd(new Date(y - 1, 0, 1)), ymd(new Date(y - 1, 11, 31))];
     case 'last_30': return [ymd(addDays(now, -29)), ymd(now)];
     case 'last_6m': return [ymd(new Date(y, m - 5, 1)), ymd(now)];
     case 'last_12m': return [ymd(new Date(y, m - 11, 1)), ymd(now)];
@@ -590,6 +591,7 @@ function listen() {
   watch('filters', 'filters');
   watch('rules', 'rules', () => { S.rulesLoaded = true; scheduleRules(); });
   watch('items', 'items');
+  if (Object.keys(CARDS).some((c) => prevRange(rangeOf(getPeriod(c)))[0] < loadedSince())) S.loadAll = true;
   subscribeTx();
 }
 function loadedSince() { return `${new Date().getFullYear() - 1}-01-01`; }
@@ -1309,7 +1311,7 @@ function openDrawer() {
 function closeDrawer() { $('drawer').innerHTML = ''; }
 function openSheet(html, opts = {}) {
   $('sheet').innerHTML = `<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true">
-    ${opts.noClose ? '<div class="sheet-top compact"><button class="grab-btn" data-act="close-sheet" aria-label="Close"><span class="grab"></span></button></div>' : `<div class="sheet-top"><button class="grab-btn" data-act="close-sheet" aria-label="Close"><span class="grab"></span></button><button class="icon-btn round sheet-x" data-act="close-sheet" aria-label="Close">${icon('close')}</button></div>`}${html}</div>`;
+    <div class="sheet-top compact"><button class="grab-btn" data-act="close-sheet" aria-label="Close"><span class="grab"></span></button></div>${html}</div>`;
   if (opts.short) $('sheet').querySelector('.sheet').classList.add('short');
   enableSwipeClose($('sheet').querySelector('.sheet'));
   document.body.classList.add('sheet-open');
@@ -1412,7 +1414,7 @@ async function saveCard() {
   setPeriod(d.card, p);
   if (d.filter !== '__instant') { delete S.instant[d.card]; if (d.filter) localStorage.setItem('filter:' + d.card, d.filter); else localStorage.removeItem('filter:' + d.card); }
   closeSheet();
-  if (d.key === 'custom' && p.from < loadedSince()) setLoadAll(true);
+  if (prevRange(rangeOf(p))[0] < loadedSince()) setLoadAll(true);
   render();
 }
 
