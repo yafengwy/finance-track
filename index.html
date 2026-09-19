@@ -149,7 +149,7 @@ button { cursor: pointer; }
 .drawer .ms { color: var(--accent); font-size: 24px; }
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow-y: auto; background: var(--card); z-index: 21; border-radius: 18px 18px 0 0; padding: 12px 16px calc(20px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 14px; max-width: 560px; margin: 0 auto; }
 .sheet > * { flex-shrink: 0; }
-.sheet { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.sheet { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: manipulation; }
 body.sheet-open { overflow: hidden; }
 .sheet .grab { width: 40px; height: 5px; border-radius: 3px; background: #D5D9E0; }
 .sheet-top { position: sticky; top: -12px; z-index: 2; margin: -12px -16px 0; padding: 8px 12px 4px; background: var(--card); display: flex; justify-content: center; align-items: flex-start; min-height: 52px; }
@@ -257,6 +257,14 @@ input.row-select { direction: ltr; }
 .top-row.in-list { padding: 6px 14px; }
 .list .top-row.in-list:first-child { border-top: 0; }
 .card .link-btn { align-self: center; font-size: 13px; }
+.card .link-btn.show-more { align-self: flex-start; padding: 8px 0; font-size: 14px; font-weight: 600; letter-spacing: .3px; }
+.more-row { display: flex; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; align-items: flex-start; }
+.list .more-row:first-child { border-top: 0; }
+.more-row .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.more-row .n { font-weight: 600; }
+.more-row .amt { color: var(--exp); font-weight: 600; }
+.more-row .desc { font-size: 13px; color: var(--sub); font-style: italic; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cat-btn.static { cursor: default; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -403,7 +411,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '2.2';
+const APP_VERSION = '2.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -803,7 +811,7 @@ function cardStructure() {
   const bs = buckets(r); const vals = bs.map(() => 0);
   m.focus.forEach((t) => { const i = bs.findIndex((b) => t.date >= b.from && t.date <= b.to); if (i >= 0) vals[i] += t.amount; });
   const sorted = [...m.focus].sort((a, b) => b.amount - a.amount);
-  S.spendMore = { title: sel ? sel.name : drill ? drill.name : 'All expenses', ids: sorted.slice(0, 100).map((t) => t.id) };
+  S.spendMore = { title: sel ? sel.name : drill ? drill.name : 'All expenses', period: periodLabel(getPeriod('structure')), ids: sorted.map((t) => t.id) };
   return `<section class="card">${cardHead('Spending by Category', 'structure')}
     ${total ? `<div class="row-between"><div class="big num" style="font-size:26px">${money(total)}</div>${ch === null ? '' : `<span style="font-size:13px;color:var(${ch <= 0 ? '--good' : '--bad'})">${ch > 0 ? '+' : ''}${ch}% vs prior</span>`}</div>
     <div class="donut-wrap"><svg viewBox="0 0 180 180" class="donut" role="img" aria-label="Expenses by category">${arcs}</svg><div class="donut-center">${center}</div></div>
@@ -813,13 +821,23 @@ function cardStructure() {
     ${barChart(bs, vals, m.focusColor)}
     <div class="sec-head">Top 5 expenses${sel ? ` · ${esc(sel.name)}` : ''}</div>
     ${sorted.slice(0, 5).map((t) => txRowHtml(t)).join('')}
-    ${sorted.length > 5 ? '<button class="link-btn" data-act="show-more">Show more</button>' : ''}` : '<div class="meta">No expenses in this period</div>'}
+    ${sorted.length ? `<button class="link-btn show-more" data-act="show-more">Show more (${sorted.length})</button>` : ''}` : '<div class="meta">No expenses in this period</div>'}
   </section>`;
 }
 function sheetShowMore() {
   const m = S.spendMore; if (!m) return;
-  openSheet(`<h3>${esc(m.title)}</h3><div class="meta">Largest expenses first</div>
-    <div class="list">${m.ids.map((id) => S.txById[id]).filter(Boolean).map((t) => txRowHtml(t, 'top-row in-list')).join('')}</div>`);
+  const rows = m.ids.map((id) => S.txById[id]).filter(Boolean).map((t) => {
+    const c = S.cats[t.categoryId];
+    const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
+    const desc = [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' - ');
+    return `<button class="more-row" data-act="tx" data-id="${t.id}">${catIcon(c)}
+      <span class="mid"><span class="row-between"><span class="n">${esc(c ? c.name : 'Uncategorized')}</span><span class="num amt">-${money(t.amount)}</span></span>
+      <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span>
+      ${t.note ? `<span class="desc">${esc(t.note)}</span>` : ''}${desc ? `<span class="desc">“${esc(desc)}”</span>` : ''}
+      ${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span></button>`;
+  }).join('');
+  openSheet(`<h3>${esc(m.title)}</h3><div class="meta">${esc(m.period)} · ${m.ids.length} records · largest first</div>
+    <div class="list">${rows}</div>`);
 }
 function shade(hex, i, n) {
   const c = hex.replace('#', ''); const [r, g, b] = [0, 2, 4].map((k) => parseInt(c.slice(k, k + 2), 16));
@@ -889,17 +907,18 @@ function rowHtml(row, prev) {
   const subKeys = Object.keys(row.subs);
   const hasSubs = !!cat && subKeys.some((k) => k !== '_self');
   const open = hasSubs && S.expanded.has(row.key);
-  const act = !cat ? `data-act="go-unknown"` : hasSubs ? `data-act="toggle" data-key="${row.key}"` : `data-act="go-cat-tx" data-key="${row.catId}"`;
+  const act = !cat ? `data-act="go-unknown"` : hasSubs ? `data-act="toggle" data-key="${row.key}"` : '';
+  const tag = act ? 'button' : 'div';
   let subs = '';
   if (open) {
     const sorted = subKeys.sort((a, b) => row.subs[b] - row.subs[a]);
     subs = `<div class="subs">${sorted.map((k) => `<div class="sub"><span class="n">${k === '_self' ? 'General' : esc(S.cats[k]?.name || 'Deleted')}</span>
       <span class="num">${plain(sign * row.subs[k])}</span>${pctHtml(pctChange(row.subs[k], prev?.subs?.[k]), side)}</div>`).join('')}</div>`;
   }
-  return `<div class="cat-row${open ? ' open' : ''}"><button class="cat-btn" ${act}>
+  return `<div class="cat-row${open ? ' open' : ''}"><${tag} class="cat-btn${act ? '' : ' static'}" ${act}>
     ${catIcon(cat)}<span class="n">${esc(name)}${hasSubs ? `<span class="ms chev" aria-hidden="true">expand_more</span>` : ''}</span>
     <span class="a num">${plain(sign * row.total)}</span>${pctHtml(pctChange(row.total, prev?.total), side)}
-  </button>${subs}</div>`;
+  </${tag}>${subs}</div>`;
 }
 
 // ---------- transactions ----------
@@ -1029,6 +1048,9 @@ function openSheet(html) {
     <div class="sheet-top"><div class="grab"></div><button class="icon-btn round sheet-x" data-act="close-sheet" aria-label="Close">${icon('close')}</button></div>${html}</div>`;
   document.body.classList.add('sheet-open');
 }
+// iOS only opens the keyboard when focus happens inside the tap itself; a delayed focus leaves the
+// field "focused without keyboard" and then ignores taps on it. So focus synchronously, or not at all.
+function focusNow(id) { const f = $(id); if (!f) return; f.focus({ preventScroll: true }); const v = f.value; f.setSelectionRange?.(v.length, v.length); }
 function closeSheet() { $('sheet').innerHTML = ''; document.body.classList.remove('sheet-open'); }
 const saveBar = (act, label = 'Done', extra = '') => `<div class="sticky-save"><button class="pill-btn primary" data-act="${act}"${extra}>${label}</button></div>`;
 
@@ -1292,7 +1314,7 @@ function sheetIcon(id) {
 function sheetName(title, value, act, id, extra = '') {
   openSheet(`<h3>${title}</h3><div class="field"><label for="nm">Name</label><input class="input" id="nm" value="${esc(value)}" autocomplete="off"></div>${extra}
     ${saveBar(act, 'Save', ` data-id="${id || ''}"`)}`);
-  setTimeout(() => $('nm')?.focus(), 50);
+  focusNow('nm');
 }
 const LABEL_COLORS = ['#E5484D', '#F76B15', '#F5A623', '#30A46C', '#12A594', '#0090FF', '#3E63DD', '#8E4EC6', '#D6409F', '#8E8E93'];
 function sheetLabel(id) {
@@ -1304,7 +1326,7 @@ function sheetLabel(id) {
     ${l ? `<button class="pill-btn danger wide" data-act="del-label" data-id="${id}">${icon('delete')}Delete label</button>` : ''}
     ${saveBar('save-label', 'Save', ` data-id="${id || ''}"`)}`);
   $('sheet').dataset.color = l?.color || LABEL_COLORS[0];
-  if (!l) setTimeout(() => $('nm')?.focus(), 50);
+  if (!l) focusNow('nm');
 }
 
 // ---- automatic rule editor ----
