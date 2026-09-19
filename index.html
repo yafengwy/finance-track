@@ -294,6 +294,8 @@ input.row-select { direction: ltr; }
 .rec-head { align-items: center; }
 .rec-head h3 { flex: 1; min-width: 0; }
 .rec-head .pill-btn { flex-shrink: 0; margin-left: auto; }
+.sheet-top.compact { min-height: 22px; padding: 8px 12px 0; }
+.link-btn.all-rec { display: block; margin: 4px 0 0 36px; padding: 8px 0; font-size: 13px; font-weight: 600; text-align: left; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -440,7 +442,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -905,7 +907,7 @@ function sheetRecords(pop) {
   openSheet(`<div class="row-between rec-head"><h3>${esc(p.title)}</h3>
       <button class="pill-btn small" data-act="rec-sort" aria-label="Sort records">${icon('sort')}Sort</button></div>
     <div class="meta">${esc(p.period)} · ${txs.length} record${txs.length === 1 ? '' : 's'} · ${money(Math.abs(total))} · ${esc(SORTS[p.sort])}</div>
-    <div class="list">${rows || '<div class="empty">No records</div>'}</div>`);
+    <div class="list">${rows || '<div class="empty">No records</div>'}</div>`, { noClose: true });
 }
 function sheetShowMore() {
   const m = S.spendMore; if (!m) return;
@@ -1042,7 +1044,8 @@ function rowHtml(row, prev) {
         }).join('')}</div>`;
       }
       return `<div class="sub${v ? '' : ' zero'}">${has3 ? toggle(k2, open3, nm) : '<span class="xp-sp"></span>'}${recBtn(scope, nm, inner, 'sub-btn')}</div>${third}`;
-    }).join('')}</div>`;
+    }).join('')}
+      <button class="link-btn all-rec" data-act="row-rec" data-side="${side}" data-scope="top:${cat.id}" data-title="${esc(cat.name)}">All ${esc(cat.name)} records ›</button></div>`;
   }
   const scope = cat ? `top:${cat.id}` : 'unk';
   const inner = `${catIcon(cat)}<span class="n">${esc(name)}</span><span class="a num">${plain(sign * row.total)}</span>${pctHtml(pctChange(row.total, prev?.total), side)}`;
@@ -1289,9 +1292,9 @@ function openDrawer() {
     <div class="meta" style="padding:12px;margin-top:auto">Version ${APP_VERSION}</div></nav>`;
 }
 function closeDrawer() { $('drawer').innerHTML = ''; }
-function openSheet(html) {
+function openSheet(html, opts = {}) {
   $('sheet').innerHTML = `<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true">
-    <div class="sheet-top"><div class="grab"></div><button class="icon-btn round sheet-x" data-act="close-sheet" aria-label="Close">${icon('close')}</button></div>${html}</div>`;
+    ${opts.noClose ? '<div class="sheet-top compact"><div class="grab"></div></div>' : `<div class="sheet-top"><div class="grab"></div><button class="icon-btn round sheet-x" data-act="close-sheet" aria-label="Close">${icon('close')}</button></div>`}${html}</div>`;
   document.body.classList.add('sheet-open');
 }
 // iOS only opens the keyboard when focus happens inside the tap itself; a delayed focus leaves the
