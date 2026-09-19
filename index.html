@@ -440,7 +440,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1045,7 +1045,7 @@ function rowHtml(row, prev) {
     }).join('')}</div>`;
   }
   const scope = cat ? `top:${cat.id}` : 'unk';
-  const inner = `${catIcon(cat)}<span class="n">${esc(name)}${hasSubs ? `<span class="ms chev${open ? ' up' : ''}" aria-hidden="true">expand_more</span>` : ''}</span><span class="a num">${plain(sign * row.total)}</span>${pctHtml(pctChange(row.total, prev?.total), side)}`;
+  const inner = `${catIcon(cat)}<span class="n">${esc(name)}</span><span class="a num">${plain(sign * row.total)}</span>${pctHtml(pctChange(row.total, prev?.total), side)}`;
   // A main category with subcategories expands on tap; one without subcategories opens its records.
   const main = hasSubs
     ? `<button class="cat-btn" data-act="toggle" data-key="${row.key}" aria-expanded="${open}">${inner}</button>`
