@@ -257,6 +257,13 @@ input.row-select { direction: ltr; }
 .top-row.in-list { padding: 6px 14px; }
 .list .top-row.in-list:first-child { border-top: 0; }
 .card .link-btn { align-self: center; font-size: 13px; }
+.card .link-btn.show-more { align-self: flex-start; padding: 8px 0; font-size: 14px; font-weight: 600; letter-spacing: .3px; }
+.more-row { display: flex; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; align-items: flex-start; }
+.list .more-row:first-child { border-top: 0; }
+.more-row .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.more-row .n { font-weight: 600; }
+.more-row .amt { color: var(--exp); font-weight: 600; }
+.more-row .desc { font-size: 13px; color: var(--sub); font-style: italic; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -403,7 +410,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '2.2';
+const APP_VERSION = '2.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -803,7 +810,7 @@ function cardStructure() {
   const bs = buckets(r); const vals = bs.map(() => 0);
   m.focus.forEach((t) => { const i = bs.findIndex((b) => t.date >= b.from && t.date <= b.to); if (i >= 0) vals[i] += t.amount; });
   const sorted = [...m.focus].sort((a, b) => b.amount - a.amount);
-  S.spendMore = { title: sel ? sel.name : drill ? drill.name : 'All expenses', ids: sorted.slice(0, 100).map((t) => t.id) };
+  S.spendMore = { title: sel ? sel.name : drill ? drill.name : 'All expenses', period: periodLabel(getPeriod('structure')), ids: sorted.map((t) => t.id) };
   return `<section class="card">${cardHead('Spending by Category', 'structure')}
     ${total ? `<div class="row-between"><div class="big num" style="font-size:26px">${money(total)}</div>${ch === null ? '' : `<span style="font-size:13px;color:var(${ch <= 0 ? '--good' : '--bad'})">${ch > 0 ? '+' : ''}${ch}% vs prior</span>`}</div>
     <div class="donut-wrap"><svg viewBox="0 0 180 180" class="donut" role="img" aria-label="Expenses by category">${arcs}</svg><div class="donut-center">${center}</div></div>
@@ -813,13 +820,23 @@ function cardStructure() {
     ${barChart(bs, vals, m.focusColor)}
     <div class="sec-head">Top 5 expenses${sel ? ` · ${esc(sel.name)}` : ''}</div>
     ${sorted.slice(0, 5).map((t) => txRowHtml(t)).join('')}
-    ${sorted.length > 5 ? '<button class="link-btn" data-act="show-more">Show more</button>' : ''}` : '<div class="meta">No expenses in this period</div>'}
+    ${sorted.length ? `<button class="link-btn show-more" data-act="show-more">Show more (${sorted.length})</button>` : ''}` : '<div class="meta">No expenses in this period</div>'}
   </section>`;
 }
 function sheetShowMore() {
   const m = S.spendMore; if (!m) return;
-  openSheet(`<h3>${esc(m.title)}</h3><div class="meta">Largest expenses first</div>
-    <div class="list">${m.ids.map((id) => S.txById[id]).filter(Boolean).map((t) => txRowHtml(t, 'top-row in-list')).join('')}</div>`);
+  const rows = m.ids.map((id) => S.txById[id]).filter(Boolean).map((t) => {
+    const c = S.cats[t.categoryId];
+    const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
+    const desc = [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' - ');
+    return `<button class="more-row" data-act="tx" data-id="${t.id}">${catIcon(c)}
+      <span class="mid"><span class="row-between"><span class="n">${esc(c ? c.name : 'Uncategorized')}</span><span class="num amt">-${money(t.amount)}</span></span>
+      <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span>
+      ${t.note ? `<span class="desc">${esc(t.note)}</span>` : ''}${desc ? `<span class="desc">“${esc(desc)}”</span>` : ''}
+      ${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span></button>`;
+  }).join('');
+  openSheet(`<h3>${esc(m.title)}</h3><div class="meta">${esc(m.period)} · ${m.ids.length} records · largest first</div>
+    <div class="list">${rows}</div>`);
 }
 function shade(hex, i, n) {
   const c = hex.replace('#', ''); const [r, g, b] = [0, 2, 4].map((k) => parseInt(c.slice(k, k + 2), 16));
