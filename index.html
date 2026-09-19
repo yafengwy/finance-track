@@ -301,6 +301,9 @@ input.row-select { direction: ltr; }
 .grab-btn { border: 0; background: none; padding: 6px 40px 10px; margin-top: -6px; display: flex; justify-content: center; }
 .sheet.short { max-height: min(64vh, 620px); }
 .sheet { transition: transform .15s; }
+.more-row { align-items: flex-start; padding: 8px 14px 8px 6px; }
+.more-row .tx-ico { height: 48px; }
+.more-main { flex: 1; min-width: 0; border: 0; background: none; padding: 4px 0; text-align: left; font: inherit; color: inherit; display: flex; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -447,7 +450,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '3.6';
+const APP_VERSION = '3.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -531,13 +534,13 @@ function cardSpec(card) {
   return f ? { spec: f, label: 'Filter: ' + f.name } : { spec: null, label: '' };
 }
 function specName(spec) {
-  const names = [...(spec.cats || []).map((id) => S.cats[id]?.name), ...(spec.labels || []).map((id) => '#' + (S.labels[id]?.name || ''))].filter(Boolean);
+  const names = [...(spec.cats || []).map((id) => (id.startsWith('=') ? (S.cats[id.slice(1)] ? `General – ${S.cats[id.slice(1)].name}` : null) : S.cats[id]?.name)), ...(spec.labels || []).map((id) => '#' + (S.labels[id]?.name || ''))].filter(Boolean);
   return names.length > 3 ? `${names.slice(0, 3).join(', ')} +${names.length - 3}` : names.join(', ');
 }
 function specMatcher(spec) {
   if (!spec || (!spec.cats?.length && !spec.labels?.length)) return () => true;
   const cats = new Set();
-  (spec.cats || []).forEach((id) => { cats.add(id); descendants(id).forEach((d) => cats.add(d)); });
+  (spec.cats || []).forEach((id) => { if (id.startsWith('=')) cats.add(id.slice(1)); else { cats.add(id); descendants(id).forEach((d) => cats.add(d)); } });
   const labels = new Set(spec.labels || []);
   return (t) => cats.has(t.categoryId) || (t.labels || []).some((l) => labels.has(l));
 }
@@ -903,17 +906,19 @@ function sheetRecords(pop) {
     const c = S.cats[t.categoryId]; const inflow = t.amount < 0;
     const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
     const desc = [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' - ');
-    return `<button class="more-row" data-act="tx" data-id="${t.id}">${catIcon(c)}
-      <span class="mid"><span class="row-between"><span class="n">${esc(c ? c.name : 'Uncategorized')}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
+    return `<div class="more-row"><button class="tx-ico" data-act="tx-cat" data-id="${t.id}" data-back="rec" aria-label="Choose category">${catIcon(c)}</button>
+      <button class="more-main" data-act="tx" data-id="${t.id}" data-back="rec"><span class="mid"><span class="row-between"><span class="n">${esc(c ? c.name : 'Uncategorized')}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
       <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span>
       ${t.note ? `<span class="desc">${esc(t.note)}</span>` : ''}${desc ? `<span class="desc">“${esc(desc)}”</span>` : ''}
-      ${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span></button>`;
+      ${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span></button></div>`;
   }).join('');
   openSheet(`<div class="row-between rec-head"><h3>${esc(p.title)}</h3>
       <button class="pill-btn small" data-act="rec-sort" aria-label="Sort records">${icon('sort')}Sort</button></div>
     <div class="meta">${esc(p.period)} · ${txs.length} record${txs.length === 1 ? '' : 's'} · ${money(Math.abs(total))} · ${esc(SORTS[p.sort])}</div>
     <div class="list">${rows || '<div class="empty">No records</div>'}</div>`, { noClose: true, short: true });
 }
+// After editing a record opened from a records popup, go back to that popup
+function backToPopup() { if (S.back === 'rec' && S.recPop) { S.back = null; sheetRecords(); } else S.back = null; }
 function sheetShowMore() {
   const m = S.spendMore; if (!m) return;
   sheetRecords({ title: m.title, period: m.period, ids: m.ids, sort: 'amt_desc' });
@@ -1198,7 +1203,7 @@ function sheetRecPanel() {
     <div class="set-list">
       ${valueRow('rf-acc', glyph('account_balance_wallet', '#5856D6'), 'Accounts', esc(accTxt))}
       ${valueRow('rf-cat', glyph('folder', '#FF9500'), 'Categories', esc(catTxt))}
-      ${valueRow('rf-filter', glyph('filter_alt', '#AF52DE'), 'Filter', esc(fTxt))}
+      ${valueRow('rf-filter', glyph('filter_alt', '#AF52DE'), 'Saved filter', esc(fTxt))}
     </div>
     <div class="meta" style="padding:0 4px">Filters are your saved sets of categories and labels (Menu → Filters).</div>
     ${recFilterCount() ? `<button class="pill-btn wide" data-act="rf-reset">${icon('restart_alt')}Show everything</button>` : ''}
@@ -1372,8 +1377,8 @@ function renderCard() {
     <div class="set-list">
       ${valueRow('cs-period', glyph('date_range', '#3478F6'), 'Period', PERIOD_LABEL[d.key])}
       ${d.key === 'custom' ? `<div class="set-item" style="gap:8px"><input class="input" type="date" id="cs-from" value="${d.from}" aria-label="From" style="flex:1"><span class="meta">to</span><input class="input" type="date" id="cs-to" value="${d.to}" aria-label="To" style="flex:1"></div>` : ''}
-      ${valueRow('cs-filter', glyph('filter_alt', '#AF52DE'), 'Filter', esc(cardFilterLabel(d)))}
-      ${valueRow('instant', glyph('bolt', '#FF9500'), 'Instant filter', 'Pick now', ` data-card="${d.card}"`)}
+      ${valueRow('instant', glyph('bolt', '#FF9500'), 'Instant filter', S.instant[d.card] ? esc(specName(S.instant[d.card])) : 'Pick now', ` data-card="${d.card}"`)}
+      ${valueRow('cs-filter', glyph('filter_alt', '#AF52DE'), 'Saved filter', esc(cardFilterLabel(d)))}
     </div>
     <div class="meta" style="padding:0 4px">An instant filter applies to this card until you close the app. Saved filters are managed in Menu → Filters.</div>
     ${saveBar('save-card', 'Done')}`);
@@ -1410,12 +1415,12 @@ function mselBody(opts = S.mselOpts || {}) {
 }
 function mselSpec() {
   const cats = []; const labels = [];
-  S.msel.forEach((k) => { const [t, id] = [k.slice(0, 1), k.slice(2)]; if (t === 'c' && S.cats[id]) cats.push(id); if (t === 'l' && S.labels[id]) labels.push(id); });
+  S.msel.forEach((k) => { const [t, id] = [k.slice(0, 1), k.slice(2)]; if (t === 'c' && S.cats[id.replace(/^=/, '')]) cats.push(id); if (t === 'l' && S.labels[id]) labels.push(id); });
   return { cats, labels };
 }
 function recentInstant() { try { return JSON.parse(localStorage.getItem('recentInstant')) || []; } catch { return []; } }
 function sheetInstant(card) {
-  S.mselOpts = {}; S.msel = new Set(); const cur = S.instant[card];
+  S.mselOpts = { general: true }; S.msel = new Set(); const cur = S.instant[card];
   if (cur) { cur.cats.forEach((id) => S.msel.add('c:' + id)); cur.labels.forEach((id) => S.msel.add('l:' + id)); }
   const recents = recentInstant().filter((r) => specName(r));
   openSheet(`<h3>Instant filter</h3>
@@ -1432,7 +1437,7 @@ function applyInstant(card, spec) {
   closeSheet(); render();
 }
 function sheetFilter(id) {
-  S.mselOpts = {};
+  S.mselOpts = { general: true };
   const f = id ? S.filters[id] : null;
   S.msel = new Set(); if (f) { (f.cats || []).forEach((c) => S.msel.add('c:' + c)); (f.labels || []).forEach((l) => S.msel.add('l:' + l)); }
   openSheet(`<h3>${f ? 'Edit filter' : 'New filter'}</h3>
@@ -1560,6 +1565,7 @@ async function saveEdit() {
   closeSheet();
   if (!e.manual && upd.categoryId && upd.categoryId !== t.categoryId && S.sameMerchant) await setTxCategory(e.txId, upd.categoryId, true);
   else toast('Saved');
+  backToPopup();
 }
 async function ensureCash(accountId) {
   if (accountId === 'cash' && !S.accounts.cash) await setDoc(doc(db, 'accounts', 'cash'), { name: 'Cash', type: 'cash', manual: true, order: 999 });
@@ -1808,7 +1814,7 @@ document.addEventListener('click', async (e) => {
         const opts = [{ value: '', label: 'All records', iconHtml: glyph('select_all', '#8E8E93') }];
         if (S.instant[d.card]) opts.push({ value: '__instant', label: 'Instant: ' + specName(S.instant[d.card]), iconHtml: glyph('bolt', '#FF9500') });
         Object.values(S.filters).sort((a, b) => a.name.localeCompare(b.name)).forEach((f) => opts.push({ value: f.id, label: f.name, sub: specName(f), iconHtml: glyph('filter_alt', '#AF52DE') }));
-        openOptions('Filter', opts, d.filter, (v) => { d.filter = v; renderCard(); }); break;
+        openOptions('Saved filter', opts, d.filter, (v) => { d.filter = v; renderCard(); }); break;
       }
       case 'opt-pick': { const o = S.opt.opts[+el.dataset.i]; S.opt.onPick(o.value); break; }
       case 'instant': sheetInstant(el.dataset.card); break;
@@ -1849,7 +1855,7 @@ document.addEventListener('click', async (e) => {
       case 'rec-panel': sheetRecPanel(); break;
       case 'rf-acc': sheetRecAccounts(); break;
       case 'rf-cat': sheetRecCats(); break;
-      case 'rf-filter': openOptions('Filter', [{ value: '', label: 'None', iconHtml: glyph('block', '#C7C7CC') }, ...Object.values(S.filters).sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ value: x.id, label: x.name, sub: specName(x), iconHtml: glyph('filter_alt', '#AF52DE') }))], recFilterState().filter, (v) => { recFilterState().filter = v; sheetRecPanel(); render(); }); break;
+      case 'rf-filter': openOptions('Saved filter', [{ value: '', label: 'None', iconHtml: glyph('block', '#C7C7CC') }, ...Object.values(S.filters).sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ value: x.id, label: x.name, sub: specName(x), iconHtml: glyph('filter_alt', '#AF52DE') }))], recFilterState().filter, (v) => { recFilterState().filter = v; sheetRecPanel(); render(); }); break;
       case 'rf-acc-save': {
         const ids = [...document.querySelectorAll('[data-accsel]:checked')].map((x) => x.dataset.accsel);
         recFilterState().accounts = $('acc-all').checked || !ids.length ? null : ids; sheetRecPanel(); render(); break;
@@ -1859,15 +1865,15 @@ document.addEventListener('click', async (e) => {
         recFilterState().cats = ids.length ? ids : null; sheetRecPanel(); render(); break;
       }
       case 'rf-reset': S.rf = null; sheetRecPanel(); render(); break;
-      case 'tx': openEdit(id); break;
-      case 'tx-cat': openPicker({ mode: 'direct', txId: id }); break;
+      case 'tx': S.back = el.dataset.back || null; openEdit(id); break;
+      case 'tx-cat': S.back = el.dataset.back || null; openPicker({ mode: 'direct', txId: id }); break;
       case 'pick-open': S.pickOpen.has(id) ? S.pickOpen.delete(id) : S.pickOpen.add(id); $('catpick').innerHTML = pickerBody(($('catq')?.value || '').trim().toLowerCase()); break;
       case 'pick-cat': {
         const p = S.picker;
         if (p?.mode === 'edit') { S.edit.categoryId = id || null; renderEdit(); break; }
         if (p?.mode === 'rule') { S.ruleDraft.categoryId = id || null; renderRule(); break; }
         if ($('same-merchant')) S.sameMerchant = $('same-merchant').checked;
-        closeSheet(); await setTxCategory(p.txId, id, S.sameMerchant); break;
+        closeSheet(); await setTxCategory(p.txId, id, S.sameMerchant); backToPopup(); break;
       }
       case 'edit-cat': captureEdit(); openPicker({ mode: 'edit', txId: S.edit.txId }); break;
       case 'edit-type': captureEdit(); S.edit.type = el.dataset.type; renderEdit(); break;
