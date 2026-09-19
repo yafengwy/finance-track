@@ -265,6 +265,8 @@ input.row-select { direction: ltr; }
 .more-row .amt { color: var(--exp); font-weight: 600; }
 .more-row .desc { font-size: 13px; color: var(--sub); font-style: italic; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .cat-btn.static { cursor: default; }
+.pick.sub2 { padding-left: 84px; }
+.msel-row.sub2 { padding-left: 88px; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -411,7 +413,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '2.5';
+const APP_VERSION = '2.6';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -443,7 +445,11 @@ function toast(msg, ms = 3200) {
 }
 function errMsg(e) { return e?.message?.replace(/^.*?:\s*/, '') || String(e); }
 
-function topOf(cat) { return cat ? (cat.parentId ? S.cats[cat.parentId] : cat) : null; }
+// Categories can be 3 levels deep: main category → subcategory → sub-subcategory.
+function topOf(cat) { let c = cat; while (c && c.parentId && S.cats[c.parentId]) c = S.cats[c.parentId]; return c || null; }
+function lvl2Of(cat) { let c = cat; if (!c || !c.parentId) return null; while (c.parentId && S.cats[c.parentId]?.parentId) c = S.cats[c.parentId]; return c; }
+function depthOf(cat) { let d = 0; let c = cat; while (c && c.parentId && S.cats[c.parentId]) { c = S.cats[c.parentId]; d++; } return d; }
+function descendants(id) { return subsOf(id).flatMap((s) => [s.id, ...descendants(s.id)]); }
 function tops() { return Object.values(S.cats).filter((c) => !c.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
 function subsOf(id) { return Object.values(S.cats).filter((c) => c.parentId === id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
 function visibleTops() { return tops().filter((c) => !c.hidden); }
@@ -494,7 +500,7 @@ function specName(spec) {
 function specMatcher(spec) {
   if (!spec || (!spec.cats?.length && !spec.labels?.length)) return () => true;
   const cats = new Set();
-  (spec.cats || []).forEach((id) => { cats.add(id); subsOf(id).forEach((s) => cats.add(s.id)); });
+  (spec.cats || []).forEach((id) => { cats.add(id); descendants(id).forEach((d) => cats.add(d)); });
   const labels = new Set(spec.labels || []);
   return (t) => cats.has(t.categoryId) || (t.labels || []).some((l) => labels.has(l));
 }
@@ -513,7 +519,7 @@ function stats([from, to], spec) {
     s[side] += v;
     const row = s.rows[key] || (s.rows[key] = { key, side, catId: top?.id || null, total: 0, subs: {} });
     row.total += v;
-    const subKey = c && c.parentId ? c.id : '_self';
+    const subKey = lvl2Of(c)?.id || '_self';
     row.subs[subKey] = (row.subs[subKey] || 0) + v;
   }
   return s;
@@ -757,7 +763,7 @@ function spendingModel(spec, r) {
     const c = S.cats[t.categoryId]; const top = topOf(c);
     if (!drill) return top ? top.id : 'unknown';
     if (!top || top.id !== drill.id) return null;
-    return c.parentId ? c.id : '_self';
+    return lvl2Of(c)?.id || '_self';
   };
   const groups = {};
   all.forEach((t) => { const k = groupKey(t); if (k === null) return; (groups[k] ||= []).push(t); });
@@ -935,7 +941,7 @@ function viewTx(params) {
   const q = S.search.trim().toLowerCase();
   if (q) list = list.filter((t) => matchSearch(t, q));
   if (catKey) {
-    const ids = new Set([catKey, ...subsOf(catKey).map((c) => c.id)]);
+    const ids = new Set([catKey, ...descendants(catKey)]);
     list = list.filter((t) => ids.has(t.categoryId));
     title = `<div class="row-between"><p class="h2">${esc(S.cats[catKey]?.name || '')}</p><a class="pill-btn" href="#/tx">Show all</a></div>`;
   } else if (f === 'unknown') list = list.filter((t) => !t.categoryId && !t.isTransfer);
@@ -981,16 +987,19 @@ function viewCats() {
 function viewCat(id) {
   const c = S.cats[id];
   if (!c) return `<div class="page"><div class="empty">${S.catsLoaded ? 'This category was deleted' : 'Loading…'}</div></div>`;
-  const isTop = !c.parentId;
-  const subs = isTop ? subsOf(id) : [];
+  const isTop = !c.parentId; const depth = depthOf(c);
+  const canHaveSubs = depth < 2;
+  const subs = canHaveSubs ? subsOf(id) : [];
+  const parent = c.parentId ? S.cats[c.parentId] : null;
   return `<div class="page">
+    ${parent ? `<div class="meta" style="text-align:center">In ${esc(parent.parentId ? `${S.cats[parent.parentId]?.name || ''} › ` : '')}${esc(parent.name)}</div>` : ''}
     <div class="center"><button class="icon-edit" data-act="edit-icon" data-id="${id}" aria-label="Change icon and color">${catIcon(c, true)}<span class="pen">${icon('edit')}</span></button></div>
     <div class="set-list">
       <button class="set-item" data-act="rename" data-id="${id}"><span class="n">Name</span><span class="v">${esc(c.name)}</span>${icon('chevron_right')}</button>
       <label class="set-item"><span class="n">Show</span><input type="checkbox" class="switch" data-act="cat-show" data-id="${id}" ${c.hidden ? '' : 'checked'}></label>
     </div>
-    ${isTop ? `<div class="sec-head">Subcategories</div>
-      <div class="set-list">${subs.map((s) => `<a class="set-item${s.hidden ? ' hidden-cat' : ''}" href="#/cat/${s.id}">${catIcon(s)}<span class="n">${esc(s.name)}</span>${icon('chevron_right')}</a>`).join('')}
+    ${canHaveSubs ? `<div class="sec-head">Subcategories</div>
+      <div class="set-list">${subs.map((s) => `<a class="set-item${s.hidden ? ' hidden-cat' : ''}" href="#/cat/${s.id}">${catIcon(s)}<span class="n">${esc(s.name)}</span><span class="v">${subsOf(s.id).length ? `(${subsOf(s.id).length})` : ''}</span>${icon('chevron_right')}</a>`).join('')}
       <button class="set-item" data-act="add-sub" data-id="${id}" style="color:var(--accent)">${icon('add')}<span class="n">Add subcategory</span></button></div>` : ''}
     <button class="pill-btn danger wide" data-act="del-cat" data-id="${id}">${icon('delete')}Delete ${isTop ? 'category' : 'subcategory'}</button>
   </div>`;
@@ -1125,12 +1134,12 @@ async function saveCard() {
 // ---- multi-select of categories + labels (instant filter & saved filters) ----
 function mselBody() {
   const sel = S.msel;
-  const row = (c, sub) => `<label class="msel-row${sub ? ' sub' : ''}"><input type="checkbox" data-msel="c:${c.id}" ${sel.has('c:' + c.id) ? 'checked' : ''}>${catIcon(c)}<span class="n">${esc(c.name)}</span></label>`;
+  const row = (c, sub) => `<label class="msel-row${sub === 'sub2' ? ' sub sub2' : sub ? ' sub' : ''}"><input type="checkbox" data-msel="c:${c.id}" ${sel.has('c:' + c.id) ? 'checked' : ''}>${catIcon(c)}<span class="n">${esc(c.name)}</span></label>`;
   const cats = visibleTops().map((c) => {
     const subs = subsOf(c.id).filter((x) => !x.hidden);
     const open = S.mselOpen.has(c.id);
     return `<div class="msel-top">${row(c, false)}${subs.length ? `<button class="icon-btn" data-act="msel-open" data-id="${c.id}" aria-expanded="${open}" aria-label="Show subcategories of ${esc(c.name)}"><span class="ms chev${open ? ' up' : ''}" aria-hidden="true">expand_more</span></button>` : ''}</div>
-      ${open ? subs.map((x) => row(x, true)).join('') : ''}`;
+      ${open ? subs.map((x) => row(x, true) + subsOf(x.id).filter((y) => !y.hidden).map((y) => row(y, 'sub2')).join('')).join('') : ''}`;
   }).join('');
   const labels = sortedLabels().map((l) => `<label class="msel-row"><input type="checkbox" data-msel="l:${l.id}" ${sel.has('l:' + l.id) ? 'checked' : ''}><span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span><span class="n">${esc(l.name)}</span></label>`).join('');
   return `<div class="sec-head">Categories <span class="meta">A main category includes all its subcategories</span></div><div class="set-list">${cats}</div>
@@ -1174,7 +1183,7 @@ function openPicker(opts) {
   const t = S.txById[opts.txId];
   S.picker = { ...opts };
   const cur = opts.mode === 'edit' ? S.edit.categoryId : opts.mode === 'rule' ? S.ruleDraft.categoryId : t?.categoryId;
-  const c = S.cats[cur]; if (c?.parentId) S.pickOpen.add(c.parentId);
+  const c = S.cats[cur]; const tp = topOf(c); if (tp && tp.id !== c.id) S.pickOpen.add(tp.id);
   openSheet(`<h3>Category</h3>
     <div class="searchbar">${icon('search')}<input id="catq" type="search" placeholder="Search categories" autocomplete="off" aria-label="Search categories"></div>
     ${opts.mode === 'direct' && t && !t.manual ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply to other uncategorized records from this merchant</label>` : ''}
@@ -1185,13 +1194,13 @@ function pickerBody(q) {
   const t = S.txById[S.picker.txId];
   const sel = S.picker.mode === 'edit' ? S.edit.categoryId : S.picker.mode === 'rule' ? S.ruleDraft.categoryId : t?.categoryId;
   const vt = visibleTops();
-  const pickBtn = (c, sub = false) => `<button class="pick${sub ? ' sub' : ''}" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)}</span></button>`;
+  const pickBtn = (c, sub = false) => `<button class="pick${sub === 'sub2' ? ' sub sub2' : sub ? ' sub' : ''}" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)}</span></button>`;
   if (q) {
-    const all = vt.flatMap((c) => [c, ...subsOf(c.id).filter((x) => !x.hidden)]);
+    const all = vt.flatMap((c) => [c, ...descendants(c.id).map((d) => S.cats[d]).filter((x) => x && !x.hidden)]);
     const hits = all.filter((c) => c.name.toLowerCase().includes(q));
     return hits.map((c) => `<button class="pick" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)}${c.parentId ? `<span class="meta"> · ${esc(S.cats[c.parentId]?.name || '')}</span>` : ''}</span></button>`).join('') || '<div class="meta">No matching categories</div>';
   }
-  const ids = new Set(vt.flatMap((c) => [c.id, ...subsOf(c.id).filter((x) => !x.hidden).map((x) => x.id)]));
+  const ids = new Set(vt.flatMap((c) => [c.id, ...descendants(c.id).filter((d) => !S.cats[d]?.hidden)]));
   const counts = {};
   S.txs.forEach((x) => { if (ids.has(x.categoryId)) counts[x.categoryId] = (counts[x.categoryId] || 0) + 1; });
   const freq = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, 8).map((id) => S.cats[id]);
@@ -1201,7 +1210,7 @@ function pickerBody(q) {
     if (!subs.length) return pickBtn(c);
     const open = S.pickOpen.has(c.id);
     return `<button class="pick${open ? ' open' : ''}" data-act="pick-open" data-id="${c.id}" aria-expanded="${open}">${catIcon(c)}<span class="n">${esc(c.name)}</span><span class="ms chev" aria-hidden="true">expand_more</span></button>
-      ${open ? `<button class="pick sub" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)} <span class="meta">(general)</span></span></button>${subs.map((x) => pickBtn(x, true)).join('')}` : ''}`;
+      ${open ? `<button class="pick sub" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)} <span class="meta">(general)</span></span></button>${subs.map((x) => pickBtn(x, true) + subsOf(x.id).filter((y) => !y.hidden).map((y) => pickBtn(y, 'sub2')).join('')).join('')}` : ''}`;
   }).join('');
   return `${freqHtml}<div class="sec-head">All categories</div>${list}`;
 }
@@ -1460,12 +1469,12 @@ async function setTxCategory(txId, catId, sameMerchant) {
 async function deleteCategory(id) {
   const c = S.cats[id]; if (!c) return;
   const isTop = !c.parentId;
-  const subs = isTop ? subsOf(id) : [];
-  const ids = [id, ...subs.map((s) => s.id)];
+  const desc = descendants(id);
+  const ids = [id, ...desc];
   const txs = S.txs.filter((t) => ids.includes(t.categoryId));
   const msg = isTop
-    ? `Delete “${c.name}” and its ${subs.length} subcategories? ${txs.length} records will become uncategorized.`
-    : `Delete subcategory “${c.name}”? ${txs.length} records will move to “${S.cats[c.parentId]?.name}”.`;
+    ? `Delete “${c.name}” and its ${desc.length} subcategories? ${txs.length} records will become uncategorized.`
+    : `Delete “${c.name}”${desc.length ? ` and its ${desc.length} subcategories` : ''}? ${txs.length} records will move to “${S.cats[c.parentId]?.name}”.`;
   if (!confirm(msg)) return;
   const ops = [];
   txs.forEach((t) => ops.push((b) => b.update(doc(db, 'transactions', t.id), { categoryId: isTop ? null : c.parentId })));
