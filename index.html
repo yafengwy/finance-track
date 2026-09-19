@@ -455,7 +455,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '5.1';
+const APP_VERSION = '5.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1162,18 +1162,21 @@ function recLabel() {
   const d = (x) => (ymd(x) === today ? 'Today' : x.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: f.getFullYear() !== t.getFullYear() || p.unit === 'custom' ? 'numeric' : undefined }));
   return `${d(f)} – ${d(t)}`;
 }
-function recFilterState() { return S.rf || (S.rf = { accounts: null, cats: null, filter: '' }); }
-function recFilterCount() { const r = recFilterState(); return (r.accounts ? 1 : 0) + (r.cats ? 1 : 0) + (r.filter ? 1 : 0); }
+function recFilterState() { return S.rf || (S.rf = { accounts: null, cats: null, labels: null, filter: '' }); }
+function recFilterCount() { const r = recFilterState(); return (r.accounts ? 1 : 0) + (r.cats || r.labels ? 1 : 0) + (r.filter ? 1 : 0); }
 function recMatcher() {
   const r = recFilterState(); const p = recPeriod();
   const accs = r.accounts ? new Set(r.accounts) : null;
   let cats = null; let none = false;
   // "=id" means only records put directly on that category (its "General" row), not its subcategories
   if (r.cats) { cats = catSet(r.cats); none = r.cats.includes('__none'); }
+  const lbls = r.labels ? new Set(r.labels) : null;
+  // Categories and labels combine as "either": a record shows if it is in a picked category OR has a picked label
+  const catOk = (t) => (!cats && !lbls) || (cats && (t.categoryId ? cats.has(t.categoryId) : none)) || (lbls && (t.labels || []).some((l) => lbls.has(l)));
   const fm = r.filter && S.filters[r.filter] ? specMatcher(S.filters[r.filter]) : null;
   return (t) => (p.unit === 'all' || (t.date >= p.from && t.date <= p.to))
     && (!accs || accs.has(t.accountId))
-    && (!cats || (t.categoryId ? cats.has(t.categoryId) : none))
+    && catOk(t)
     && (!fm || fm(t));
 }
 function signed(t) { return t.isTransfer ? 0 : -t.amount; }
@@ -1240,7 +1243,8 @@ function sheetRecPanel() {
   const r = recFilterState();
   const accTxt = !r.accounts ? 'All' : r.accounts.length === 1 ? accName(S.accounts[r.accounts[0]]) : `${r.accounts.length} accounts`;
   const catName = (id) => (id === '__none' ? 'Uncategorized' : id.startsWith('=') ? `General – ${S.cats[id.slice(1)]?.name || ''}` : S.cats[id]?.name);
-  const catTxt = !r.cats ? 'All' : r.cats.length <= 2 ? r.cats.map(catName).filter(Boolean).join(', ') : `${r.cats.length} categories`;
+  const picked = [...(r.cats || []).map(catName), ...(r.labels || []).map((id) => S.labels[id] ? '#' + S.labels[id].name : null)].filter(Boolean);
+  const catTxt = !picked.length ? 'All' : picked.length <= 2 ? picked.join(', ') : `${picked.length} selected`;
   const fTxt = S.filters[r.filter]?.name || 'None';
   openSheet(`<h3>Show records</h3>
     <div class="set-list">
@@ -1261,8 +1265,9 @@ function sheetRecAccounts() {
     ${saveBar('rf-acc-save', 'Done')}`);
 }
 function sheetRecCats() {
-  const r = recFilterState(); S.msel = mselLoad(r.cats || []); S.mselOpts = { labels: false, none: true, general: true };
-  openSheet(`<h3>Categories</h3><div class="meta">Nothing selected = all categories</div><div id="msel">${mselBody()}</div>${saveBar('rf-cat-save', 'Done')}`);
+  const r = recFilterState(); S.msel = mselLoad(r.cats || []); (r.labels || []).forEach((id) => S.msel.add('l:' + id));
+  S.mselOpts = { none: true, general: true };
+  openSheet(`<h3>Categories</h3><div class="meta">Nothing selected = all records. Records in a picked category or with a picked label are shown.</div><div id="msel">${mselBody()}</div>${saveBar('rf-cat-save', 'Done')}`);
 }
 
 // ---------- categories ----------
@@ -1976,7 +1981,8 @@ document.addEventListener('click', async (e) => {
       }
       case 'rf-cat-save': {
         const ids = mselIds();
-        recFilterState().cats = ids.length ? ids : null; sheetRecPanel(); render(); break;
+        const lb = [...S.msel].filter((k) => k.startsWith('l:') && S.labels[k.slice(2)]).map((k) => k.slice(2));
+        const r = recFilterState(); r.cats = ids.length ? ids : null; r.labels = lb.length ? lb : null; sheetRecPanel(); render(); break;
       }
       case 'rf-reset': S.rf = null; sheetRecPanel(); render(); break;
       case 'tx': S.back = el.dataset.back || null; openEdit(id); break;
