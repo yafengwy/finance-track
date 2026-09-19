@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -250,6 +251,8 @@ input.row-select { direction: ltr; }
 .reorder-row { gap: 10px; }
 .reorder-row .icon-btn { width: 40px; height: 40px; color: var(--accent); }
 .reorder-row .icon-btn:disabled { color: #D1D1D6; }
+.update-bar { position: fixed; left: 50%; transform: translateX(-50%); top: calc(var(--safe-top) + 8px); z-index: 40; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 10px 16px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; box-shadow: 0 4px 16px rgba(52,120,246,.35); white-space: nowrap; }
+.update-bar .ms { font-size: 18px; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -271,6 +274,7 @@ input.row-select { direction: ltr; }
 <div id="drawer"></div>
 <div id="sheet"></div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="update"></div>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
@@ -395,7 +399,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '1.9';
+const APP_VERSION = '2.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -994,6 +998,7 @@ function openDrawer() {
     <button data-act="demo-add">${icon('science')}Add demo data</button>
     <button data-act="demo-del">${icon('delete_sweep')}Remove demo data</button>
     <button data-act="logout">${icon('logout')}Sign out</button>
+    <button data-act="check-update">${icon('system_update')}Check for updates</button>
     <div class="meta" style="padding:12px;margin-top:auto">Version ${APP_VERSION}</div></nav>`;
 }
 function closeDrawer() { $('drawer').innerHTML = ''; }
@@ -1484,6 +1489,8 @@ document.addEventListener('click', async (e) => {
       case 'apply-instant': applyInstant(el.dataset.card, mselSpec()); break;
       case 'msel-open': S.mselOpen.has(id) ? S.mselOpen.delete(id) : S.mselOpen.add(id); $('msel').innerHTML = mselBody(); break;
       case 'reorder': sheetReorder(); break;
+      case 'do-update': location.replace(`${location.pathname}?v=${encodeURIComponent(el.dataset.v)}${location.hash}`); break;
+      case 'check-update': closeDrawer(); await checkUpdate(true); break;
       case 'card-move': {
         const o = cardOrder(); const i = o.indexOf(el.dataset.card); const j = i + Number(el.dataset.dir);
         if (j < 0 || j >= o.length) break;
@@ -1617,6 +1624,20 @@ document.addEventListener('change', async (e) => {
     if (el.dataset.act === 'cat-show') await updateDoc(doc(db, 'categories', el.dataset.id), { hidden: !el.checked });
   } catch (err) { toast('Could not save: ' + errMsg(err)); }
 });
+
+// ---------- update check ----------
+// Looks for a newer index.html (bypassing caches) and offers a one-tap reload.
+async function checkUpdate(manual) {
+  try {
+    const res = await fetch(`${location.pathname}?check=${Date.now()}`, { cache: 'no-store' });
+    const m = (await res.text()).match(/APP_VERSION = '([^']+)'/);
+    if (m && m[1] !== APP_VERSION) {
+      $('update').innerHTML = `<button class="update-bar" data-act="do-update" data-v="${esc(m[1])}">${icon('system_update')}Version ${esc(m[1])} is available · Tap to update</button>`;
+    } else if (manual) toast(`You are on the latest version (${APP_VERSION})`);
+  } catch { if (manual) toast('Could not check for updates'); }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(false); });
+checkUpdate(false);
 
 // ---------- login ----------
 function viewLogin() {
