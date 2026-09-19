@@ -453,7 +453,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '4.8';
+const APP_VERSION = '4.9';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -932,7 +932,9 @@ function sheetRecords(pop) {
   if (pop) S.recPop = pop;
   const p = S.recPop; if (!p) return;
   const txs = p.ids.map((id) => S.txById[id]).filter(Boolean);
-  const cmp = { date_desc: (a, b) => b.date.localeCompare(a.date), date_asc: (a, b) => a.date.localeCompare(b.date), amt_desc: (a, b) => Math.abs(b.amount) - Math.abs(a.amount), amt_asc: (a, b) => Math.abs(a.amount) - Math.abs(b.amount) }[p.sort];
+  // Amount sorts are signed: in an expense list refunds (+) come after all spending; in an income list the reverse
+  const val = (t) => (p.side === 'income' ? -t.amount : t.amount);
+  const cmp = { date_desc: (a, b) => b.date.localeCompare(a.date), date_asc: (a, b) => a.date.localeCompare(b.date), amt_desc: (a, b) => val(b) - val(a), amt_asc: (a, b) => val(a) - val(b) }[p.sort];
   txs.sort(cmp);
   const total = txs.reduce((n, t) => n + t.amount, 0);
   const rows = txs.map((t) => {
@@ -962,7 +964,7 @@ function openRowRecords(side, scope, title) {
   const [kind, id] = scope.split(':');
   const match = (c) => (kind === 'top' ? topOf(c)?.id === id : kind === 'unk' ? !c : kind === 'l2' ? lvl2Of(c)?.id === id : c?.id === id);
   const ids = S.txs.filter((t) => t.date >= r[0] && t.date <= r[1] && !t.isTransfer && ok(t) && (sideOf(t) === side) && match(S.cats[t.categoryId])).map((t) => t.id);
-  sheetRecords({ title, period: periodLabel(getPeriod('detail')), ids, sort: 'date_desc' });
+  sheetRecords({ title, period: periodLabel(getPeriod('detail')), ids, sort: 'date_desc', side });
 }
 function shade(hex, i, n) {
   const c = hex.replace('#', ''); const [r, g, b] = [0, 2, 4].map((k) => parseInt(c.slice(k, k + 2), 16));
