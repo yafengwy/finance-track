@@ -414,7 +414,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '2.7';
+const APP_VERSION = '2.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -625,7 +625,26 @@ function route() {
   const parts = path.split('/');
   return { name: parts[0], id: parts[1], params: new URLSearchParams(qs || '') };
 }
-window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
+// ---- navigation that matches the page hierarchy (so iOS swipe-back goes to the logical previous page) ----
+const NAV = [location.hash || '#/accounts'];
+let navReplacing = false; let drawerOrigin = null;
+function go(h, replace = false) {
+  if ((location.hash || '#/accounts') === h) return;
+  if (replace) { navReplacing = true; location.replace(h); } else location.hash = h;
+}
+// Go to a parent page: pop history if the parent is the previous entry, otherwise swap the current entry.
+function goUp(h) { if (NAV.length > 1 && NAV[NAV.length - 2] === h) history.back(); else go(h, true); }
+window.addEventListener('hashchange', () => {
+  const h = location.hash || '#/accounts';
+  let left = null;
+  if (navReplacing) { NAV[NAV.length - 1] = h; navReplacing = false; }
+  else if (NAV.length > 1 && NAV[NAV.length - 2] === h) left = NAV.pop();
+  else NAV.push(h);
+  closeSheet(); closeDrawer();
+  window.scrollTo(0, 0); render();
+  // Back from a page opened from the menu → show the menu again, like before
+  if (left && left === drawerOrigin && MAIN.includes(route().name)) { drawerOrigin = null; openDrawer(); }
+});
 const MAIN = ['accounts', 'dash', 'tx'];
 const SUB_TITLES = { cats: 'Categories', labels: 'Labels', filters: 'Filters', rules: 'Automatic Rules' };
 
@@ -645,7 +664,7 @@ function render() {
 }
 function headerMain(active) {
   const cur = MAIN.includes(active) ? active : 'accounts';
-  const tab = (key, label) => `<a href="#/${key}"${cur === key ? ' aria-current="page"' : ''}>${label}</a>`;
+  const tab = (key, label) => `<a href="#/${key}" data-act="tab"${cur === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<header class="top"><div class="bar">
     <button class="icon-btn round" data-act="drawer" aria-label="Menu">${icon('menu')}</button>
     <h1>${APP_NAME}</h1>
@@ -660,7 +679,7 @@ function headerSub(r) {
     back = c?.parentId ? `#/cat/${c.parentId}` : '#/cats';
   }
   return `<header class="top sub"><div class="bar">
-    <a class="icon-btn round" href="${back}" aria-label="Back">${icon('chevron_left')}</a>
+    <a class="icon-btn round" href="${back}" data-act="nav-up" aria-label="Back">${icon('chevron_left')}</a>
     <h1>${title}</h1><span style="width:44px"></span></div></header>`;
 }
 
@@ -946,7 +965,7 @@ function viewTx(params) {
   if (catKey) {
     const ids = new Set([catKey, ...descendants(catKey)]);
     list = list.filter((t) => ids.has(t.categoryId));
-    title = `<div class="row-between"><p class="h2">${esc(S.cats[catKey]?.name || '')}</p><a class="pill-btn" href="#/tx">Show all</a></div>`;
+    title = `<div class="row-between"><p class="h2">${esc(S.cats[catKey]?.name || '')}</p><a class="pill-btn" href="#/tx" data-act="tab">Show all</a></div>`;
   } else if (f === 'unknown') list = list.filter((t) => !t.categoryId && !t.isTransfer);
   else if (f === 'transfer') list = list.filter((t) => t.isTransfer);
   const chip = (k, label) => `<button class="chip" data-act="txf" data-f="${k}" aria-pressed="${!catKey && f === k}">${label}</button>`;
@@ -1042,11 +1061,11 @@ function viewRules() {
 function openDrawer() {
   $('drawer').innerHTML = `<div class="scrim" data-act="close-drawer"></div><nav class="drawer" aria-label="Menu">
     <div class="who">${esc(S.user.email)}</div>
-    <a href="#/accounts" data-act="close-drawer">${icon('account_balance_wallet')}Accounts</a>
-    <a href="#/cats" data-act="close-drawer">${icon('folder')}Categories</a>
-    <a href="#/labels" data-act="close-drawer">${icon('sell')}Labels</a>
-    <a href="#/filters" data-act="close-drawer">${icon('filter_alt')}Filters</a>
-    <a href="#/rules" data-act="close-drawer">${icon('bolt')}Automatic Rules</a>
+    <a href="#/accounts" data-act="drawer-link">${icon('account_balance_wallet')}Accounts</a>
+    <a href="#/cats" data-act="drawer-link">${icon('folder')}Categories</a>
+    <a href="#/labels" data-act="drawer-link">${icon('sell')}Labels</a>
+    <a href="#/filters" data-act="drawer-link">${icon('filter_alt')}Filters</a>
+    <a href="#/rules" data-act="drawer-link">${icon('bolt')}Automatic Rules</a>
     <div class="drawer-sep"></div>
     <button data-act="demo-add">${icon('science')}Add demo data</button>
     <button data-act="demo-del">${icon('delete_sweep')}Remove demo data</button>
@@ -1483,7 +1502,7 @@ async function deleteCategory(id) {
   txs.forEach((t) => ops.push((b) => b.update(doc(db, 'transactions', t.id), { categoryId: isTop ? null : c.parentId })));
   ids.forEach((cid) => ops.push((b) => b.delete(doc(db, 'categories', cid))));
   for (let i = 0; i < ops.length; i += 450) { const b = writeBatch(db); ops.slice(i, i + 450).forEach((op) => op(b)); await b.commit(); }
-  location.hash = isTop ? '#/cats' : `#/cat/${c.parentId}`;
+  goUp(isTop ? '#/cats' : `#/cat/${c.parentId}`);
   toast('Deleted');
 }
 async function deleteLabel(id) {
@@ -1518,6 +1537,16 @@ document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   if (el.tagName === 'INPUT') return; // switches/checkboxes are handled on 'change'
   const act = el.dataset.act; const id = el.dataset.id;
+  if (el.tagName === 'A') {
+    const h = el.getAttribute('href');
+    if (act === 'tab') { e.preventDefault(); go(h, true); return; }
+    if (act === 'nav-up') { e.preventDefault(); goUp(h); return; }
+    if (act === 'drawer-link') {
+      e.preventDefault(); closeDrawer();
+      if (MAIN.includes(h.replace('#/', ''))) go(h, true); else { drawerOrigin = h; go(h); }
+      return;
+    }
+  }
   const sheet = $('sheet');
   try {
     switch (act) {
@@ -1561,7 +1590,7 @@ document.addEventListener('click', async (e) => {
       case 'toggle': { const k = el.dataset.key; S.expanded.has(k) ? S.expanded.delete(k) : S.expanded.add(k); render(); break; }
       case 'go-unknown': location.hash = '#/tx?f=unknown'; break;
       case 'go-cat-tx': location.hash = `#/tx?cat=${el.dataset.key}`; break;
-      case 'txf': S.txFilter = el.dataset.f; location.hash = `#/tx?f=${el.dataset.f}`; render(); break;
+      case 'txf': S.txFilter = el.dataset.f; go(`#/tx?f=${el.dataset.f}`, true); break;
       case 'load-all': setLoadAll(!S.loadAll); break;
       case 'tx': openEdit(id); break;
       case 'tx-cat': openPicker({ mode: 'direct', txId: id }); break;
