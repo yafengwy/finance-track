@@ -296,6 +296,7 @@ input.row-select { direction: ltr; }
 .rec-head { align-items: center; }
 .rec-head h3 { flex: 1; min-width: 0; }
 .rec-head .pill-btn { flex-shrink: 0; margin-left: auto; }
+.rec-head .link-btn { flex-shrink: 0; margin-left: auto; white-space: nowrap; padding: 6px 0 6px 12px; }
 .sheet-top.compact { min-height: 22px; padding: 8px 12px 0; }
 .link-btn.all-rec { display: block; margin: 4px 0 0 36px; padding: 8px 0; font-size: 13px; font-weight: 600; text-align: left; }
 .grab-btn { border: 0; background: none; padding: 6px 40px 10px; margin-top: -6px; display: flex; justify-content: center; }
@@ -452,7 +453,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '4.5';
+const APP_VERSION = '4.6';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1505,8 +1506,8 @@ function recentInstant() { try { return JSON.parse(localStorage.getItem('recentI
 function sheetInstant(card) {
   S.mselOpts = { general: true }; S.msel = new Set(); const cur = S.instant[card];
   if (cur) { S.msel = mselLoad(cur.cats); cur.labels.forEach((id) => S.msel.add('l:' + id)); }
-  const recents = recentInstant().filter((r) => specName(r));
-  openSheet(`<h3>Instant filter</h3>
+  const recents = recentInstant().slice(0, 1).filter((r) => specName(r));
+  openSheet(`<div class="row-between rec-head"><h3>Instant filter</h3><button class="link-btn" data-act="instant-clear" data-card="${card}">Clear filter</button></div>
     ${recents.length ? `<div class="sec-head">Recent</div><div class="chips wrap">${recents.map((r, i) => `<button class="chip" data-act="instant-recent" data-i="${i}" data-card="${card}">${esc(specName(r))}</button>`).join('')}</div>` : ''}
     <div id="msel">${mselBody()}</div>
     ${saveBar('apply-instant', 'Apply', ` data-card="${card}"`)}`);
@@ -1514,8 +1515,7 @@ function sheetInstant(card) {
 function applyInstant(card, spec) {
   if (!spec.cats.length && !spec.labels.length) { delete S.instant[card]; closeSheet(); render(); return; }
   S.instant[card] = spec;
-  const key = JSON.stringify(spec);
-  const rec = [spec, ...recentInstant().filter((r) => JSON.stringify(r) !== key)].slice(0, 3);
+  const rec = [spec];
   localStorage.setItem('recentInstant', JSON.stringify(rec));
   closeSheet(); render();
 }
@@ -1906,6 +1906,7 @@ document.addEventListener('click', async (e) => {
       case 'instant': sheetInstant(el.dataset.card); break;
       case 'instant-recent': applyInstant(el.dataset.card, recentInstant()[+el.dataset.i]); break;
       case 'apply-instant': applyInstant(el.dataset.card, mselSpec()); break;
+      case 'instant-clear': delete S.instant[el.dataset.card]; localStorage.removeItem('filter:' + el.dataset.card); closeSheet(); render(); break;
       case 'msel-open': S.mselOpen.has(id) ? S.mselOpen.delete(id) : S.mselOpen.add(id); $('msel').innerHTML = mselBody(); break;
       case 'reorder': sheetReorder(); break;
       case 'cat-reorder': sheetCatReorder(id || null); break;
