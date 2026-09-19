@@ -267,6 +267,7 @@ input.row-select { direction: ltr; }
 .cat-btn.static { cursor: default; }
 .pick.sub2 { padding-left: 84px; }
 .msel-row.sub2 { padding-left: 88px; }
+.sub.zero { opacity: .5; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -413,7 +414,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '2.6';
+const APP_VERSION = '2.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -910,16 +911,18 @@ function rowHtml(row, prev) {
   const side = row.side; const sign = side === 'income' ? 1 : -1;
   const cat = row.catId ? S.cats[row.catId] : null;
   const name = cat ? cat.name : (side === 'income' ? 'Uncategorized income' : 'Uncategorized expenses');
+  const structSubs = cat ? subsOf(cat.id).filter((x) => !x.hidden).map((x) => x.id) : [];
   const subKeys = Object.keys(row.subs);
-  const hasSubs = !!cat && subKeys.some((k) => k !== '_self');
+  const hasSubs = !!cat && (structSubs.length > 0 || subKeys.some((k) => k !== '_self'));
   const open = hasSubs && S.expanded.has(row.key);
   const act = !cat ? `data-act="go-unknown"` : hasSubs ? `data-act="toggle" data-key="${row.key}"` : '';
   const tag = act ? 'button' : 'div';
   let subs = '';
   if (open) {
     const sorted = subKeys.sort((a, b) => row.subs[b] - row.subs[a]);
+    const zero = structSubs.filter((k) => !row.subs[k]);
     subs = `<div class="subs">${sorted.map((k) => `<div class="sub"><span class="n">${k === '_self' ? 'General' : esc(S.cats[k]?.name || 'Deleted')}</span>
-      <span class="num">${plain(sign * row.subs[k])}</span>${pctHtml(pctChange(row.subs[k], prev?.subs?.[k]), side)}</div>`).join('')}</div>`;
+      <span class="num">${plain(sign * row.subs[k])}</span>${pctHtml(pctChange(row.subs[k], prev?.subs?.[k]), side)}</div>`).join('')}${zero.map((k) => `<div class="sub zero"><span class="n">${esc(S.cats[k].name)}</span><span class="num">0.00</span><span class="p"></span></div>`).join('')}</div>`;
   }
   return `<div class="cat-row${open ? ' open' : ''}"><${tag} class="cat-btn${act ? '' : ' static'}" ${act}>
     ${catIcon(cat)}<span class="n">${esc(name)}${hasSubs ? `<span class="ms chev" aria-hidden="true">expand_more</span>` : ''}</span>
