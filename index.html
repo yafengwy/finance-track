@@ -452,7 +452,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '3.9';
+const APP_VERSION = '4.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -806,7 +806,8 @@ function cardDetail() {
   const spec2 = cardSpec('detail').spec;
   const r2 = rangeOf(getPeriod('detail')); const s2 = stats(r2, spec2); const p2 = stats(prevRange(r2), spec2);
   const section = (side) => {
-    const keys = [...tops().map((c) => `${side}:${c.id}`), `${side}:unknown`].filter((k) => s2.rows[k]);
+    const keys = [...tops().map((c) => `${side}:${c.id}`), `${side}:unknown`].filter((k) => s2.rows[k])
+      .sort((a, b) => s2.rows[b].total - s2.rows[a].total); // largest amount first
     return keys.map((k) => rowHtml(s2.rows[k], p2.rows[k])).join('') || '<div class="meta" style="padding:8px 0">No records in this period</div>';
   };
   const ch = pctChange(s2.expense, p2.expense);
