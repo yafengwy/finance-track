@@ -218,8 +218,8 @@ input.row-select { direction: ltr; }
 .ci.sq { border-radius: 8px; }
 .opt-row .check-ico { color: var(--accent); font-size: 22px; margin-left: auto; }
 .opt-row[aria-pressed="true"] .n { font-weight: 600; }
-.lbl { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.lbls { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.lbl { display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 4px; color: #fff; font-size: 10.5px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.lbls { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 .lchip[aria-pressed="true"] { background: var(--lc); border-color: var(--lc); color: #fff; }
 .lchip { border-color: var(--lc); color: var(--lc); }
 .bare-input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 16px; height: 40px; }
@@ -290,6 +290,10 @@ input.row-select { direction: ltr; }
 .pp-arrow .ms { font-size: 26px; }
 .pp-mid { flex: 1; height: 40px; border: 0; border-radius: 999px; background: #fff; font-size: 16px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 2px; color: var(--text); }
 .rec-page ~ .fab, .fab { bottom: calc(140px + var(--safe-bottom)); }
+.tx-main { padding: 10px 0; }
+.rec-head { align-items: center; }
+.rec-head h3 { flex: 1; min-width: 0; }
+.rec-head .pill-btn { flex-shrink: 0; margin-left: auto; }
 #toast { position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%); background: #22262C; color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 
@@ -436,7 +440,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '3.1';
+const APP_VERSION = '3.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -895,7 +899,7 @@ function sheetRecords(pop) {
       ${t.note ? `<span class="desc">${esc(t.note)}</span>` : ''}${desc ? `<span class="desc">“${esc(desc)}”</span>` : ''}
       ${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span></button>`;
   }).join('');
-  openSheet(`<div class="row-between" style="align-items:flex-start;padding-right:44px"><h3>${esc(p.title)}</h3>
+  openSheet(`<div class="row-between rec-head"><h3>${esc(p.title)}</h3>
       <button class="pill-btn small" data-act="rec-sort" aria-label="Sort records">${icon('sort')}Sort</button></div>
     <div class="meta">${esc(p.period)} · ${txs.length} record${txs.length === 1 ? '' : 's'} · ${money(Math.abs(total))} · ${esc(SORTS[p.sort])}</div>
     <div class="list">${rows || '<div class="empty">No records</div>'}</div>`);
@@ -1105,7 +1109,8 @@ function recMatcher() {
   const r = recFilterState(); const p = recPeriod();
   const accs = r.accounts ? new Set(r.accounts) : null;
   let cats = null; let none = false;
-  if (r.cats) { cats = new Set(); r.cats.forEach((id) => { if (id === '__none') none = true; else { cats.add(id); descendants(id).forEach((d) => cats.add(d)); } }); }
+  // "=id" means only records put directly on that category (its "General" row), not its subcategories
+  if (r.cats) { cats = new Set(); r.cats.forEach((id) => { if (id === '__none') none = true; else if (id.startsWith('=')) cats.add(id.slice(1)); else { cats.add(id); descendants(id).forEach((d) => cats.add(d)); } }); }
   const fm = r.filter && S.filters[r.filter] ? specMatcher(S.filters[r.filter]) : null;
   return (t) => (p.unit === 'all' || (t.date >= p.from && t.date <= p.to))
     && (!accs || accs.has(t.accountId))
@@ -1175,7 +1180,8 @@ function sheetRecCustom() {
 function sheetRecPanel() {
   const r = recFilterState();
   const accTxt = !r.accounts ? 'All' : r.accounts.length === 1 ? accName(S.accounts[r.accounts[0]]) : `${r.accounts.length} accounts`;
-  const catTxt = !r.cats ? 'All' : r.cats.length <= 2 ? r.cats.map((id) => id === '__none' ? 'Uncategorized' : S.cats[id]?.name).filter(Boolean).join(', ') : `${r.cats.length} categories`;
+  const catName = (id) => (id === '__none' ? 'Uncategorized' : id.startsWith('=') ? `General – ${S.cats[id.slice(1)]?.name || ''}` : S.cats[id]?.name);
+  const catTxt = !r.cats ? 'All' : r.cats.length <= 2 ? r.cats.map(catName).filter(Boolean).join(', ') : `${r.cats.length} categories`;
   const fTxt = S.filters[r.filter]?.name || 'None';
   openSheet(`<h3>Show records</h3>
     <div class="set-list">
@@ -1196,7 +1202,7 @@ function sheetRecAccounts() {
     ${saveBar('rf-acc-save', 'Done')}`);
 }
 function sheetRecCats() {
-  const r = recFilterState(); S.msel = new Set((r.cats || []).map((id) => 'c:' + id)); S.mselOpts = { labels: false, none: true };
+  const r = recFilterState(); S.msel = new Set((r.cats || []).map((id) => 'c:' + id)); S.mselOpts = { labels: false, none: true, general: true };
   openSheet(`<h3>Categories</h3><div class="meta">Nothing selected = all categories</div><div id="msel">${mselBody()}</div>${saveBar('rf-cat-save', 'Done')}`);
 }
 
@@ -1363,8 +1369,9 @@ function mselBody(opts = S.mselOpts || {}) {
   const cats = visibleTops().map((c) => {
     const subs = subsOf(c.id).filter((x) => !x.hidden);
     const open = S.mselOpen.has(c.id);
+    const gen = (x, cls) => opts.general && subsOf(x.id).some((y) => !y.hidden) ? `<label class="msel-row ${cls}"><input type="checkbox" data-msel="c:=${x.id}" ${sel.has('c:=' + x.id) ? 'checked' : ''}>${catIcon(x)}<span class="n">General – ${esc(x.name)}</span></label>` : '';
     return `<div class="msel-top">${row(c, false)}${subs.length ? `<button class="icon-btn" data-act="msel-open" data-id="${c.id}" aria-expanded="${open}" aria-label="Show subcategories of ${esc(c.name)}"><span class="ms chev${open ? ' up' : ''}" aria-hidden="true">expand_more</span></button>` : ''}</div>
-      ${open ? subs.map((x) => row(x, true) + subsOf(x.id).filter((y) => !y.hidden).map((y) => row(y, 'sub2')).join('')).join('') : ''}`;
+      ${open ? gen(c, 'sub') + subs.map((x) => row(x, true) + gen(x, 'sub sub2') + subsOf(x.id).filter((y) => !y.hidden).map((y) => row(y, 'sub2')).join('')).join('') : ''}`;
   }).join('');
   const noneRow = opts.none ? `<label class="msel-row"><input type="checkbox" data-msel="c:__none" ${sel.has('c:__none') ? 'checked' : ''}><span class="ci unknown">${icon('help')}</span><span class="n">Uncategorized</span></label>` : '';
   const labels = opts.labels === false ? '' : sortedLabels().map((l) => `<label class="msel-row"><input type="checkbox" data-msel="l:${l.id}" ${sel.has('l:' + l.id) ? 'checked' : ''}><span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span><span class="n">${esc(l.name)}</span></label>`).join('');
@@ -1818,7 +1825,7 @@ document.addEventListener('click', async (e) => {
         recFilterState().accounts = $('acc-all').checked || !ids.length ? null : ids; sheetRecPanel(); render(); break;
       }
       case 'rf-cat-save': {
-        const ids = [...S.msel].filter((k) => k.startsWith('c:')).map((k) => k.slice(2)).filter((id) => id === '__none' || S.cats[id]);
+        const ids = [...S.msel].filter((k) => k.startsWith('c:')).map((k) => k.slice(2)).filter((id) => id === '__none' || S.cats[id.replace(/^=/, '')]);
         recFilterState().cats = ids.length ? ids : null; sheetRecPanel(); render(); break;
       }
       case 'rf-reset': S.rf = null; sheetRecPanel(); render(); break;
