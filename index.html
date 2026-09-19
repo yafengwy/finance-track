@@ -389,7 +389,7 @@ const SEED = [
     ['Charges, fees', 'sell'], ['Fines', 'gavel'],
   ] },
   { name: 'Reimbursement', icon: 'request_quote', color: '#E94D8A', subs: [] },
-  { name: 'Income', icon: 'savings', color: '#E8B622', subs: [
+  { name: 'Income', icon: 'savings', color: '#E8B622', type: 'income', subs: [
     ['Wage, invoices', 'work'], ['Interests, dividends', 'trending_up'], ['Refunds', 'redeem'],
     ['Rental income', 'home'], ['Gifts', 'favorite'],
   ] },
@@ -440,7 +440,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -476,6 +476,9 @@ function errMsg(e) { return e?.message?.replace(/^.*?:\s*/, '') || String(e); }
 function topOf(cat) { let c = cat; while (c && c.parentId && S.cats[c.parentId]) c = S.cats[c.parentId]; return c || null; }
 function lvl2Of(cat) { let c = cat; if (!c || !c.parentId) return null; while (c.parentId && S.cats[c.parentId]?.parentId) c = S.cats[c.parentId]; return c; }
 function depthOf(cat) { let d = 0; let c = cat; while (c && c.parentId && S.cats[c.parentId]) { c = S.cats[c.parentId]; d++; } return d; }
+// Each category is Income or Expense; a subcategory without its own setting follows its parent.
+function catType(cat) { let c = cat; while (c) { if (c.type === 'income' || c.type === 'expense') return c.type; c = c.parentId ? S.cats[c.parentId] : null; } return 'expense'; }
+function sideOf(t) { const c = S.cats[t.categoryId]; return c ? catType(c) : (t.amount < 0 ? 'income' : 'expense'); }
 function descendants(id) { return subsOf(id).flatMap((s) => [s.id, ...descendants(s.id)]); }
 function tops() { return Object.values(S.cats).filter((c) => !c.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
 function subsOf(id) { return Object.values(S.cats).filter((c) => c.parentId === id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
@@ -540,9 +543,9 @@ function stats([from, to], spec) {
   for (const t of S.txs) {
     if (t.date < from || t.date > to || t.isTransfer || !ok(t)) continue;
     const c = S.cats[t.categoryId]; const top = topOf(c);
-    const side = t.amount < 0 ? 'income' : 'expense';
+    const side = sideOf(t);
     const key = `${side}:${top ? top.id : 'unknown'}`;
-    const v = Math.abs(t.amount);
+    const v = side === 'income' ? -t.amount : t.amount;
     s[side] += v;
     const row = s.rows[key] || (s.rows[key] = { key, side, catId: top?.id || null, total: 0, subs: {} });
     row.total += v;
@@ -600,7 +603,7 @@ async function seedCategories() {
   const batch = writeBatch(db);
   SEED.forEach((c, i) => {
     const ref = doc(collection(db, 'categories'));
-    batch.set(ref, { name: c.name, icon: c.icon, color: c.color, hidden: false, parentId: null, order: i });
+    batch.set(ref, { name: c.name, icon: c.icon, color: c.color, type: c.type || 'expense', hidden: false, parentId: null, order: i });
     c.subs.forEach(([name, ic, hidden], j) => {
       batch.set(doc(collection(db, 'categories')), { name, icon: ic, hidden: !!hidden, parentId: ref.id, order: j });
     });
@@ -807,7 +810,7 @@ function cardDetail() {
 // ---- Spending by category: donut + trend + top 5 (tap a slice to focus everything on it) ----
 function spendingModel(spec, r) {
   const ok = specMatcher(spec);
-  const all = S.txs.filter((t) => t.date >= r[0] && t.date <= r[1] && !t.isTransfer && t.amount > 0 && ok(t));
+  const all = S.txs.filter((t) => t.date >= r[0] && t.date <= r[1] && !t.isTransfer && sideOf(t) === 'expense' && ok(t));
   const drill = S.donutDrill && S.cats[S.donutDrill] ? S.cats[S.donutDrill] : null;
   const groupKey = (t) => {
     const c = S.cats[t.categoryId]; const top = topOf(c);
@@ -822,7 +825,7 @@ function spendingModel(spec, r) {
     const name = drill ? (k === '_self' ? `${drill.name} (general)` : (c?.name || 'Deleted')) : (c ? c.name : 'Uncategorized');
     const hasSubs = !drill && !!c && txs.some((t) => S.cats[t.categoryId]?.parentId);
     return { id: k, name, value: txs.reduce((a, t) => a + t.amount, 0), color: c ? catColor(c) : '#C7C7CC', cat: c, txs, hasSubs };
-  }).sort((a, b) => b.value - a.value);
+  }).filter((g) => g.value > 0.004).sort((a, b) => b.value - a.value);
   if (drill) segs.forEach((g, i) => { g.color = shade(drill.color || '#8E8E93', i, segs.length); });
   const sel = segs.find((g) => g.id === S.donutSel) || null;
   const focus = sel ? sel.txs : segs.flatMap((g) => g.txs);
@@ -834,7 +837,7 @@ function barChart(bs, values, color, opts = {}) {
   const max = Math.max(1, ...values); const slot = (W - 8) / Math.max(n, 1); const bw = Math.max(2, Math.min(22, slot * 0.7));
   const every = n > 31 ? Math.ceil(n / 31) : 1; const fs = n > 20 ? 7.5 : n > 12 ? 9 : 10;
   const parts = bs.map((b, i) => {
-    const x = 4 + slot * i + (slot - bw) / 2; const h = (values[i] / max) * (base - 4);
+    const x = 4 + slot * i + (slot - bw) / 2; const h = (Math.max(0, values[i]) / max) * (base - 4);
     const lbl = i % every === 0 ? `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 5}" text-anchor="middle" font-size="${fs}" fill="var(--sub)">${b.tick}</text>` : '';
     return `<rect x="${x.toFixed(1)}" y="4" width="${bw.toFixed(1)}" height="${base - 4}" rx="2" fill="var(--line)"></rect>
       <rect x="${x.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}"><title>${b.label}: ${money(values[i])}</title></rect>${lbl}`;
@@ -913,7 +916,7 @@ function openRowRecords(side, scope, title) {
   const r = rangeOf(getPeriod('detail')); const ok = specMatcher(cardSpec('detail').spec);
   const [kind, id] = scope.split(':');
   const match = (c) => (kind === 'top' ? topOf(c)?.id === id : kind === 'unk' ? !c : kind === 'l2' ? lvl2Of(c)?.id === id : c?.id === id);
-  const ids = S.txs.filter((t) => t.date >= r[0] && t.date <= r[1] && !t.isTransfer && ok(t) && ((t.amount < 0) === (side === 'income')) && match(S.cats[t.categoryId])).map((t) => t.id);
+  const ids = S.txs.filter((t) => t.date >= r[0] && t.date <= r[1] && !t.isTransfer && ok(t) && (sideOf(t) === side) && match(S.cats[t.categoryId])).map((t) => t.id);
   sheetRecords({ title, period: periodLabel(getPeriod('detail')), ids, sort: 'date_desc' });
 }
 function shade(hex, i, n) {
@@ -966,7 +969,7 @@ function cardTrend() {
   for (const t of S.txs) {
     if (t.isTransfer || !ok(t)) continue;
     const i = idx(t.date); if (i < 0) continue;
-    if (t.amount < 0) bs[i].inc += -t.amount; else bs[i].exp += t.amount;
+    if (sideOf(t) === 'income') bs[i].inc += -t.amount; else bs[i].exp += t.amount;
   }
   const cum = S.trendMode === 'cumulative';
   const net = bs.map((b) => b.inc - b.exp);
@@ -989,8 +992,8 @@ function cardTrend() {
   const bars = bs.map((b, i) => {
     const x = (cx(i) - bw / 2).toFixed(1);
     return `<rect x="${x}" y="${top}" width="${bw.toFixed(1)}" height="${bot - top}" rx="2" fill="var(--line)"></rect>
-      ${b.inc ? `<rect x="${x}" y="${yL(b.inc).toFixed(1)}" width="${bw.toFixed(1)}" height="${(yL(0) - yL(b.inc)).toFixed(1)}" fill="var(--inc)"><title>${b.label} income ${money(b.inc)}</title></rect>` : ''}
-      ${b.exp ? `<rect x="${x}" y="${yL(0).toFixed(1)}" width="${bw.toFixed(1)}" height="${(yL(-b.exp) - yL(0)).toFixed(1)}" fill="var(--exp)"><title>${b.label} expenses ${money(b.exp)}</title></rect>` : ''}`;
+      ${b.inc > 0 ? `<rect x="${x}" y="${yL(b.inc).toFixed(1)}" width="${bw.toFixed(1)}" height="${(yL(0) - yL(b.inc)).toFixed(1)}" fill="var(--inc)"><title>${b.label} income ${money(b.inc)}</title></rect>` : ''}
+      ${b.exp > 0 ? `<rect x="${x}" y="${yL(0).toFixed(1)}" width="${bw.toFixed(1)}" height="${(yL(-b.exp) - yL(0)).toFixed(1)}" fill="var(--exp)"><title>${b.label} expenses ${money(b.exp)}</title></rect>` : ''}`;
   }).join('');
   const pts = line.map((v, i) => [cx(i), cum ? yR(v) : yL(v)]);
   const every = n > 31 ? Math.ceil(n / 31) : 1; const fs = n > 20 ? 7.5 : n > 12 ? 9 : 10;
@@ -1227,6 +1230,9 @@ function viewCat(id) {
     <div class="center"><button class="icon-edit" data-act="edit-icon" data-id="${id}" aria-label="Change icon and color">${catIcon(c, true)}<span class="pen">${icon('edit')}</span></button></div>
     <div class="set-list">
       <button class="set-item" data-act="rename" data-id="${id}"><span class="n">Name</span><span class="v">${esc(c.name)}</span>${icon('chevron_right')}</button>
+      <div class="set-item"><span class="n">Type${c.parentId && !c.type ? '<div class="meta">Same as parent</div>' : ''}</span><div class="seg">
+        <button data-act="cat-type" data-id="${id}" data-type="expense" aria-pressed="${catType(c) === 'expense'}">Expense</button>
+        <button data-act="cat-type" data-id="${id}" data-type="income" aria-pressed="${catType(c) === 'income'}">Income</button></div></div>
       <label class="set-item"><span class="n">Show</span><input type="checkbox" class="switch" data-act="cat-show" data-id="${id}" ${c.hidden ? '' : 'checked'}></label>
     </div>
     ${canHaveSubs ? `<div class="sec-head">Subcategories</div>
@@ -1874,6 +1880,7 @@ document.addEventListener('click', async (e) => {
       case 'add-cat': sheetName('New category', '', 'save-top', ''); break;
       case 'save-top': { const name = $('nm').value.trim(); if (!name) { toast('Name can’t be empty'); return; } const nid = await addCategory(name, null); closeSheet(); location.hash = `#/cat/${nid}`; break; }
       case 'del-cat': await deleteCategory(id); break;
+      case 'cat-type': await updateDoc(doc(db, 'categories', id), { type: el.dataset.type }); break;
       case 'add-tx': openNew(); break;
       case 'toggle-label': {
         const on = el.getAttribute('aria-pressed') !== 'true';
