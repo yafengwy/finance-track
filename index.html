@@ -320,6 +320,8 @@ input.row-select { direction: ltr; }
 .link-btn { border: 0; background: none; color: var(--accent); font-size: 14px; padding: 6px; align-self: center; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
+.mid .note { font-size: 13px; color: var(--sub); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -453,7 +455,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '4.9';
+const APP_VERSION = '5.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -504,6 +506,10 @@ function catIcon(cat, lg = false) {
 function sortedLabels() { return Object.values(S.labels).sort((a, b) => a.name.localeCompare(b.name)); }
 // A record put directly on a category that has subcategories shows as "General – Name"
 function txCatName(c) { return !c ? 'Uncategorized' : subsOf(c.id).length ? `General – ${c.name}` : c.name; }
+// Row title: bank records show the bank's name; manual records have none, so their note is the title.
+// txNoteLine: the note under the title (bank records only, so a manual note is not shown twice)
+function txTitle(t) { return t.manual ? (t.note || txCatName(S.cats[t.categoryId])) : (t.merchant || t.name || t.note || ''); }
+function txNoteLine(t) { return !t.manual && t.note && t.note !== txTitle(t) ? `<span class="note">${esc(t.note)}</span>` : ''; }
 function accName(a) { return a ? (a.customName || a.name) : ''; }
 
 // ---------- periods & card filters ----------
@@ -881,7 +887,7 @@ function barChart(bs, values, color, opts = {}) {
 }
 function txRowHtml(t, cls = 'top-row') {
   const c = S.cats[t.categoryId];
-  return `<button class="${cls}" data-act="tx" data-id="${t.id}">${catIcon(c)}<span class="mid"><span class="n">${esc(t.note || t.merchant || t.name)}</span><span class="meta">${esc(txCatName(c))} · ${esc(accName(S.accounts[t.accountId]))}</span></span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
+  return `<button class="${cls}" data-act="tx" data-id="${t.id}">${catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta">${esc(txCatName(c))} · ${esc(accName(S.accounts[t.accountId]))}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
 }
 function cardStructure() {
   const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
@@ -940,7 +946,8 @@ function sheetRecords(pop) {
   const rows = txs.map((t) => {
     const c = S.cats[t.categoryId]; const inflow = t.amount < 0;
     const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
-    const desc = [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' - ');
+    // Bank description in quotes; manual records have none (their name is only a copy of the note)
+    const desc = t.manual ? '' : [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i && v !== t.note).join(' - ');
     return `<div class="more-row"><button class="tx-ico" data-act="tx-cat" data-id="${t.id}" data-back="rec" aria-label="Choose category">${catIcon(c)}</button>
       <button class="more-main" data-act="tx" data-id="${t.id}" data-back="rec"><span class="mid"><span class="row-between"><span class="n">${esc(txCatName(c))}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
       <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span>
@@ -1198,8 +1205,8 @@ function viewTx(params) {
     const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
     html += `<div class="tx${t.isTransfer ? ' transfer' : ''}">
       <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c)}</button>
-      <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(t.note || t.merchant || t.name)}</span>
-      <span class="meta">${esc(t.isTransfer ? 'Transfer' : txCatName(c))} · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}</span>${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
+      <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(txTitle(t))}</span>
+      <span class="meta">${esc(t.isTransfer ? 'Transfer' : txCatName(c))} · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
       <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
@@ -1641,7 +1648,7 @@ async function saveEdit() {
   if (e.manual) {
     upd.amount = e.type === 'income' ? -e.amount : e.type === 'expense' ? e.amount : (t && t.amount < 0 ? -e.amount : e.amount);
     upd.date = e.date; upd.accountId = e.accountId;
-    upd.name = upd.note || S.cats[upd.categoryId]?.name || 'Manual record';
+    upd.name = '';
     await ensureCash(e.accountId);
   }
   if (!t) {
@@ -1815,9 +1822,9 @@ async function setTxCategory(txId, catId, sameMerchant) {
   const batch = writeBatch(db);
   batch.update(doc(db, 'transactions', txId), { categoryId: catId || null });
   let n = 0;
-  if (catId && sameMerchant) {
-    const key = (t.merchant || t.name).toLowerCase();
-    S.txs.filter((x) => x.id !== txId && !x.categoryId && !x.isTransfer && (x.merchant || x.name).toLowerCase() === key)
+  const key = (t.merchant || t.name || '').toLowerCase();
+  if (catId && sameMerchant && key) {
+    S.txs.filter((x) => x.id !== txId && !x.categoryId && !x.isTransfer && (x.merchant || x.name || '').toLowerCase() === key)
       .slice(0, 450).forEach((x) => { batch.update(doc(db, 'transactions', x.id), { categoryId: catId }); n++; });
   }
   await batch.commit();
