@@ -452,7 +452,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '4.2';
+const APP_VERSION = '4.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -540,10 +540,23 @@ function specName(spec) {
   const names = [...(spec.cats || []).map((id) => (id.startsWith('=') ? (S.cats[id.slice(1)] ? `General – ${S.cats[id.slice(1)].name}` : null) : S.cats[id]?.name)), ...(spec.labels || []).map((id) => '#' + (S.labels[id]?.name || ''))].filter(Boolean);
   return names.length > 3 ? `${names.slice(0, 3).join(', ')} +${names.length - 3}` : names.join(', ');
 }
+// ids -> Set of category ids that count. "=id" = only records put directly on id (its General row).
+// A plain id means the whole branch, unless some of its subcategories are also listed
+// (older saved filters) — then only the listed parts count.
+function catSet(ids) {
+  const list = new Set(ids); const cats = new Set();
+  ids.forEach((id) => {
+    if (id === '__none') return;
+    if (id.startsWith('=')) { cats.add(id.slice(1)); return; }
+    const ds = descendants(id);
+    if (list.has('=' + id) || ds.some((d) => list.has(d) || list.has('=' + d))) return;
+    cats.add(id); ds.forEach((d) => cats.add(d));
+  });
+  return cats;
+}
 function specMatcher(spec) {
   if (!spec || (!spec.cats?.length && !spec.labels?.length)) return () => true;
-  const cats = new Set();
-  (spec.cats || []).forEach((id) => { if (id.startsWith('=')) cats.add(id.slice(1)); else { cats.add(id); descendants(id).forEach((d) => cats.add(d)); } });
+  const cats = catSet(spec.cats || []);
   const labels = new Set(spec.labels || []);
   return (t) => cats.has(t.categoryId) || (t.labels || []).some((l) => labels.has(l));
 }
@@ -807,6 +820,8 @@ function cardCash() {
 function cardDetail() {
   const spec2 = cardSpec('detail').spec;
   const r2 = rangeOf(getPeriod('detail')); const s2 = stats(r2, spec2); const p2 = stats(prevRange(r2), spec2);
+  const inSet = spec2?.cats?.length ? catSet(spec2.cats) : null;
+  S.rowShow = inSet ? (id) => [id, ...descendants(id)].some((x) => inSet.has(x)) : (spec2?.labels?.length ? () => false : () => true);
   const section = (side) => {
     const keys = [...tops().map((c) => `${side}:${c.id}`), `${side}:unknown`].filter((k) => s2.rows[k])
       .sort((a, b) => s2.rows[b].total - s2.rows[a].total); // largest amount first
@@ -854,8 +869,10 @@ function barChart(bs, values, color, opts = {}) {
   const parts = bs.map((b, i) => {
     const x = 4 + slot * i + (slot - bw) / 2; const h = (Math.max(0, values[i]) / max) * (base - 4);
     const lbl = i % every === 0 ? `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 5}" text-anchor="middle" font-size="${fs}" fill="var(--sub)">${b.tick}</text>` : '';
+    const dim = opts.sel != null && opts.sel !== i ? ' opacity="0.35"' : '';
+    const hit = opts.act ? `<rect x="${(4 + slot * i).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${H}" fill="transparent" data-act="${opts.act}" data-id="${b.from}" style="cursor:pointer"></rect>` : '';
     return `<rect x="${x.toFixed(1)}" y="4" width="${bw.toFixed(1)}" height="${base - 4}" rx="2" fill="var(--line)"></rect>
-      <rect x="${x.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}"><title>${b.label}: ${money(values[i])}</title></rect>${lbl}`;
+      <rect x="${x.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color}"${dim}><title>${b.label}: ${money(values[i])}</title></rect>${lbl}${hit}`;
   }).join('');
   return `<svg viewBox="0 0 ${W} ${H}" class="trend" role="img" aria-label="${opts.aria || 'Spending over time'}">${parts}</svg>`;
 }
@@ -884,7 +901,16 @@ function cardStructure() {
   const back = drill ? `<button class="pill-btn" data-act="donut-back">${icon('chevron_left')}All categories</button>` : '';
   const bs = buckets(r); const vals = bs.map(() => 0);
   m.focus.forEach((t) => { const i = bs.findIndex((b) => t.date >= b.from && t.date <= b.to); if (i >= 0) vals[i] += t.amount; });
-  const sorted = [...m.focus].sort((a, b) => b.amount - a.amount);
+  const bi = bs.findIndex((b) => b.from === S.barSel); const bsel = bi >= 0 ? bs[bi] : null;
+  const sd = (d) => shortDate(d).replace(/, \d{4}$/, '');
+  const bLabel = !bsel ? '' : bsel.kind === 'month' ? bsel.label : bsel.from === bsel.to ? sd(bsel.from) : `${sd(bsel.from)} – ${sd(bsel.to)}`;
+  const inBar = bsel ? m.focus.filter((t) => t.date >= bsel.from && t.date <= bsel.to) : m.focus;
+  const sorted = [...inBar].sort((a, b) => b.amount - a.amount);
+  const who = sel ? ` · ${esc(sel.name)}` : '';
+  const listHead = bsel ? `<div class="sec-head"><span>${esc(bLabel)}${who} · ${sorted.length} expense${sorted.length === 1 ? '' : 's'}</span><button class="link-btn" data-act="bar-sel" data-id="${bsel.from}">Clear</button></div>`
+    : `<div class="sec-head">Top 5 expenses${who}</div>`;
+  const listRows = bsel ? `<div class="bar-list">${sorted.map((t) => txRowHtml(t)).join('') || '<div class="meta" style="padding:8px 0">No expenses</div>'}</div>`
+    : sorted.slice(0, 5).map((t) => txRowHtml(t)).join('') + (sorted.length ? `<button class="link-btn show-more" data-act="show-more">Show more (${sorted.length})</button>` : '');
   S.spendMore = { title: sel ? sel.name : drill ? drill.name : 'All expenses', period: periodLabel(getPeriod('structure')), ids: sorted.map((t) => t.id) };
   return `<section class="card">${cardHead('Spending by Category', 'structure')}
     ${total ? `<div class="row-between"><div class="big num" style="font-size:26px">${money(total)}</div>${ch === null ? '' : `<span style="font-size:13px;color:var(${ch <= 0 ? '--good' : '--bad'})">${ch > 0 ? '+' : ''}${ch}% vs prior</span>`}</div>
@@ -892,10 +918,9 @@ function cardStructure() {
     ${deeper || back ? `<div class="center" style="gap:8px;padding:0">${back}${deeper}</div>` : ''}
     <div class="legend-list">${legend}</div>
     <div class="sec-head">Trend${sel ? ` · ${esc(sel.name)}` : ''}</div>
-    ${barChart(bs, vals, m.focusColor)}
-    <div class="sec-head">Top 5 expenses${sel ? ` · ${esc(sel.name)}` : ''}</div>
-    ${sorted.slice(0, 5).map((t) => txRowHtml(t)).join('')}
-    ${sorted.length ? `<button class="link-btn show-more" data-act="show-more">Show more (${sorted.length})</button>` : ''}` : '<div class="meta">No expenses in this period</div>'}
+    ${barChart(bs, vals, m.focusColor, { act: 'bar-sel', sel: bi >= 0 ? bi : null })}
+    ${listHead}
+    ${listRows}` : '<div class="meta">No expenses in this period</div>'}
   </section>`;
 }
 const SORTS = { date_desc: 'Date: newest first', date_asc: 'Date: oldest first', amt_desc: 'Amount: largest first', amt_asc: 'Amount: smallest first' };
@@ -949,14 +974,14 @@ function buckets([from, to]) {
   const days = Math.round((t - f) / 86400000) + 1;
   const out = [];
   if (days <= 31) {
-    for (let d = new Date(f); d <= t; d = addDays(d, 1)) out.push({ from: ymd(d), to: ymd(d), label: `${d.getMonth() + 1}/${d.getDate()}`, tick: String(d.getDate()) });
+    for (let d = new Date(f); d <= t; d = addDays(d, 1)) out.push({ kind: 'day', from: ymd(d), to: ymd(d), label: `${d.getMonth() + 1}/${d.getDate()}`, tick: String(d.getDate()) });
   } else if (days <= 120) {
-    for (let d = new Date(f); d <= t; d = addDays(d, 7)) { const e = addDays(d, 6) > t ? t : addDays(d, 6); out.push({ from: ymd(d), to: ymd(e), label: `${d.getMonth() + 1}/${d.getDate()}`, tick: `${d.getMonth() + 1}/${d.getDate()}` }); }
+    for (let d = new Date(f); d <= t; d = addDays(d, 7)) { const e = addDays(d, 6) > t ? t : addDays(d, 6); out.push({ kind: 'week', from: ymd(d), to: ymd(e), label: `${d.getMonth() + 1}/${d.getDate()}`, tick: `${d.getMonth() + 1}/${d.getDate()}` }); }
   } else {
     for (let d = new Date(f.getFullYear(), f.getMonth(), 1); d <= t; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
       const e = new Date(d.getFullYear(), d.getMonth() + 1, 0);
       const mo = d.toLocaleDateString('en-US', { month: 'short' });
-      out.push({ from: ymd(d < f ? f : d), to: ymd(e > t ? t : e), label: `${mo} ${d.getFullYear()}`, tick: d.getMonth() === 0 && f.getMonth() !== 0 ? `${mo} '${String(d.getFullYear()).slice(2)}` : mo });
+      out.push({ kind: 'month', from: ymd(d < f ? f : d), to: ymd(e > t ? t : e), label: `${mo} ${d.getFullYear()}`, tick: d.getMonth() === 0 && f.getMonth() !== 0 ? `${mo} '${String(d.getFullYear()).slice(2)}` : mo });
     }
   }
   return out;
@@ -1032,7 +1057,8 @@ function rowHtml(row, prev) {
   const side = row.side; const sign = side === 'income' ? 1 : -1;
   const cat = row.catId ? S.cats[row.catId] : null;
   const name = cat ? cat.name : (side === 'income' ? 'Uncategorized income' : 'Uncategorized expenses');
-  const structSubs = cat ? subsOf(cat.id).filter((x) => !x.hidden).map((x) => x.id) : [];
+  const show = S.rowShow || (() => true);
+  const structSubs = cat ? subsOf(cat.id).filter((x) => !x.hidden && show(x.id)).map((x) => x.id) : [];
   const subKeys = Object.keys(row.subs);
   const hasSubs = !!cat && (structSubs.length > 0 || subKeys.some((k) => k !== '_self'));
   const open = hasSubs && S.expanded.has(row.key);
@@ -1045,7 +1071,7 @@ function rowHtml(row, prev) {
       const v = row.subs[k] || 0; const sc = k === '_self' ? null : S.cats[k];
       const nm = k === '_self' ? `General – ${cat.name}` : (sc?.name || 'Deleted');
       const scope = k === '_self' ? `exact:${cat.id}` : `l2:${k}`;
-      const kids = sc ? subsOf(sc.id).filter((x) => !x.hidden).map((x) => x.id) : [];
+      const kids = sc ? subsOf(sc.id).filter((x) => !x.hidden && show(x.id)).map((x) => x.id) : [];
       const m3 = row.subs3?.[k] || {};
       const has3 = kids.length > 0 || Object.keys(m3).some((x) => x !== '_self');
       const k2 = `l2:${side}:${k}`; const open3 = has3 && S.expanded.has(k2);
@@ -1131,7 +1157,7 @@ function recMatcher() {
   const accs = r.accounts ? new Set(r.accounts) : null;
   let cats = null; let none = false;
   // "=id" means only records put directly on that category (its "General" row), not its subcategories
-  if (r.cats) { cats = new Set(); r.cats.forEach((id) => { if (id === '__none') none = true; else if (id.startsWith('=')) cats.add(id.slice(1)); else { cats.add(id); descendants(id).forEach((d) => cats.add(d)); } }); }
+  if (r.cats) { cats = catSet(r.cats); none = r.cats.includes('__none'); }
   const fm = r.filter && S.filters[r.filter] ? specMatcher(S.filters[r.filter]) : null;
   return (t) => (p.unit === 'all' || (t.date >= p.from && t.date <= p.to))
     && (!accs || accs.has(t.accountId))
@@ -1223,7 +1249,7 @@ function sheetRecAccounts() {
     ${saveBar('rf-acc-save', 'Done')}`);
 }
 function sheetRecCats() {
-  const r = recFilterState(); S.msel = new Set((r.cats || []).map((id) => 'c:' + id)); S.mselOpts = { labels: false, none: true, general: true };
+  const r = recFilterState(); S.msel = mselLoad(r.cats || []); S.mselOpts = { labels: false, none: true, general: true };
   openSheet(`<h3>Categories</h3><div class="meta">Nothing selected = all categories</div><div id="msel">${mselBody()}</div>${saveBar('rf-cat-save', 'Done')}`);
 }
 
@@ -1411,7 +1437,7 @@ async function saveCard() {
     p.from = d.from; p.to = d.to;
     if (!p.from || !p.to || p.from > p.to) { toast('Choose a valid start and end date'); return; }
   }
-  setPeriod(d.card, p);
+  setPeriod(d.card, p); if (d.card === 'structure') S.barSel = null;
   if (d.filter !== '__instant') { delete S.instant[d.card]; if (d.filter) localStorage.setItem('filter:' + d.card, d.filter); else localStorage.removeItem('filter:' + d.card); }
   closeSheet();
   if (prevRange(rangeOf(p))[0] < loadedSince()) setLoadAll(true);
@@ -1431,18 +1457,54 @@ function mselBody(opts = S.mselOpts || {}) {
   }).join('');
   const noneRow = opts.none ? `<label class="msel-row"><input type="checkbox" data-msel="c:__none" ${sel.has('c:__none') ? 'checked' : ''}><span class="ci unknown">${icon('help')}</span><span class="n">Uncategorized</span></label>` : '';
   const labels = opts.labels === false ? '' : sortedLabels().map((l) => `<label class="msel-row"><input type="checkbox" data-msel="l:${l.id}" ${sel.has('l:' + l.id) ? 'checked' : ''}><span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span><span class="n">${esc(l.name)}</span></label>`).join('');
-  return `<div class="sec-head">Categories <span class="meta">A main category includes all its subcategories</span></div><div class="set-list">${noneRow}${cats}</div>
+  return `<div class="sec-head">Categories <span class="meta">Untick a subcategory to leave it out</span></div><div class="set-list">${noneRow}${cats}</div>
     ${labels ? `<div class="sec-head">Labels</div><div class="set-list">${labels}</div>` : ''}`;
+}
+// Picker keys are 'c:<id>' / 'c:=<id>'. A parent is checked only when everything under it is checked.
+function mselKids(id) { const subs = subsOf(id).filter((x) => !x.hidden); return subs.length ? ['=' + id, ...subs.map((x) => x.id)] : []; }
+function mselFix(set) {
+  Object.values(S.cats).filter((c) => mselKids(c.id).length).sort((a, b) => depthOf(b) - depthOf(a)).forEach((c) => {
+    if (mselKids(c.id).every((k) => set.has('c:' + k))) set.add('c:' + c.id); else set.delete('c:' + c.id);
+  });
+}
+function mselBranch(set, id, on) {
+  [id, ...descendants(id)].forEach((x) => { const ks = ['c:' + x, 'c:=' + x]; ks.forEach((k) => (on ? set.add(k) : set.delete(k))); });
+}
+function mselToggle(key, on) {
+  const id = key.slice(2);
+  if (id.startsWith('=') || id === '__none' || !S.cats[id]) { on ? S.msel.add(key) : S.msel.delete(key); } else mselBranch(S.msel, id, on);
+  mselFix(S.msel);
+}
+// Opening a saved selection: a whole parent ticks all its children; a partial one keeps only the listed parts
+function mselLoad(ids) {
+  const set = new Set(); const list = new Set(ids);
+  ids.forEach((id) => {
+    if (id.startsWith('=') || id === '__none' || !S.cats[id]) { set.add('c:' + id); return; }
+    const partial = list.has('=' + id) || descendants(id).some((d) => list.has(d) || list.has('=' + d));
+    if (!partial) mselBranch(set, id, true);
+  });
+  mselFix(set); return set;
+}
+// Save the shortest form: a fully checked parent stands for its whole branch (incl. subcategories added later)
+function mselIds() {
+  const has = (id) => S.msel.has('c:' + id);
+  const covered = (id) => { let c = S.cats[id]; while (c?.parentId) { if (has(c.parentId)) return true; c = S.cats[c.parentId]; } return false; };
+  return [...S.msel].filter((k) => k.startsWith('c:')).map((k) => k.slice(2)).filter((id) => {
+    if (id === '__none') return true;
+    const base = id.replace(/^=/, ''); if (!S.cats[base]) return false;
+    return id.startsWith('=') ? !has(base) && !covered(base) : !covered(id);
+  });
 }
 function mselSpec() {
   const cats = []; const labels = [];
-  S.msel.forEach((k) => { const [t, id] = [k.slice(0, 1), k.slice(2)]; if (t === 'c' && S.cats[id.replace(/^=/, '')]) cats.push(id); if (t === 'l' && S.labels[id]) labels.push(id); });
+  mselIds().forEach((id) => { if (id !== '__none') cats.push(id); });
+  S.msel.forEach((k) => { const id = k.slice(2); if (k.startsWith('l:') && S.labels[id]) labels.push(id); });
   return { cats, labels };
 }
 function recentInstant() { try { return JSON.parse(localStorage.getItem('recentInstant')) || []; } catch { return []; } }
 function sheetInstant(card) {
   S.mselOpts = { general: true }; S.msel = new Set(); const cur = S.instant[card];
-  if (cur) { cur.cats.forEach((id) => S.msel.add('c:' + id)); cur.labels.forEach((id) => S.msel.add('l:' + id)); }
+  if (cur) { S.msel = mselLoad(cur.cats); cur.labels.forEach((id) => S.msel.add('l:' + id)); }
   const recents = recentInstant().filter((r) => specName(r));
   openSheet(`<h3>Instant filter</h3>
     ${recents.length ? `<div class="sec-head">Recent</div><div class="chips wrap">${recents.map((r, i) => `<button class="chip" data-act="instant-recent" data-i="${i}" data-card="${card}">${esc(specName(r))}</button>`).join('')}</div>` : ''}
@@ -1460,7 +1522,7 @@ function applyInstant(card, spec) {
 function sheetFilter(id) {
   S.mselOpts = { general: true };
   const f = id ? S.filters[id] : null;
-  S.msel = new Set(); if (f) { (f.cats || []).forEach((c) => S.msel.add('c:' + c)); (f.labels || []).forEach((l) => S.msel.add('l:' + l)); }
+  S.msel = mselLoad(f?.cats || []); if (f) (f.labels || []).forEach((l) => S.msel.add('l:' + l));
   openSheet(`<h3>${f ? 'Edit filter' : 'New filter'}</h3>
     <div class="field"><label for="fl-name">Name</label><input class="input" id="fl-name" value="${esc(f?.name || '')}" placeholder="e.g. Groceries" autocomplete="off"></div>
     <div id="msel">${mselBody()}</div>
@@ -1803,6 +1865,9 @@ async function newLabel() {
 }
 
 document.addEventListener('click', async (e) => {
+  // A selected bar in Spending by Category is cleared by any tap that is not on a bar,
+  // except opening one of its listed records (or taps inside popups)
+  if (S.barSel && !e.target.closest('[data-act="bar-sel"], .bar-list, #sheet, #drawer')) { S.barSel = null; render(); }
   const el = e.target.closest('[data-act]'); if (!el) return;
   if (el.tagName === 'INPUT') return; // switches/checkboxes are handled on 'change'
   const act = el.dataset.act; const id = el.dataset.id;
@@ -1866,6 +1931,7 @@ document.addEventListener('click', async (e) => {
       case 'row-rec': openRowRecords(el.dataset.side, el.dataset.scope, el.dataset.title); break;
       case 'rec-sort': openOptions('Sort by', Object.entries(SORTS).map(([k, l]) => ({ value: k, label: l, iconHtml: glyph(k.startsWith('date') ? 'calendar_today' : 'attach_money', '#3478F6') })), S.recPop.sort, (v) => { S.recPop.sort = v; sheetRecords(); }); break;
       case 'donut-sel': S.donutSel = S.donutSel === id ? null : id; render(); break;
+      case 'bar-sel': S.barSel = S.barSel === id ? null : id; render(); break;
       case 'donut-drill': S.donutDrill = id; S.donutSel = null; render(); break;
       case 'donut-back': S.donutDrill = null; S.donutSel = null; render(); break;
       case 'trend-mode': S.trendMode = el.dataset.mode; render(); break;
@@ -1893,7 +1959,7 @@ document.addEventListener('click', async (e) => {
         recFilterState().accounts = $('acc-all').checked || !ids.length ? null : ids; sheetRecPanel(); render(); break;
       }
       case 'rf-cat-save': {
-        const ids = [...S.msel].filter((k) => k.startsWith('c:')).map((k) => k.slice(2)).filter((id) => id === '__none' || S.cats[id.replace(/^=/, '')]);
+        const ids = mselIds();
         recFilterState().cats = ids.length ? ids : null; sheetRecPanel(); render(); break;
       }
       case 'rf-reset': S.rf = null; sheetRecPanel(); render(); break;
@@ -2013,7 +2079,11 @@ document.addEventListener('change', async (e) => {
   }
   if (el.id === 'acc-all' && el.checked) { document.querySelectorAll('[data-accsel]').forEach((x) => { x.checked = false; }); return; }
   if (el.dataset.accsel && el.checked && $('acc-all')) { $('acc-all').checked = false; return; }
-  if (el.dataset.msel) { el.checked ? S.msel.add(el.dataset.msel) : S.msel.delete(el.dataset.msel); return; }
+  if (el.dataset.msel) {
+    if (el.dataset.msel.startsWith('c:')) { mselToggle(el.dataset.msel, el.checked); const box = $('msel'); if (box) box.innerHTML = mselBody(); }
+    else el.checked ? S.msel.add(el.dataset.msel) : S.msel.delete(el.dataset.msel);
+    return;
+  }
   try {
     if (el.dataset.act === 'cat-show') await updateDoc(doc(db, 'categories', el.dataset.id), { hidden: !el.checked });
   } catch (err) { toast('Could not save: ' + errMsg(err)); }
