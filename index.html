@@ -453,7 +453,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '4.7';
+const APP_VERSION = '4.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -502,6 +502,8 @@ function catIcon(cat, lg = false) {
   return `<span class="ci${lg ? ' lg' : ''}" style="background:${esc(catColor(cat))}">${icon(cat.icon || 'category')}</span>`;
 }
 function sortedLabels() { return Object.values(S.labels).sort((a, b) => a.name.localeCompare(b.name)); }
+// A record put directly on a category that has subcategories shows as "General – Name"
+function txCatName(c) { return !c ? 'Uncategorized' : subsOf(c.id).length ? `General – ${c.name}` : c.name; }
 function accName(a) { return a ? (a.customName || a.name) : ''; }
 
 // ---------- periods & card filters ----------
@@ -853,7 +855,7 @@ function spendingModel(spec, r) {
   all.forEach((t) => { const k = groupKey(t); if (k === null) return; (groups[k] ||= []).push(t); });
   const segs = Object.entries(groups).map(([k, txs]) => {
     const c = drill ? (k === '_self' ? drill : S.cats[k]) : (k === 'unknown' ? null : S.cats[k]);
-    const name = drill ? (k === '_self' ? `${drill.name} (general)` : (c?.name || 'Deleted')) : (c ? c.name : 'Uncategorized');
+    const name = drill ? (k === '_self' ? `General – ${drill.name}` : (c?.name || 'Deleted')) : (c ? c.name : 'Uncategorized');
     const hasSubs = !drill && !!c && txs.some((t) => S.cats[t.categoryId]?.parentId);
     return { id: k, name, value: txs.reduce((a, t) => a + t.amount, 0), color: c ? catColor(c) : '#C7C7CC', cat: c, txs, hasSubs };
   }).filter((g) => g.value > 0.004).sort((a, b) => b.value - a.value);
@@ -879,7 +881,7 @@ function barChart(bs, values, color, opts = {}) {
 }
 function txRowHtml(t, cls = 'top-row') {
   const c = S.cats[t.categoryId];
-  return `<button class="${cls}" data-act="tx" data-id="${t.id}">${catIcon(c)}<span class="mid"><span class="n">${esc(t.note || t.merchant || t.name)}</span><span class="meta">${esc(c ? c.name : 'Uncategorized')} · ${esc(accName(S.accounts[t.accountId]))}</span></span><span class="r"><span class="num" style="color:var(--exp)">-${money(t.amount)}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
+  return `<button class="${cls}" data-act="tx" data-id="${t.id}">${catIcon(c)}<span class="mid"><span class="n">${esc(t.note || t.merchant || t.name)}</span><span class="meta">${esc(txCatName(c))} · ${esc(accName(S.accounts[t.accountId]))}</span></span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
 }
 function cardStructure() {
   const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
@@ -938,7 +940,7 @@ function sheetRecords(pop) {
     const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
     const desc = [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' - ');
     return `<div class="more-row"><button class="tx-ico" data-act="tx-cat" data-id="${t.id}" data-back="rec" aria-label="Choose category">${catIcon(c)}</button>
-      <button class="more-main" data-act="tx" data-id="${t.id}" data-back="rec"><span class="mid"><span class="row-between"><span class="n">${esc(c ? c.name : 'Uncategorized')}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
+      <button class="more-main" data-act="tx" data-id="${t.id}" data-back="rec"><span class="mid"><span class="row-between"><span class="n">${esc(txCatName(c))}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
       <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span>
       ${t.note ? `<span class="desc">${esc(t.note)}</span>` : ''}${desc ? `<span class="desc">“${esc(desc)}”</span>` : ''}
       ${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span></button></div>`;
@@ -1195,7 +1197,7 @@ function viewTx(params) {
     html += `<div class="tx${t.isTransfer ? ' transfer' : ''}">
       <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c)}</button>
       <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(t.note || t.merchant || t.name)}</span>
-      <span class="meta">${esc(t.isTransfer ? 'Transfer' : c ? c.name : 'Uncategorized')} · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}</span>${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
+      <span class="meta">${esc(t.isTransfer ? 'Transfer' : txCatName(c))} · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}</span>${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
       <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
@@ -1614,7 +1616,7 @@ function renderEdit() {
       : `<div class="amount-row num" style="color:${color}">${sign}$${fmt.format(e.amount)}</div>`}
     <div class="sec-head">General</div>
     <div class="set-list">
-      ${e.type === 'transfer' ? '' : valueRow('edit-cat', catIcon(c), 'Category', esc(c ? c.name : 'Uncategorized'))}
+      ${e.type === 'transfer' ? '' : valueRow('edit-cat', catIcon(c), 'Category', esc(txCatName(c)))}
       ${e.manual ? valueRow('ed-acc', accIcon, 'Account', esc(e.accountId === 'cash' ? 'Cash' : accName(acc)))
         : `<div class="set-item">${accIcon}<span class="n">Account</span><span class="v">${esc(accName(acc))}</span></div>`}
       <div class="set-item">${glyph('calendar_today', '#FF3B30')}<span class="n">Date</span>
