@@ -487,7 +487,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '5.6';
+const APP_VERSION = '5.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1276,7 +1276,7 @@ function viewTx(params) {
     const c = S.cats[t.categoryId]; const acc = S.accounts[t.accountId];
     const inflow = t.amount < 0;
     const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
-    const canDel = (t.manual || t.demo) && !t.parentId;
+    const canDel = !!t.manual && !t.parentId; // only records you entered yourself; bank (and demo bank) records can't be deleted
     html += `<div class="swipe"><div class="swipe-act"><button class="swipe-del" data-act="del-tx" data-id="${t.id}" ${canDel ? '' : 'disabled'}>${icon('delete')}Delete</button></div><div class="tx swipe-main${t.isTransfer ? ' transfer' : ''}">
       <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c)}</button>
       <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(txTitle(t))}</span>
@@ -1712,7 +1712,7 @@ function renderEdit() {
     <div class="sec-head">Labels</div>${labelChips(e.labels, '')}
     <div class="sec-head">Note</div><input class="input" id="ed-note" value="${esc(e.note)}" placeholder="${esc(t ? (t.merchant || t.name || '') : 'Add a note')}" autocomplete="off" aria-label="Note">
     ${t && !t.manual && t.name ? `<div class="meta">Bank description: ${esc(t.name)}</div>` : ''}
-    ${t && !e.part && (e.manual || t.demo) ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
+    ${t && !e.part && e.manual ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
     ${saveBar('save-edit', 'Save')}`);
 }
 async function saveEdit() {
@@ -1918,7 +1918,9 @@ async function saveRule() {
 
 // ---------- actions ----------
 async function addDemo() {
-  if (S.txs.some((t) => t.demo)) { toast('Demo data is already there'); return; }
+  // Wait until records and categories are loaded, otherwise existing demo records could be overwritten
+  if (!S.txLoaded || !S.catsLoaded) { toast('Still loading, try again in a moment'); return; }
+  if (S.raw.some((t) => t.demo || String(t.id).startsWith('demo_'))) { toast('Demo data is already there'); return; }
   const findCat = (top, sub) => {
     const t = tops().find((c) => c.name === top); if (!t) return null;
     if (!sub) return t.id;
@@ -1932,7 +1934,8 @@ async function addDemo() {
     for (let i = 0; i < count; i++) {
       const amt = Math.round((min + rnd() * (max - min)) * 100) / 100;
       const date = ymd(addDays(new Date(), -Math.floor(rnd() * 75)));
-      b.set(doc(db, 'transactions', `demo_${n++}`), {
+      const id = `demo_${n++}`; if (S.rawById[id]) continue; // never overwrite an existing record
+      b.set(doc(db, 'transactions', id), {
         accountId: acc, itemId: null, date, name: merchant, merchant, amount: amt, currency: 'USD', pending: false,
         categoryId: top ? findCat(top, sub) : null, labels: [], isTransfer: !!transfer, demo: true, createdAt: serverTimestamp(),
       });
@@ -2252,7 +2255,7 @@ document.addEventListener('click', async (e) => {
         el.before(chipEl);
         break;
       }
-      case 'del-tx': if (!confirm('Delete this record?')) break; await deleteDoc(doc(db, 'transactions', id)); closeSheet(); toast('Deleted'); break;
+      case 'del-tx': if (!S.rawById[id]?.manual) break; if (!confirm('Delete this record?')) break; await deleteDoc(doc(db, 'transactions', id)); closeSheet(); toast('Deleted'); break;
       case 'add-label': sheetLabel(null); break;
       case 'edit-label': sheetLabel(id); break;
       case 'save-label': {
