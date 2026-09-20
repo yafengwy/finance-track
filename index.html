@@ -322,6 +322,24 @@ input.row-select { direction: ltr; }
 
 .mid .note { font-size: 13px; color: var(--sub); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* split page */
+.sp-head { text-align: center; }
+.sp-part { margin-bottom: 12px; }
+.sp-part .set-item { gap: 10px; }
+.sp-icon { border: 0; background: none; padding: 0; flex-shrink: 0; }
+.sp-name { border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-field { display: inline-flex; align-items: center; gap: 2px; font-size: 17px; color: var(--sub); }
+.sp-field input { width: 7ch; border: 0; border-bottom: 1px solid var(--line); background: none; font: inherit; font-size: 17px; color: var(--text); text-align: right; padding: 4px 0; outline: none; }
+.sp-field input:focus { border-bottom-color: var(--accent); }
+.sp-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.sp-stack .sp-val { font-size: 13px; color: var(--sub); }
+.sp-val { font-size: 17px; }
+.sp-rm { width: 28px; height: 28px; flex-shrink: 0; }
+.sp-rm .ms { font-size: 18px; }
+.sp-note-row { padding-top: 6px; padding-bottom: 6px; }
+.sp-note { border: 0; background: none; padding: 6px 0; width: 100%; }
+.sp-lbls { padding: 8px 16px 12px; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -455,7 +473,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '5.2';
+const APP_VERSION = '5.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -622,10 +640,37 @@ function subscribeTx() {
   const col = collection(db, 'transactions');
   const q = S.loadAll ? query(col, orderBy('date', 'desc')) : query(col, where('date', '>=', loadedSince()), orderBy('date', 'desc'));
   S.txUnsub = onSnapshot(q, (snap) => {
-    S.txs = []; S.txById = {};
-    snap.forEach((d) => { const t = { id: d.id, ...d.data() }; S.txs.push(t); S.txById[t.id] = t; });
+    S.txs = []; S.txById = {}; S.raw = []; S.rawById = {};
+    snap.forEach((d) => {
+      const t = { id: d.id, ...d.data() }; S.raw.push(t); S.rawById[t.id] = t;
+      for (const x of expandTx(t)) { S.txs.push(x); S.txById[x.id] = x; }
+    });
     S.txLoaded = true; scheduleRules(); render();
   }, onErr);
+}
+// A split record is stored once with splits: [{ amount, categoryId, isTransfer, note, labels }].
+// Everywhere else it appears as separate parts with id "<recordId>~<n>".
+// If the bank later changes the total (e.g. a tip added), the first part absorbs the difference.
+function expandTx(t) {
+  if (!Array.isArray(t.splits) || t.splits.length < 2) return [t];
+  const { splits, ...base } = t;
+  const cents = splits.map((x) => Math.round((Number(x.amount) || 0) * 100));
+  cents[0] = Math.round(t.amount * 100) - cents.slice(1).reduce((a, b) => a + b, 0);
+  return splits.map((x, i) => ({
+    ...base, id: `${t.id}~${i}`, parentId: t.id, splitIdx: i, splitN: splits.length,
+    amount: cents[i] / 100, categoryId: x.categoryId || null, isTransfer: !!x.isTransfer, note: x.note || '', labels: x.labels || [],
+  }));
+}
+// Write a change to records that may be split parts: fn(obj) returns the fields to change
+function partOps(list, fn) {
+  const ops = []; const byParent = {};
+  list.forEach((t) => {
+    if (!t.parentId) { ops.push((b) => b.update(doc(db, 'transactions', t.id), fn(t))); return; }
+    const sp = byParent[t.parentId] ||= (S.rawById[t.parentId]?.splits || []).map((x) => ({ ...x }));
+    Object.assign(sp[t.splitIdx] || {}, fn(sp[t.splitIdx] || {}));
+  });
+  Object.entries(byParent).forEach(([id, sp]) => ops.push((b) => b.update(doc(db, 'transactions', id), { splits: sp, categoryId: sp[0]?.categoryId || null })));
+  return ops;
 }
 function setLoadAll(on) {
   if (S.loadAll === on) return;
@@ -671,7 +716,7 @@ let rulesTimer;
 function scheduleRules() { clearTimeout(rulesTimer); rulesTimer = setTimeout(() => applyRules(false), 800); }
 async function applyRules(all) {
   if (S.applying || !S.rulesLoaded || !S.txLoaded || !ruleList().length) return 0;
-  const cands = S.txs.filter((t) => !t.manual && (all || !t.ruled));
+  const cands = S.txs.filter((t) => !t.manual && !t.parentId && (all || !t.ruled));
   if (!cands.length) return 0;
   S.applying = true; let changed = 0;
   try {
@@ -887,7 +932,7 @@ function barChart(bs, values, color, opts = {}) {
 }
 function txRowHtml(t, cls = 'top-row') {
   const c = S.cats[t.categoryId];
-  return `<button class="${cls}" data-act="tx" data-id="${t.id}">${catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta">${esc(txCatName(c))} · ${esc(accName(S.accounts[t.accountId]))}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
+  return `<button class="${cls}" data-act="tx" data-id="${t.id}">${catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta">${esc(txCatName(c))} · ${esc(accName(S.accounts[t.accountId]))}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
 }
 function cardStructure() {
   const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
@@ -1209,7 +1254,7 @@ function viewTx(params) {
     html += `<div class="tx${t.isTransfer ? ' transfer' : ''}">
       <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c)}</button>
       <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(txTitle(t))}</span>
-      <span class="meta">${esc(t.isTransfer ? 'Transfer' : txCatName(c))} · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
+      <span class="meta">${esc(t.isTransfer ? 'Transfer' : txCatName(c))} · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
       <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
@@ -1550,17 +1595,17 @@ function sheetFilter(id) {
 function openPicker(opts) {
   const t = S.txById[opts.txId];
   S.picker = { ...opts };
-  const cur = opts.mode === 'edit' ? S.edit.categoryId : opts.mode === 'rule' ? S.ruleDraft.categoryId : t?.categoryId;
+  const cur = opts.mode === 'edit' ? S.edit.categoryId : opts.mode === 'rule' ? S.ruleDraft.categoryId : opts.mode === 'split' ? S.split.parts[opts.i].categoryId : t?.categoryId;
   const c = S.cats[cur]; const tp = topOf(c); if (tp && tp.id !== c.id) S.pickOpen.add(tp.id);
   openSheet(`<h3>Category</h3>
     <div class="searchbar">${icon('search')}<input id="catq" type="search" placeholder="Search categories" autocomplete="off" aria-label="Search categories"></div>
-    ${opts.mode === 'direct' && t && !t.manual ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply to other uncategorized records from this merchant</label>` : ''}
+    ${opts.mode === 'direct' && t && !t.manual && !t.parentId ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply to other uncategorized records from this merchant</label>` : ''}
     <div id="catpick">${pickerBody('')}</div>
     <button class="pill-btn wide" data-act="pick-cat" data-id="">${opts.mode === 'rule' ? 'No change' : 'Set as uncategorized'}</button>`);
 }
 function pickerBody(q) {
   const t = S.txById[S.picker.txId];
-  const sel = S.picker.mode === 'edit' ? S.edit.categoryId : S.picker.mode === 'rule' ? S.ruleDraft.categoryId : t?.categoryId;
+  const sel = S.picker.mode === 'edit' ? S.edit.categoryId : S.picker.mode === 'rule' ? S.ruleDraft.categoryId : S.picker.mode === 'split' ? S.split.parts[S.picker.i].categoryId : t?.categoryId;
   const vt = visibleTops();
   const pickBtn = (c, sub = false) => `<button class="pick${sub === 'sub2' ? ' sub sub2' : sub ? ' sub' : ''}" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)}</span></button>`;
   if (q) {
@@ -1586,6 +1631,7 @@ function pickerBody(q) {
 // ---- record sheet: new record, or tap a record anywhere except its icon ----
 function openEdit(txId) {
   const t = S.txById[txId]; if (!t) return;
+  if (t.parentId) { openSplit(t.parentId); return; }
   S.edit = {
     txId, manual: !!t.manual,
     type: t.isTransfer ? 'transfer' : (t.amount < 0 ? 'income' : 'expense'),
@@ -1635,6 +1681,7 @@ function renderEdit() {
         : `<div class="set-item">${accIcon}<span class="n">Account</span><span class="v">${esc(accName(acc))}</span></div>`}
       <div class="set-item">${glyph('calendar_today', '#FF3B30')}<span class="n">Date</span>
         ${e.manual ? `<input id="ed-date" type="date" class="row-date" value="${e.date}">` : `<span class="v">${shortDate(e.date)}${t.pending ? ' (pending)' : ''}</span>`}</div>
+      ${t ? valueRow('ed-split', glyph('call_split', '#5856D6'), 'Split', 'None') : ''}
     </div>
     ${t && !e.manual && e.type !== 'transfer' ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply the category to other uncategorized records from this merchant</label>` : ''}
     <div class="sec-head">Labels</div>${labelChips(e.labels, '')}
@@ -1665,6 +1712,94 @@ async function saveEdit() {
   if (!e.manual && upd.categoryId && upd.categoryId !== t.categoryId && S.sameMerchant) await setTxCategory(e.txId, upd.categoryId, true);
   else toast('Saved');
   backToPopup();
+}
+// ---- split a record into parts (by amounts, equally, or by percentages) ----
+function newPart() { return { amt: '', pct: '', categoryId: null, isTransfer: false, note: '', labels: [] }; }
+function openSplit(txId, from) {
+  const t = S.rawById[txId]; if (!t) return;
+  const total = Math.abs(t.amount);
+  const parts = t.splits?.length > 1
+    ? S.txs.filter((x) => x.parentId === txId).sort((a, b) => a.splitIdx - b.splitIdx).map((x, i) => ({
+      amt: Math.abs(x.amount).toFixed(2), pct: t.splits[i]?.pct != null ? String(t.splits[i].pct) : '', categoryId: x.categoryId, isTransfer: x.isTransfer, note: x.note, labels: [...x.labels] }))
+    : [{ ...newPart(), amt: total.toFixed(2), categoryId: from ? from.categoryId : t.categoryId, isTransfer: from ? from.type === 'transfer' : !!t.isTransfer, note: from ? from.note : (t.note || ''), labels: [...(from ? from.labels : t.labels || [])] }, newPart()];
+  S.split = { txId, mode: t.splitMode || 'amount', parts };
+  renderSplit();
+}
+function spCapture() {
+  const sp = S.split; if (!sp || !$('sp-list')) return;
+  document.querySelectorAll('#sp-list [data-f]').forEach((el) => { const pt = sp.parts[+el.dataset.i]; if (pt) pt[el.dataset.f] = el.value; });
+}
+// Cents per part; the first part takes whatever is left
+function spCents() {
+  const sp = S.split; const t = S.rawById[sp.txId]; const total = Math.round(Math.abs(t.amount) * 100); const n = sp.parts.length;
+  const num = (v) => parseFloat(String(v).replace(/[$,%]/g, '')) || 0;
+  let c;
+  if (sp.mode === 'equal') { const base = Math.floor(total / n); c = sp.parts.map(() => base); }
+  else if (sp.mode === 'pct') c = sp.parts.map((pt) => Math.round(total * num(pt.pct) / 100));
+  else c = sp.parts.map((pt) => Math.round(num(pt.amt) * 100));
+  c[0] = total - c.slice(1).reduce((a, b) => a + b, 0);
+  return c;
+}
+function spPct0() { const sp = S.split; return Math.round((100 - sp.parts.slice(1).reduce((a, pt) => a + (parseFloat(pt.pct) || 0), 0)) * 100) / 100; }
+function spRefresh() {
+  const c = spCents(); const sp = S.split;
+  sp.parts.forEach((_, i) => { const el = $('sp-v' + i); if (el) el.textContent = (c[i] < 0 ? '-$' : '$') + fmt.format(Math.abs(c[i]) / 100); });
+  if ($('sp-p0')) $('sp-p0').textContent = `${spPct0()}%`;
+  const bad = c.some((x) => x <= 0);
+  if ($('sp-warn')) $('sp-warn').style.visibility = bad ? 'visible' : 'hidden';
+}
+function renderSplit() {
+  const sp = S.split; const t = S.rawById[sp.txId]; if (!t) { closeSheet(); return; }
+  const inflow = t.amount < 0; const sign = inflow ? '+' : '-';
+  const modes = [['amount', 'Amounts'], ['equal', 'Equal'], ['pct', 'Percent']];
+  const c = spCents();
+  const part = (pt, i) => {
+    const cat = S.cats[pt.categoryId];
+    const ic = pt.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(cat);
+    const nm = pt.isTransfer ? 'Transfer' : txCatName(cat);
+    const money$ = `<span class="num sp-val" id="sp-v${i}">$${fmt.format(Math.abs(c[i]) / 100)}</span>`;
+    let right;
+    if (sp.mode === 'equal' || i === 0) right = sp.mode === 'pct' && i === 0 ? `<span class="sp-stack"><span class="num" id="sp-p0">${spPct0()}%</span>${money$}</span>` : money$;
+    else if (sp.mode === 'pct') right = `<span class="sp-stack"><span class="sp-field"><input class="sp-in num" data-i="${i}" data-f="pct" inputmode="decimal" placeholder="0" value="${esc(pt.pct)}" aria-label="Percent">%</span>${money$}</span>`;
+    else right = `<span class="sp-field">$<input class="sp-in num" data-i="${i}" data-f="amt" inputmode="decimal" placeholder="0.00" value="${esc(pt.amt)}" aria-label="Amount"></span>`;
+    return `<div class="set-list sp-part">
+      <div class="set-item"><button class="sp-icon" data-act="sp-cat" data-i="${i}" aria-label="Choose category">${ic}</button>
+        <button class="n sp-name" data-act="sp-cat" data-i="${i}">${esc(nm)}</button>${right}
+        ${sp.parts.length > 2 ? `<button class="icon-btn sp-rm" data-act="sp-del" data-i="${i}" aria-label="Remove part">${icon('close')}</button>` : ''}</div>
+      <label class="set-item"><span class="n">Transfer <span class="meta">not counted</span></span><input type="checkbox" class="switch" data-sp-transfer="${i}" ${pt.isTransfer ? 'checked' : ''}></label>
+      <div class="set-item sp-note-row"><input class="input sp-note" data-i="${i}" data-f="note" value="${esc(pt.note)}" placeholder="Add note" autocomplete="off" aria-label="Note"></div>
+      ${Object.keys(S.labels).length ? `<div class="chips wrap sp-lbls">${sortedLabels().map((l) => `<button class="chip lchip" data-act="sp-label" data-i="${i}" data-id="${l.id}" aria-pressed="${pt.labels.includes(l.id)}" style="--lc:${esc(labelColor(l))}">${esc(l.name)}</button>`).join('')}</div>` : ''}
+    </div>`;
+  };
+  openSheet(`<h3>Split record</h3>
+    <div class="sp-head"><div class="meta">${esc(txTitle(t) || '')} · ${esc(accName(S.accounts[t.accountId]))} · ${shortDate(t.date)}</div>
+      <div class="amount-row num" style="color:var(${inflow ? '--inc' : '--exp'})">${sign}$${fmt.format(Math.abs(t.amount))}</div></div>
+    <div class="seg" style="align-self:stretch">${modes.map(([k, l]) => `<button style="flex:1" data-act="sp-mode" data-mode="${k}" aria-pressed="${sp.mode === k}">${l}</button>`).join('')}</div>
+    <div class="meta">Tap an icon to change the category. ${sp.mode === 'equal' ? 'The total is split evenly.' : 'The first part takes whatever is left.'}</div>
+    <div id="sp-list">${sp.parts.map(part).join('')}</div>
+    <div class="meta" id="sp-warn" style="color:var(--exp);visibility:${c.some((x) => x <= 0) ? 'visible' : 'hidden'}">Every part must be more than $0</div>
+    <button class="pill-btn primary wide" data-act="sp-add">${icon('add')}Add split</button>
+    ${t.splits?.length > 1 ? `<button class="pill-btn danger wide" data-act="sp-remove">${icon('undo')}Undo split</button>` : ''}
+    ${saveBar('sp-save', 'Save')}`);
+}
+async function saveSplit() {
+  spCapture(); const sp = S.split; const t = S.rawById[sp.txId]; if (!t) { closeSheet(); return; }
+  const c = spCents();
+  if (c.some((x) => x <= 0)) { toast('Every part must be more than $0'); return; }
+  const sgn = t.amount < 0 ? -1 : 1;
+  const splits = sp.parts.map((pt, i) => {
+    const o = { amount: sgn * c[i] / 100, categoryId: pt.isTransfer ? (pt.categoryId || null) : (pt.categoryId || null), isTransfer: !!pt.isTransfer, note: (pt.note || '').trim(), labels: pt.labels };
+    if (sp.mode === 'pct') o.pct = i === 0 ? spPct0() : (parseFloat(pt.pct) || 0);
+    return o;
+  });
+  await updateDoc(doc(db, 'transactions', t.id), { splits, splitMode: sp.mode, categoryId: splits[0].categoryId, isTransfer: false });
+  S.split = null; closeSheet(); toast(`Split into ${splits.length} parts`); backToPopup();
+}
+async function removeSplit() {
+  const t = S.rawById[S.split?.txId]; if (!t || !confirm('Merge the parts back into one record? The first part’s category, note and labels are kept.')) return;
+  const f = t.splits[0] || {};
+  await updateDoc(doc(db, 'transactions', t.id), { splits: deleteField(), splitMode: deleteField(), categoryId: f.categoryId || null, isTransfer: !!f.isTransfer, note: f.note || '', labels: f.labels || [] });
+  S.split = null; closeSheet(); toast('Split removed'); backToPopup();
 }
 async function ensureCash(accountId) {
   if (accountId === 'cash' && !S.accounts.cash) await setDoc(doc(db, 'accounts', 'cash'), { name: 'Cash', type: 'cash', manual: true, order: 999 });
@@ -1776,7 +1911,7 @@ async function addDemo() {
   toast(`Added ${n} demo records`);
 }
 async function removeDemo() {
-  const txs = S.txs.filter((t) => t.demo || String(t.accountId).startsWith('demo_'));
+  const txs = S.raw.filter((t) => t.demo || String(t.accountId).startsWith('demo_'));
   const accs = Object.values(S.accounts).filter((a) => a.demo);
   if (!txs.length && !accs.length) { toast('No demo data'); return; }
   if (!confirm(`Delete ${txs.length} demo records and ${accs.length} demo accounts?`)) return;
@@ -1824,12 +1959,13 @@ function startLink(token, itemId, receivedRedirectUri) {
 }
 async function setTxCategory(txId, catId, sameMerchant) {
   const t = S.txById[txId]; if (!t) return;
+  if (t.parentId) { const b = writeBatch(db); partOps([t], () => ({ categoryId: catId || null, isTransfer: false })).forEach((op) => op(b)); await b.commit(); toast('Saved'); return; }
   const batch = writeBatch(db);
   batch.update(doc(db, 'transactions', txId), { categoryId: catId || null });
   let n = 0;
   const key = (t.merchant || t.name || '').toLowerCase();
   if (catId && sameMerchant && key) {
-    S.txs.filter((x) => x.id !== txId && !x.categoryId && !x.isTransfer && (x.merchant || x.name || '').toLowerCase() === key)
+    S.txs.filter((x) => x.id !== txId && !x.parentId && !x.categoryId && !x.isTransfer && (x.merchant || x.name || '').toLowerCase() === key)
       .slice(0, 450).forEach((x) => { batch.update(doc(db, 'transactions', x.id), { categoryId: catId }); n++; });
   }
   await batch.commit();
@@ -1846,7 +1982,7 @@ async function deleteCategory(id) {
     : `Delete “${c.name}”${desc.length ? ` and its ${desc.length} subcategories` : ''}? ${txs.length} records will move to “${S.cats[c.parentId]?.name}”.`;
   if (!confirm(msg)) return;
   const ops = [];
-  txs.forEach((t) => ops.push((b) => b.update(doc(db, 'transactions', t.id), { categoryId: isTop ? null : c.parentId })));
+  ops.push(...partOps(txs, () => ({ categoryId: isTop ? null : c.parentId })));
   ids.forEach((cid) => ops.push((b) => b.delete(doc(db, 'categories', cid))));
   for (let i = 0; i < ops.length; i += 450) { const b = writeBatch(db); ops.slice(i, i + 450).forEach((op) => op(b)); await b.commit(); }
   goUp(isTop ? '#/cats' : `#/cat/${c.parentId}`);
@@ -1856,7 +1992,7 @@ async function deleteLabel(id) {
   const l = S.labels[id]; if (!l) return;
   const txs = S.txs.filter((t) => (t.labels || []).includes(id));
   if (!confirm(`Delete label “${l.name}”? It will be removed from ${txs.length} loaded records.`)) return;
-  const ops = txs.map((t) => (b) => b.update(doc(db, 'transactions', t.id), { labels: arrayRemove(id) }));
+  const ops = partOps(txs, (t) => (t.parentId || t.splits ? { labels: (t.labels || []).filter((x) => x !== id) } : { labels: arrayRemove(id) }));
   Object.values(S.filters).filter((f) => (f.labels || []).includes(id)).forEach((f) => ops.push((b) => b.update(doc(db, 'filters', f.id), { labels: arrayRemove(id) })));
   ops.push((b) => b.delete(doc(db, 'labels', id)));
   for (let i = 0; i < ops.length; i += 450) { const b = writeBatch(db); ops.slice(i, i + 450).forEach((op) => op(b)); await b.commit(); }
@@ -1992,12 +2128,21 @@ document.addEventListener('click', async (e) => {
         const p = S.picker;
         if (p?.mode === 'edit') { S.edit.categoryId = id || null; renderEdit(); break; }
         if (p?.mode === 'rule') { S.ruleDraft.categoryId = id || null; renderRule(); break; }
+        if (p?.mode === 'split') { const pt = S.split.parts[p.i]; pt.categoryId = id || null; pt.isTransfer = false; renderSplit(); break; }
         if ($('same-merchant')) S.sameMerchant = $('same-merchant').checked;
         closeSheet(); await setTxCategory(p.txId, id, S.sameMerchant); backToPopup(); break;
       }
       case 'edit-cat': captureEdit(); openPicker({ mode: 'edit', txId: S.edit.txId }); break;
       case 'edit-type': captureEdit(); S.edit.type = el.dataset.type; renderEdit(); break;
       case 'save-edit': await saveEdit(); break;
+      case 'ed-split': captureEdit(); openSplit(S.edit.txId, S.edit); break;
+      case 'sp-mode': spCapture(); S.split.mode = el.dataset.mode; renderSplit(); break;
+      case 'sp-cat': spCapture(); openPicker({ mode: 'split', i: +el.dataset.i }); break;
+      case 'sp-add': spCapture(); S.split.parts.push(newPart()); renderSplit(); break;
+      case 'sp-del': spCapture(); S.split.parts.splice(+el.dataset.i, 1); renderSplit(); break;
+      case 'sp-label': { spCapture(); const pt = S.split.parts[+el.dataset.i]; pt.labels = pt.labels.includes(id) ? pt.labels.filter((x) => x !== id) : [...pt.labels, id]; renderSplit(); break; }
+      case 'sp-save': await saveSplit(); break;
+      case 'sp-remove': await removeSplit(); break;
       case 'ed-acc': captureEdit(); openOptions('Account', accountOptionList(), S.edit.accountId, (v) => { S.edit.accountId = v; renderEdit(); }); break;
       case 'ru-field': captureRule(); openOptions('Match by', [{ value: 'description', label: 'Description contains', iconHtml: glyph('text_fields', '#3478F6') }, { value: 'account', label: 'Account is', iconHtml: glyph('credit_card', '#3478F6') }], S.ruleDraft.field, (v) => { S.ruleDraft.field = v; renderRule(); }); break;
       case 'ru-acc': captureRule(); openOptions('Account', accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash), S.ruleDraft.accountId, (v) => { S.ruleDraft.accountId = v; renderRule(); }); break;
@@ -2088,12 +2233,14 @@ let searchTimer;
 document.addEventListener('input', (e) => {
   if (e.target.id === 'nm' && $('lbl-prev')) { $('lbl-prev').innerHTML = labelPill({ name: e.target.value || 'Label', color: $('sheet').dataset.color }); return; }
   if (e.target.id === 'ed-amt') { e.target.style.width = `${Math.max(4, e.target.value.length) + 0.5}ch`; return; }
+  if (e.target.classList.contains('sp-in')) { spCapture(); spRefresh(); return; }
   if (e.target.id === 'catq') { $('catpick').innerHTML = pickerBody(e.target.value.trim().toLowerCase()); return; }
   if (e.target.id !== 'txsearch') return;
   S.search = e.target.value;
   clearTimeout(searchTimer); searchTimer = setTimeout(render, 150);
 });
 document.addEventListener('change', async (e) => {
+  if (e.target.dataset.spTransfer != null) { spCapture(); S.split.parts[+e.target.dataset.spTransfer].isTransfer = e.target.checked; renderSplit(); return; }
   const el = e.target;
   if (el.dataset.cardShow) {
     const h = cardHidden(); el.checked ? h.delete(el.dataset.cardShow) : h.add(el.dataset.cardShow);
