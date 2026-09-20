@@ -482,7 +482,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '6.0';
+const APP_VERSION = '6.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -718,6 +718,7 @@ async function seedCategories() {
 function ruleList() { return Object.values(S.rules).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
 function ruleMatches(r, t) {
   if (r.field === 'account') return t.accountId === r.accountId;
+  if (r.accountId && t.accountId !== r.accountId) return false; // "Only in account"
   const hay = `${t.name || ''} ${t.merchant || ''}`.toLowerCase();
   return (r.keywords || []).some((k) => k && hay.includes(k));
 }
@@ -1387,7 +1388,7 @@ function viewFilters() {
     <button class="pill-btn primary wide" data-act="add-filter">${icon('add')}New filter</button></div>`;
 }
 function ruleText(r) {
-  const cond = r.field === 'account' ? `Account is ${accName(S.accounts[r.accountId]) || '(removed account)'}` : `Description contains “${(r.keywords || []).join('”, “')}”`;
+  const cond = r.field === 'account' ? `Account is ${accName(S.accounts[r.accountId]) || '(removed account)'}` : `Description contains “${(r.keywords || []).join('”, “')}”${r.accountId ? ` · only in ${accName(S.accounts[r.accountId]) || '(removed account)'}` : ''}`;
   const acts = [r.categoryId && `Category → ${S.cats[r.categoryId]?.name || '(deleted)'}`, r.labelId && `Label → ${S.labels[r.labelId]?.name || '(deleted)'}`, r.transfer && 'Mark as transfer'].filter(Boolean);
   return { cond, acts: acts.join(' · ') };
 }
@@ -1710,6 +1711,7 @@ function renderEdit() {
       <div class="set-item">${glyph('calendar_today', '#FF3B30')}<span class="n">Date</span>
         ${e.manual ? `<input id="ed-date" type="date" class="row-date" value="${e.date}">` : `<span class="v">${shortDate(e.date)}${t.pending ? ' (pending)' : ''}</span>`}</div>
       ${t ? valueRow('ed-split', glyph('call_split', '#5856D6'), 'Split', t.parentId ? `Part ${t.splitIdx + 1} of ${t.splitN}` : 'None') : ''}
+      ${t && !t.manual ? valueRow('ed-rule', glyph('bolt', '#FF9500'), 'Create rule', esc(`Auto-sort “${kwSuggest(t)[0] || 'this merchant'}”`)) : ''}
     </div>
     ${t && !e.manual && !e.part && e.type !== 'transfer' ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply the category to other uncategorized records from this merchant</label>` : ''}
     <div class="sec-head">Labels</div>${labelChips(e.labels, '')}
@@ -1879,10 +1881,43 @@ function sheetLabel(id) {
 // ---- automatic rule editor ----
 function sheetRule(id) {
   const r = id ? S.rules[id] : {};
-  S.ruleDraft = { id: id || null, field: r.field || 'description', keywords: (r.keywords || []).join(', '), accountId: r.accountId || null, categoryId: r.categoryId || null, labelId: r.labelId || null, transfer: !!r.transfer };
+  const field = r.field || 'description';
+  S.ruleDraft = { id: id || null, field, keywords: (r.keywords || []).join(', '), accountId: field === 'account' ? r.accountId || null : null, onlyAcc: field === 'description' ? r.accountId || null : null,
+    categoryId: r.categoryId || null, labelId: r.labelId || null, transfer: !!r.transfer, applyPast: !id };
   renderRule();
 }
-function captureRule() { const d = S.ruleDraft; if (!d) return; if ($('ru-kw')) d.keywords = $('ru-kw').value; if ($('ru-tr')) d.transfer = $('ru-tr').checked; }
+// Keyword ideas from a bank record: its first word, and the whole name without trailing store numbers
+function kwSuggest(t) {
+  const raw = String(t.merchant || t.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const full = raw.replace(/\s*[#*]?\s*\d{3,}.*$/, '').trim();
+  // Card processors put a short code before "*" (TST*, SQ *, WEIXIN*): suggest the name after it first
+  const core = full.replace(/^[a-z0-9]{1,8}\s*\*\s*/, '').trim() || full;
+  const first = (core.match(/[a-z0-9\u4e00-\u9fff&']+/) || [''])[0];
+  return [...new Set([first.length >= 3 ? first : core, core, full].filter(Boolean))];
+}
+// "Create rule" from a record: prefilled with its keyword, its account, and the category/labels/type being edited
+function sheetRuleFromTx(txId, e) {
+  const t = S.txById[txId]; if (!t) return;
+  const sug = kwSuggest(t);
+  S.ruleDraft = { id: null, field: 'description', keywords: sug[0] || '', accountId: null, onlyAcc: t.accountId || null, suggestions: sug,
+    categoryId: (e ? e.categoryId : t.categoryId) || null, labelId: (e ? e.labels : t.labels || [])[0] || null, transfer: e ? e.type === 'transfer' : !!t.isTransfer, applyPast: true };
+  renderRule();
+}
+function captureRule() {
+  const d = S.ruleDraft; if (!d) return;
+  if ($('ru-kw')) d.keywords = $('ru-kw').value; if ($('ru-tr')) d.transfer = $('ru-tr').checked; if ($('ru-past')) d.applyPast = $('ru-past').checked;
+}
+function draftRule(d) {
+  return { field: d.field, keywords: d.field === 'description' ? d.keywords.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean) : [],
+    accountId: d.field === 'account' ? d.accountId : (d.onlyAcc || null), categoryId: d.categoryId || null, labelId: d.labelId || null, transfer: !!d.transfer };
+}
+// Past bank records the rule would sort now: matching and still uncategorized
+function rulePastMatches(d) {
+  const r = draftRule(d); if (r.field === 'description' && !r.keywords.length) return [];
+  if (r.field === 'account' && !r.accountId) return [];
+  return S.txs.filter((t) => !t.manual && !t.parentId && !t.categoryId && !t.isTransfer && ruleMatches(r, t));
+}
+function rulePastText(n) { return `Also apply to ${n} past uncategorized record${n === 1 ? '' : 's'}`; }
 function renderRule() {
   const d = S.ruleDraft; const c = S.cats[d.categoryId]; const l = S.labels[d.labelId]; const a = S.accounts[d.accountId];
   openSheet(`<h3>${d.id ? 'Edit rule' : 'New rule'}</h3>
@@ -1891,32 +1926,43 @@ function renderRule() {
       ${valueRow('ru-field', glyph(d.field === 'account' ? 'credit_card' : 'text_fields', '#3478F6'), 'Match by', d.field === 'account' ? 'Account' : 'Description')}
       ${d.field === 'account'
         ? valueRow('ru-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(a ? accName(a) : 'Choose'))
-        : `<div class="set-item">${glyph('search', '#8E8E93')}<input class="bare-input" id="ru-kw" value="${esc(d.keywords)}" placeholder="Keywords, e.g. animal hospital, petco" autocomplete="off" aria-label="Keywords"></div>`}
+        : `<div class="set-item">${glyph('search', '#8E8E93')}<input class="bare-input" id="ru-kw" value="${esc(d.keywords)}" placeholder="Keywords, e.g. animal hospital, petco" autocomplete="off" aria-label="Keywords"></div>
+          ${valueRow('ru-only', glyph('credit_card', '#5856D6'), 'Only in account', esc(d.onlyAcc ? accName(S.accounts[d.onlyAcc]) || '(removed account)' : 'Any account'))}`}
     </div>
-    ${d.field === 'account' ? '' : '<div class="meta" style="padding:0 4px">Separate keywords with commas. Any one of them matches. Not case-sensitive.</div>'}
+    ${d.field === 'account' ? '' : `${d.suggestions?.length ? `<div class="chips wrap">${d.suggestions.map((v) => `<button class="chip" data-act="ru-sug" data-v="${esc(v)}" aria-pressed="${d.keywords.trim().toLowerCase() === v}">${esc(v)}</button>`).join('')}</div>` : ''}
+      <div class="meta" style="padding:0 4px">Separate keywords with commas. Any one of them matches. Not case-sensitive. A shorter word matches more records.</div>`}
     <div class="sec-head">Then</div>
     <div class="set-list">
       ${valueRow('ru-cat', c ? catIcon(c) : glyph('category', '#C7C7CC'), 'Category', esc(c ? c.name : 'No change'))}
       ${valueRow('ru-lbl', l ? `<span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span>` : glyph('sell', '#C7C7CC'), 'Label', l ? labelPill(l) : 'No label')}
       <label class="set-item">${glyph('swap_horiz', '#8E8E93')}<span class="n">Mark as transfer</span><input type="checkbox" class="switch" id="ru-tr" ${d.transfer ? 'checked' : ''}></label>
     </div>
+    <div class="set-list"><label class="set-item">${glyph('history', '#8E8E93')}<span class="n" id="ru-past-n">${rulePastText(rulePastMatches(d).length)}</span><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''}></label></div>
     ${d.id ? `<button class="pill-btn danger wide" data-act="del-rule" data-id="${d.id}">${icon('delete')}Delete rule</button>` : ''}
     ${saveBar('save-rule', 'Save')}`);
 }
 async function saveRule() {
   captureRule(); const d = S.ruleDraft;
-  const data = {
-    field: d.field,
-    keywords: d.field === 'description' ? d.keywords.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : [],
-    accountId: d.field === 'account' ? d.accountId : null,
-    categoryId: d.categoryId || null, labelId: d.labelId || null, transfer: d.transfer,
-  };
+  const data = draftRule(d);
   if (d.field === 'description' && !data.keywords.length) { toast('Enter at least one keyword'); return; }
   if (d.field === 'account' && !data.accountId) { toast('Choose an account'); return; }
   if (!data.categoryId && !data.labelId && !data.transfer) { toast('Choose at least one action'); return; }
+  const past = d.applyPast ? rulePastMatches(d) : [];
   if (d.id) await updateDoc(doc(db, 'rules', d.id), data);
   else await setDoc(doc(collection(db, 'rules')), { ...data, order: ruleList().reduce((m, x) => Math.max(m, x.order ?? 0), 0) + 1 });
-  closeSheet(); toast('Rule saved. It applies to new records; use “Apply rules to existing records” for older ones.', 4500);
+  for (let i = 0; i < past.length; i += 450) {
+    const b = writeBatch(db);
+    past.slice(i, i + 450).forEach((t) => {
+      const u = { ruled: true };
+      if (data.categoryId && S.cats[data.categoryId]) u.categoryId = data.categoryId;
+      if (data.labelId && S.labels[data.labelId] && !(t.labels || []).includes(data.labelId)) u.labels = [...(t.labels || []), data.labelId];
+      if (data.transfer) u.isTransfer = true;
+      b.update(doc(db, 'transactions', t.id), u);
+    });
+    await b.commit();
+  }
+  S.ruleDraft = null; closeSheet();
+  toast(past.length ? `Rule saved · ${past.length} record${past.length === 1 ? '' : 's'} updated` : 'Rule saved. It applies to new records from now on.', 4000);
 }
 
 // ---------- actions ----------
@@ -2183,6 +2229,9 @@ document.addEventListener('click', async (e) => {
       case 'ru-field': captureRule(); openOptions('Match by', [{ value: 'description', label: 'Description contains', iconHtml: glyph('text_fields', '#3478F6') }, { value: 'account', label: 'Account is', iconHtml: glyph('credit_card', '#3478F6') }], S.ruleDraft.field, (v) => { S.ruleDraft.field = v; renderRule(); }); break;
       case 'ru-acc': captureRule(); openOptions('Account', accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash), S.ruleDraft.accountId, (v) => { S.ruleDraft.accountId = v; renderRule(); }); break;
       case 'ru-cat': captureRule(); openPicker({ mode: 'rule' }); break;
+      case 'ru-only': captureRule(); openOptions('Only in account', [{ value: '', label: 'Any account', iconHtml: glyph('all_inclusive', '#8E8E93') }, ...accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash)], S.ruleDraft.onlyAcc || '', (v) => { S.ruleDraft.onlyAcc = v || null; renderRule(); }); break;
+      case 'ru-sug': captureRule(); S.ruleDraft.keywords = el.dataset.v; renderRule(); break;
+      case 'ed-rule': captureEdit(); sheetRuleFromTx(S.edit.txId, S.edit); break;
       case 'ru-lbl': captureRule(); openOptions('Label', labelOptionList('No label'), S.ruleDraft.labelId || '', (v) => { S.ruleDraft.labelId = v || null; renderRule(); }); break;
       case 'pick-color':
         sheet.dataset.color = el.dataset.color;
@@ -2270,6 +2319,7 @@ document.addEventListener('input', (e) => {
   if (e.target.id === 'nm' && $('lbl-prev')) { $('lbl-prev').innerHTML = labelPill({ name: e.target.value || 'Label', color: $('sheet').dataset.color }); return; }
   if (e.target.id === 'ed-amt') { e.target.style.width = `${Math.max(4, e.target.value.length) + 0.5}ch`; return; }
   if (e.target.classList.contains('sp-in')) { spCapture(); spRefresh(); return; }
+  if (e.target.id === 'ru-kw' && S.ruleDraft) { S.ruleDraft.keywords = e.target.value; const n = $('ru-past-n'); if (n) n.textContent = rulePastText(rulePastMatches(S.ruleDraft).length); return; }
   if (e.target.id === 'catq') { $('catpick').innerHTML = pickerBody(e.target.value.trim().toLowerCase()); return; }
   if (e.target.id !== 'txsearch') return;
   S.search = e.target.value;
