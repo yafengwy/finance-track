@@ -349,6 +349,14 @@ input.row-select { direction: ltr; }
 .sheet-right { justify-self: end; display: flex; align-items: center; gap: 6px; }
 .sheet-right .pill-btn { margin: 0; }
 
+/* rule keywords as chips */
+.kw-add { color: var(--accent); flex-shrink: 0; }
+.kw-add .ms { font-size: 26px; }
+.kw-row { padding-top: 4px; padding-bottom: 10px; }
+.kw-chip { display: inline-flex; align-items: center; gap: 4px; padding-right: 6px; }
+.kw-chip button { border: 0; background: none; padding: 0; display: flex; color: var(--sub); }
+.kw-chip .ms { font-size: 18px; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -482,7 +490,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '6.1';
+const APP_VERSION = '6.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -638,7 +646,7 @@ function listen() {
   watch('accounts', 'accounts');
   watch('labels', 'labels');
   watch('filters', 'filters');
-  watch('rules', 'rules', () => { S.rulesLoaded = true; scheduleRules(); });
+  watch('rules', 'rules', () => { S.rulesLoaded = true; mergeDupRules(); scheduleRules(); });
   watch('items', 'items');
   if (Object.keys(CARDS).some((c) => prevRange(rangeOf(getPeriod(c)))[0] < loadedSince())) S.loadAll = true;
   subscribeTx();
@@ -715,6 +723,25 @@ async function seedCategories() {
 
 // ---------- automatic rules ----------
 // Runs in the app: each new transaction is checked once (marked ruled: true). Manual changes are never overwritten.
+// Keyword rules with the same account and the same actions are kept as one rule
+function sameRuleTarget(a, b) {
+  return a.field === 'description' && b.field === 'description' && (a.accountId || null) === (b.accountId || null)
+    && (a.categoryId || null) === (b.categoryId || null) && (a.labelId || null) === (b.labelId || null) && !!a.transfer === !!b.transfer;
+}
+async function mergeDupRules() {
+  if (S.mergingRules) return; const groups = [];
+  ruleList().forEach((r) => { const g = groups.find((x) => sameRuleTarget(x[0], r)); if (g) g.push(r); else groups.push([r]); });
+  const dups = groups.filter((g) => g.length > 1); if (!dups.length) return;
+  S.mergingRules = true;
+  try {
+    const b = writeBatch(db);
+    dups.forEach(([keep, ...rest]) => {
+      b.update(doc(db, 'rules', keep.id), { keywords: [...new Set([keep, ...rest].flatMap((r) => r.keywords || []))] });
+      rest.forEach((r) => b.delete(doc(db, 'rules', r.id)));
+    });
+    await b.commit();
+  } catch (e) { console.error(e); } finally { S.mergingRules = false; }
+}
 function ruleList() { return Object.values(S.rules).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
 function ruleMatches(r, t) {
   if (r.field === 'account') return t.accountId === r.accountId;
@@ -1882,7 +1909,7 @@ function sheetLabel(id) {
 function sheetRule(id) {
   const r = id ? S.rules[id] : {};
   const field = r.field || 'description';
-  S.ruleDraft = { id: id || null, field, keywords: (r.keywords || []).join(', '), accountId: field === 'account' ? r.accountId || null : null, onlyAcc: field === 'description' ? r.accountId || null : null,
+  S.ruleDraft = { id: id || null, field, kw: [...(r.keywords || [])], kwInput: '', accountId: field === 'account' ? r.accountId || null : null, onlyAcc: field === 'description' ? r.accountId || null : null,
     categoryId: r.categoryId || null, labelId: r.labelId || null, transfer: !!r.transfer, applyPast: !id };
   renderRule();
 }
@@ -1899,16 +1926,19 @@ function kwSuggest(t) {
 function sheetRuleFromTx(txId, e) {
   const t = S.txById[txId]; if (!t) return;
   const sug = kwSuggest(t);
-  S.ruleDraft = { id: null, field: 'description', keywords: sug[0] || '', accountId: null, onlyAcc: t.accountId || null, suggestions: sug,
+  S.ruleDraft = { id: null, field: 'description', kw: sug[0] ? [sug[0]] : [], kwInput: '', accountId: null, onlyAcc: t.accountId || null, suggestions: sug,
     categoryId: (e ? e.categoryId : t.categoryId) || null, labelId: (e ? e.labels : t.labels || [])[0] || null, transfer: e ? e.type === 'transfer' : !!t.isTransfer, applyPast: true };
   renderRule();
 }
 function captureRule() {
   const d = S.ruleDraft; if (!d) return;
-  if ($('ru-kw')) d.keywords = $('ru-kw').value; if ($('ru-tr')) d.transfer = $('ru-tr').checked; if ($('ru-past')) d.applyPast = $('ru-past').checked;
+  if ($('ru-kw')) d.kwInput = $('ru-kw').value; if ($('ru-tr')) d.transfer = $('ru-tr').checked; if ($('ru-past')) d.applyPast = $('ru-past').checked;
 }
+// Keywords are chips; text still in the box (commas allowed) counts too
+function parseKw(v) { return String(v || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean); }
+function allKw(d) { return [...new Set([...(d.kw || []), ...parseKw(d.kwInput)])]; }
 function draftRule(d) {
-  return { field: d.field, keywords: d.field === 'description' ? d.keywords.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean) : [],
+  return { field: d.field, keywords: d.field === 'description' ? allKw(d) : [],
     accountId: d.field === 'account' ? d.accountId : (d.onlyAcc || null), categoryId: d.categoryId || null, labelId: d.labelId || null, transfer: !!d.transfer };
 }
 // Past bank records the rule would sort now: matching and still uncategorized
@@ -1926,11 +1956,13 @@ function renderRule() {
       ${valueRow('ru-field', glyph(d.field === 'account' ? 'credit_card' : 'text_fields', '#3478F6'), 'Match by', d.field === 'account' ? 'Account' : 'Description')}
       ${d.field === 'account'
         ? valueRow('ru-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(a ? accName(a) : 'Choose'))
-        : `<div class="set-item">${glyph('search', '#8E8E93')}<input class="bare-input" id="ru-kw" value="${esc(d.keywords)}" placeholder="Keywords, e.g. animal hospital, petco" autocomplete="off" aria-label="Keywords"></div>
+        : `<div class="set-item">${glyph('key', '#8E8E93')}<input class="bare-input" id="ru-kw" value="${esc(d.kwInput)}" placeholder="Add a keyword" autocomplete="off" enterkeyhint="done" aria-label="Add a keyword">
+            <button class="icon-btn kw-add" data-act="ru-kw-add" aria-label="Add keyword">${icon('add_circle')}</button></div>
+          ${d.kw.length ? `<div class="set-item kw-row"><div class="chips wrap">${d.kw.map((k, i) => `<span class="chip kw-chip">${esc(k)}<button data-act="ru-kw-del" data-i="${i}" aria-label="Remove ${esc(k)}">${icon('cancel')}</button></span>`).join('')}</div></div>` : ''}
           ${valueRow('ru-only', glyph('credit_card', '#5856D6'), 'Only in account', esc(d.onlyAcc ? accName(S.accounts[d.onlyAcc]) || '(removed account)' : 'Any account'))}`}
     </div>
-    ${d.field === 'account' ? '' : `${d.suggestions?.length ? `<div class="chips wrap">${d.suggestions.map((v) => `<button class="chip" data-act="ru-sug" data-v="${esc(v)}" aria-pressed="${d.keywords.trim().toLowerCase() === v}">${esc(v)}</button>`).join('')}</div>` : ''}
-      <div class="meta" style="padding:0 4px">Separate keywords with commas. Any one of them matches. Not case-sensitive. A shorter word matches more records.</div>`}
+    ${d.field === 'account' ? '' : `${(d.suggestions || []).filter((v) => !d.kw.includes(v)).length ? `<div class="chips wrap"><span class="meta">Suggestions</span>${d.suggestions.filter((v) => !d.kw.includes(v)).map((v) => `<button class="chip" data-act="ru-sug" data-v="${esc(v)}">${icon('add')}${esc(v)}</button>`).join('')}</div>` : ''}
+      <div class="meta" style="padding:0 4px">Any one keyword matches. Not case-sensitive. A shorter word matches more records.</div>`}
     <div class="sec-head">Then</div>
     <div class="set-list">
       ${valueRow('ru-cat', c ? catIcon(c) : glyph('category', '#C7C7CC'), 'Category', esc(c ? c.name : 'No change'))}
@@ -1948,7 +1980,14 @@ async function saveRule() {
   if (d.field === 'account' && !data.accountId) { toast('Choose an account'); return; }
   if (!data.categoryId && !data.labelId && !data.transfer) { toast('Choose at least one action'); return; }
   const past = d.applyPast ? rulePastMatches(d) : [];
-  if (d.id) await updateDoc(doc(db, 'rules', d.id), data);
+  // Same account and same actions as an existing rule → just add the keywords to that rule
+  const twin = ruleList().find((r) => r.id !== d.id && sameRuleTarget(r, data));
+  if (twin) {
+    const b = writeBatch(db);
+    b.update(doc(db, 'rules', twin.id), { keywords: [...new Set([...(twin.keywords || []), ...data.keywords])] });
+    if (d.id) b.delete(doc(db, 'rules', d.id));
+    await b.commit();
+  } else if (d.id) await updateDoc(doc(db, 'rules', d.id), data);
   else await setDoc(doc(collection(db, 'rules')), { ...data, order: ruleList().reduce((m, x) => Math.max(m, x.order ?? 0), 0) + 1 });
   for (let i = 0; i < past.length; i += 450) {
     const b = writeBatch(db);
@@ -1962,7 +2001,8 @@ async function saveRule() {
     await b.commit();
   }
   S.ruleDraft = null; closeSheet();
-  toast(past.length ? `Rule saved · ${past.length} record${past.length === 1 ? '' : 's'} updated` : 'Rule saved. It applies to new records from now on.', 4000);
+  const head = twin ? 'Keywords added to an existing rule' : 'Rule saved';
+  toast(past.length ? `${head} · ${past.length} record${past.length === 1 ? '' : 's'} updated` : `${head}. It applies to new records from now on.`, 4000);
 }
 
 // ---------- actions ----------
@@ -2099,6 +2139,11 @@ async function newLabel() {
   return { id: ref.id, name, color };
 }
 
+// Return in the keyword box adds it as a chip
+document.addEventListener('keydown', (e) => {
+  if (e.target.id !== 'ru-kw' || e.key !== 'Enter' || !S.ruleDraft) return;
+  e.preventDefault(); captureRule(); S.ruleDraft.kw = allKw(S.ruleDraft); S.ruleDraft.kwInput = ''; renderRule(); focusNow('ru-kw');
+});
 document.addEventListener('click', async (e) => {
   // A selected bar in Spending by Category is cleared by any tap that is not on a bar,
   // except opening one of its listed records (or taps inside popups)
@@ -2230,7 +2275,9 @@ document.addEventListener('click', async (e) => {
       case 'ru-acc': captureRule(); openOptions('Account', accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash), S.ruleDraft.accountId, (v) => { S.ruleDraft.accountId = v; renderRule(); }); break;
       case 'ru-cat': captureRule(); openPicker({ mode: 'rule' }); break;
       case 'ru-only': captureRule(); openOptions('Only in account', [{ value: '', label: 'Any account', iconHtml: glyph('all_inclusive', '#8E8E93') }, ...accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash)], S.ruleDraft.onlyAcc || '', (v) => { S.ruleDraft.onlyAcc = v || null; renderRule(); }); break;
-      case 'ru-sug': captureRule(); S.ruleDraft.keywords = el.dataset.v; renderRule(); break;
+      case 'ru-sug': captureRule(); S.ruleDraft.kw = [...new Set([...S.ruleDraft.kw, el.dataset.v])]; renderRule(); break;
+      case 'ru-kw-add': captureRule(); S.ruleDraft.kw = allKw(S.ruleDraft); S.ruleDraft.kwInput = ''; renderRule(); break;
+      case 'ru-kw-del': captureRule(); S.ruleDraft.kw.splice(+el.dataset.i, 1); renderRule(); break;
       case 'ed-rule': captureEdit(); sheetRuleFromTx(S.edit.txId, S.edit); break;
       case 'ru-lbl': captureRule(); openOptions('Label', labelOptionList('No label'), S.ruleDraft.labelId || '', (v) => { S.ruleDraft.labelId = v || null; renderRule(); }); break;
       case 'pick-color':
@@ -2319,7 +2366,7 @@ document.addEventListener('input', (e) => {
   if (e.target.id === 'nm' && $('lbl-prev')) { $('lbl-prev').innerHTML = labelPill({ name: e.target.value || 'Label', color: $('sheet').dataset.color }); return; }
   if (e.target.id === 'ed-amt') { e.target.style.width = `${Math.max(4, e.target.value.length) + 0.5}ch`; return; }
   if (e.target.classList.contains('sp-in')) { spCapture(); spRefresh(); return; }
-  if (e.target.id === 'ru-kw' && S.ruleDraft) { S.ruleDraft.keywords = e.target.value; const n = $('ru-past-n'); if (n) n.textContent = rulePastText(rulePastMatches(S.ruleDraft).length); return; }
+  if (e.target.id === 'ru-kw' && S.ruleDraft) { S.ruleDraft.kwInput = e.target.value; const n = $('ru-past-n'); if (n) n.textContent = rulePastText(rulePastMatches(S.ruleDraft).length); return; }
   if (e.target.id === 'catq') { $('catpick').innerHTML = pickerBody(e.target.value.trim().toLowerCase()); return; }
   if (e.target.id !== 'txsearch') return;
   S.search = e.target.value;
