@@ -473,7 +473,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '5.3';
+const APP_VERSION = '5.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -650,12 +650,23 @@ function subscribeTx() {
 }
 // A split record is stored once with splits: [{ amount, categoryId, isTransfer, note, labels }].
 // Everywhere else it appears as separate parts with id "<recordId>~<n>".
-// If the bank later changes the total (e.g. a tip added), the first part absorbs the difference.
+// If the bank later changes the total (e.g. a tip added), the parts follow the split mode (see below).
 function expandTx(t) {
   if (!Array.isArray(t.splits) || t.splits.length < 2) return [t];
   const { splits, ...base } = t;
-  const cents = splits.map((x) => Math.round((Number(x.amount) || 0) * 100));
-  cents[0] = Math.round(t.amount * 100) - cents.slice(1).reduce((a, b) => a + b, 0);
+  const total = Math.round(t.amount * 100); const n = splits.length;
+  let cents = splits.map((x) => Math.round((Number(x.amount) || 0) * 100));
+  // Recompute from the current total, so a changed bank amount follows the way it was split:
+  // Equal → re-split evenly · Percent → same percentages · Amounts → the first (remainder) part absorbs it
+  if (t.splitMode === 'equal') cents = cents.map(() => Math.trunc(total / n));
+  else if (t.splitMode === 'pct' && splits.every((x) => x.pct != null)) cents = splits.map((x) => Math.round(total * x.pct / 100));
+  cents[0] = total - cents.slice(1).reduce((a, b) => a + b, 0);
+  // Amounts no longer fit (bank total dropped below the fixed parts): scale every part proportionally
+  if (Math.sign(cents[0]) !== Math.sign(total) || !cents[0]) {
+    const old = splits.reduce((a, x) => a + Math.round((Number(x.amount) || 0) * 100), 0);
+    cents = splits.map((x) => (old ? Math.round(Math.round((Number(x.amount) || 0) * 100) * total / old) : Math.trunc(total / n)));
+    cents[0] = total - cents.slice(1).reduce((a, b) => a + b, 0);
+  }
   return splits.map((x, i) => ({
     ...base, id: `${t.id}~${i}`, parentId: t.id, splitIdx: i, splitN: splits.length,
     amount: cents[i] / 100, categoryId: x.categoryId || null, isTransfer: !!x.isTransfer, note: x.note || '', labels: x.labels || [],
@@ -1631,9 +1642,8 @@ function pickerBody(q) {
 // ---- record sheet: new record, or tap a record anywhere except its icon ----
 function openEdit(txId) {
   const t = S.txById[txId]; if (!t) return;
-  if (t.parentId) { openSplit(t.parentId); return; }
   S.edit = {
-    txId, manual: !!t.manual,
+    txId, manual: !!t.manual && !t.parentId, part: !!t.parentId,
     type: t.isTransfer ? 'transfer' : (t.amount < 0 ? 'income' : 'expense'),
     categoryId: t.categoryId || null, labels: [...(t.labels || [])], note: t.note || '',
     amount: Math.abs(t.amount), date: t.date, accountId: t.accountId,
@@ -1681,13 +1691,13 @@ function renderEdit() {
         : `<div class="set-item">${accIcon}<span class="n">Account</span><span class="v">${esc(accName(acc))}</span></div>`}
       <div class="set-item">${glyph('calendar_today', '#FF3B30')}<span class="n">Date</span>
         ${e.manual ? `<input id="ed-date" type="date" class="row-date" value="${e.date}">` : `<span class="v">${shortDate(e.date)}${t.pending ? ' (pending)' : ''}</span>`}</div>
-      ${t ? valueRow('ed-split', glyph('call_split', '#5856D6'), 'Split', 'None') : ''}
+      ${t ? valueRow('ed-split', glyph('call_split', '#5856D6'), 'Split', t.parentId ? `Part ${t.splitIdx + 1} of ${t.splitN}` : 'None') : ''}
     </div>
-    ${t && !e.manual && e.type !== 'transfer' ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply the category to other uncategorized records from this merchant</label>` : ''}
+    ${t && !e.manual && !e.part && e.type !== 'transfer' ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply the category to other uncategorized records from this merchant</label>` : ''}
     <div class="sec-head">Labels</div>${labelChips(e.labels, '')}
     <div class="sec-head">Note</div><input class="input" id="ed-note" value="${esc(e.note)}" placeholder="${esc(t ? (t.merchant || t.name || '') : 'Add a note')}" autocomplete="off" aria-label="Note">
-    ${t && !e.manual ? `<div class="meta">Bank description: ${esc(t.name)}</div>` : ''}
-    ${t && (e.manual || t.demo) ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
+    ${t && !t.manual && t.name ? `<div class="meta">Bank description: ${esc(t.name)}</div>` : ''}
+    ${t && !e.part && (e.manual || t.demo) ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
     ${saveBar('save-edit', 'Save')}`);
 }
 async function saveEdit() {
@@ -1697,6 +1707,7 @@ async function saveEdit() {
   if (e.manual && !e.amount) { toast('Enter an amount'); return; }
   const upd = { isTransfer: e.type === 'transfer', labels: e.labels, note: e.note.trim() };
   upd.categoryId = e.type === 'transfer' ? (t?.categoryId || null) : (e.categoryId || null);
+  if (t?.parentId) { const b = writeBatch(db); partOps([t], () => upd).forEach((op) => op(b)); await b.commit(); closeSheet(); toast('Saved'); backToPopup(); return; }
   if (e.manual) {
     upd.amount = e.type === 'income' ? -e.amount : e.type === 'expense' ? e.amount : (t && t.amount < 0 ? -e.amount : e.amount);
     upd.date = e.date; upd.accountId = e.accountId;
@@ -1768,7 +1779,6 @@ function renderSplit() {
         ${sp.parts.length > 2 ? `<button class="icon-btn sp-rm" data-act="sp-del" data-i="${i}" aria-label="Remove part">${icon('close')}</button>` : ''}</div>
       <label class="set-item"><span class="n">Transfer <span class="meta">not counted</span></span><input type="checkbox" class="switch" data-sp-transfer="${i}" ${pt.isTransfer ? 'checked' : ''}></label>
       <div class="set-item sp-note-row"><input class="input sp-note" data-i="${i}" data-f="note" value="${esc(pt.note)}" placeholder="Add note" autocomplete="off" aria-label="Note"></div>
-      ${Object.keys(S.labels).length ? `<div class="chips wrap sp-lbls">${sortedLabels().map((l) => `<button class="chip lchip" data-act="sp-label" data-i="${i}" data-id="${l.id}" aria-pressed="${pt.labels.includes(l.id)}" style="--lc:${esc(labelColor(l))}">${esc(l.name)}</button>`).join('')}</div>` : ''}
     </div>`;
   };
   openSheet(`<h3>Split record</h3>
@@ -2135,12 +2145,11 @@ document.addEventListener('click', async (e) => {
       case 'edit-cat': captureEdit(); openPicker({ mode: 'edit', txId: S.edit.txId }); break;
       case 'edit-type': captureEdit(); S.edit.type = el.dataset.type; renderEdit(); break;
       case 'save-edit': await saveEdit(); break;
-      case 'ed-split': captureEdit(); openSplit(S.edit.txId, S.edit); break;
+      case 'ed-split': { captureEdit(); const et = S.txById[S.edit.txId]; if (et?.parentId) openSplit(et.parentId); else openSplit(S.edit.txId, S.edit); break; }
       case 'sp-mode': spCapture(); S.split.mode = el.dataset.mode; renderSplit(); break;
       case 'sp-cat': spCapture(); openPicker({ mode: 'split', i: +el.dataset.i }); break;
       case 'sp-add': spCapture(); S.split.parts.push(newPart()); renderSplit(); break;
       case 'sp-del': spCapture(); S.split.parts.splice(+el.dataset.i, 1); renderSplit(); break;
-      case 'sp-label': { spCapture(); const pt = S.split.parts[+el.dataset.i]; pt.labels = pt.labels.includes(id) ? pt.labels.filter((x) => x !== id) : [...pt.labels, id]; renderSplit(); break; }
       case 'sp-save': await saveSplit(); break;
       case 'sp-remove': await removeSplit(); break;
       case 'ed-acc': captureEdit(); openOptions('Account', accountOptionList(), S.edit.accountId, (v) => { S.edit.accountId = v; renderEdit(); }); break;
