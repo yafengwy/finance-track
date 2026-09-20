@@ -357,6 +357,10 @@ input.row-select { direction: ltr; }
 .kw-chip button { border: 0; background: none; padding: 0; display: flex; color: var(--sub); }
 .kw-chip .ms { font-size: 18px; }
 
+.search-clear { border: 0; background: none; padding: 6px; display: flex; color: #AEAEB2; flex-shrink: 0; }
+.search-clear .ms { font-size: 20px; }
+.searchbar input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -490,7 +494,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '6.5';
+const APP_VERSION = '6.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -541,10 +545,10 @@ function catIcon(cat, lg = false) {
 function sortedLabels() { return Object.values(S.labels).sort((a, b) => a.name.localeCompare(b.name)); }
 // A record put directly on a category that has subcategories shows as "General – Name"
 function txCatName(c) { return !c ? 'Uncategorized' : subsOf(c.id).length ? `General – ${c.name}` : c.name; }
-// Row title: bank records show the bank's name; manual records have none, so their note is the title.
+// Row title: bank records show the bank's name; manual records show the Name you typed (or their category).
 // txNoteLine: the note under the title (bank records only, so a manual note is not shown twice)
-function txTitle(t) { return t.manual ? (t.note || txCatName(S.cats[t.categoryId])) : (t.merchant || t.name || t.note || ''); }
-function txNoteLine(t) { return !t.manual && t.note && t.note !== txTitle(t) ? `<span class="note">${esc(t.note)}</span>` : ''; }
+function txTitle(t) { return t.manual ? (t.name || txCatName(S.cats[t.categoryId])) : (t.merchant || t.name || t.note || ''); }
+function txNoteLine(t) { return t.note && t.note !== txTitle(t) ? `<span class="note">${esc(t.note)}</span>` : ''; }
 function accName(a) { return a ? (a.customName || a.name) : ''; }
 
 // ---------- periods & card filters ----------
@@ -1039,8 +1043,8 @@ function sheetRecords(pop) {
   const rows = txs.map((t) => {
     const c = S.cats[t.categoryId]; const inflow = t.amount < 0;
     const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
-    // Bank description in quotes; manual records have none (their name is only a copy of the note)
-    const desc = t.manual ? '' : [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i && v !== t.note).join(' - ');
+    // Name in quotes (bank description, or the Name of a manual record)
+    const desc = t.manual ? (t.name && t.name !== t.note ? t.name : '') : [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i && v !== t.note).join(' - ');
     return `<div class="more-row"><button class="tx-ico" data-act="tx-cat" data-id="${t.id}" data-back="rec" aria-label="Choose category">${catIcon(c)}</button>
       <button class="more-main" data-act="tx" data-id="${t.id}" data-back="rec"><span class="mid"><span class="row-between"><span class="n">${esc(txCatName(c))}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
       <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span>
@@ -1312,7 +1316,7 @@ function viewTx(params) {
   if (day) html += '</div>';
   if (!shown.length) html = `<div class="empty">${f === 'unknown' && !q ? 'Everything is categorized' : 'No records'}</div>`;
   const total = list.reduce((n, t) => n + signed(t), 0);
-  const searchBar = `<div class="searchbar">${icon('search')}<input id="txsearch" type="search" placeholder="Search merchant, note, category, amount" value="${esc(S.search)}" autocomplete="off" aria-label="Search records"></div>`;
+  const searchBar = `<div class="searchbar">${icon('search')}<input id="txsearch" type="search" placeholder="Search merchant, note, category, amount" value="${esc(S.search)}" autocomplete="off" aria-label="Search records">${S.search ? `<button class="search-clear" data-act="search-clear" aria-label="Clear search">${icon('cancel')}</button>` : ''}</div>`;
   const nf = recFilterCount(); const p = recPeriod();
   const dock = `<div class="rec-dock">
     <button class="dock-grab" data-act="rec-panel" aria-label="Accounts, categories and filter"><span class="grab"></span><span class="meta">${nf ? `${nf} filter${nf > 1 ? 's' : ''} on · ` : ''}Accounts · Categories · Filter</span></button>
@@ -1695,18 +1699,18 @@ function openEdit(txId) {
   S.edit = {
     txId, manual: !!t.manual && !t.parentId, part: !!t.parentId,
     type: t.isTransfer ? 'transfer' : (t.amount < 0 ? 'income' : 'expense'),
-    categoryId: t.categoryId || null, labels: [...(t.labels || [])], note: t.note || '',
+    categoryId: t.categoryId || null, labels: [...(t.labels || [])], note: t.note || '', name: t.manual ? t.name || '' : '',
     amount: Math.abs(t.amount), date: t.date, accountId: t.accountId,
   };
   renderEdit();
 }
 function openNew() {
-  S.edit = { txId: null, manual: true, type: 'expense', categoryId: null, labels: [], note: '', amount: 0, date: ymd(new Date()), accountId: 'cash' };
+  S.edit = { txId: null, manual: true, type: 'expense', categoryId: null, labels: [], note: '', name: '', amount: 0, date: ymd(new Date()), accountId: 'cash' };
   renderEdit();
 }
 function captureEdit() {
   const e = S.edit; if (!e || !$('ed-note')) return;
-  e.note = $('ed-note').value;
+  e.note = $('ed-note').value; if ($('ed-name')) e.name = $('ed-name').value;
   e.labels = [...document.querySelectorAll('#lblbox [data-act="toggle-label"][aria-pressed="true"]')].map((b) => b.dataset.id);
   if ($('same-merchant')) S.sameMerchant = $('same-merchant').checked;
   if (e.manual) {
@@ -1746,6 +1750,7 @@ function renderEdit() {
     </div>
     ${t && !e.manual && !e.part && e.type !== 'transfer' ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply the category to other uncategorized records from this merchant</label>` : ''}
     <div class="sec-head">Labels</div>${labelChips(e.labels, '')}
+    ${e.manual ? `<div class="sec-head">Name</div><input class="input" id="ed-name" value="${esc(e.name || '')}" placeholder="e.g. Animal Hospital" autocomplete="off" aria-label="Name">` : ''}
     <div class="sec-head">Note</div><input class="input" id="ed-note" value="${esc(e.note)}" placeholder="${esc(t ? (t.merchant || t.name || '') : 'Add a note')}" autocomplete="off" aria-label="Note">
     ${t && !t.manual && t.name ? `<div class="meta">Bank description: ${esc(t.name)}</div>` : ''}
     ${t && !e.part && e.manual ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
@@ -1762,7 +1767,7 @@ async function saveEdit() {
   if (e.manual) {
     upd.amount = e.type === 'income' ? -e.amount : e.type === 'expense' ? e.amount : (t && t.amount < 0 ? -e.amount : e.amount);
     upd.date = e.date; upd.accountId = e.accountId;
-    upd.name = '';
+    upd.name = (e.name || '').trim();
     await ensureCash(e.accountId);
   }
   if (!t) {
@@ -2267,6 +2272,7 @@ document.addEventListener('click', async (e) => {
       case 'edit-cat': captureEdit(); openPicker({ mode: 'edit', txId: S.edit.txId }); break;
       case 'edit-type': captureEdit(); S.edit.type = el.dataset.type; renderEdit(); break;
       case 'save-edit': await saveEdit(); break;
+      case 'search-clear': S.search = ''; clearTimeout(searchTimer); render(); break;
       case 'ed-split': { captureEdit(); const et = S.txById[S.edit.txId]; if (et?.parentId) openSplit(et.parentId); else openSplit(S.edit.txId, S.edit); break; }
       case 'sp-mode': spCapture(); S.split.mode = el.dataset.mode; renderSplit(); break;
       case 'sp-cat': spCapture(); openPicker({ mode: 'split', i: +el.dataset.i }); break;
