@@ -490,7 +490,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '6.2';
+const APP_VERSION = '6.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1210,7 +1210,7 @@ function matchSearch(t, q) {
   return q.split(/\s+/).every((w) => hay.includes(w.replace(/[$,]/g, '')));
 }
 // ---------- Records: period + account/category/filter panel ----------
-const REC_KINDS = { week: 'This week', month: 'This month', last_month: 'Last month', '6m': 'Last 6 months', year: 'This year', all: 'All time', custom: 'Custom range…' };
+const REC_KINDS = { month: 'This month', last_month: 'Last month', year: 'This year', last_year: 'Last year', '2y': 'Since last year', all: 'All time', custom: 'Custom range…' };
 function recPresetRange(kind, ref = new Date()) {
   const y = ref.getFullYear(); const m = ref.getMonth();
   if (kind === 'week') { const s = addDays(ref, -ref.getDay()); return [ymd(s), ymd(addDays(s, 6))]; }
@@ -1218,11 +1218,13 @@ function recPresetRange(kind, ref = new Date()) {
   if (kind === 'last_month') return [ymd(new Date(y, m - 1, 1)), ymd(new Date(y, m, 0))];
   if (kind === '6m') { const s = new Date(y, m - 6, ref.getDate() + 1); return [ymd(s), ymd(ref)]; }
   if (kind === 'year') return [ymd(new Date(y, 0, 1)), ymd(new Date(y, 11, 31))];
+  if (kind === 'last_year') return [ymd(new Date(y - 1, 0, 1)), ymd(new Date(y - 1, 11, 31))];
+  if (kind === '2y') return [ymd(new Date(y - 1, 0, 1)), ymd(new Date(y, 11, 31))];
   return [null, null];
 }
-function recPeriod() { if (!S.recP) { const [from, to] = recPresetRange('month'); S.recP = { kind: 'month', unit: 'month', from, to }; } return S.recP; }
+function recPeriod() { if (!S.recP) { const [from, to] = recPresetRange('year'); S.recP = { kind: 'year', unit: 'year', from, to }; } return S.recP; }
 function setRecKind(kind) {
-  const unit = kind === 'last_month' ? 'month' : kind;
+  const unit = kind === 'last_month' ? 'month' : kind === 'last_year' ? 'year' : kind;
   const [from, to] = recPresetRange(kind);
   S.recP = { kind, unit, from, to };
   if (from && from < loadedSince()) setLoadAll(true);
@@ -1235,6 +1237,7 @@ function shiftRec(dir) {
   else if (p.unit === 'month') { nf = new Date(f.getFullYear(), f.getMonth() + dir, 1); nt = new Date(f.getFullYear(), f.getMonth() + dir + 1, 0); }
   else if (p.unit === '6m') { nf = new Date(f.getFullYear(), f.getMonth() + 6 * dir, f.getDate()); nt = new Date(t.getFullYear(), t.getMonth() + 6 * dir, t.getDate()); }
   else if (p.unit === 'year') { nf = new Date(f.getFullYear() + dir, 0, 1); nt = new Date(f.getFullYear() + dir, 11, 31); }
+  else if (p.unit === '2y') { nf = new Date(f.getFullYear() + dir, 0, 1); nt = new Date(t.getFullYear() + dir, 11, 31); }
   else { const days = Math.round((t - f) / 86400000) + 1; nf = addDays(f, days * dir); nt = addDays(t, days * dir); }
   S.recP = { ...p, kind: p.unit === 'custom' ? 'custom' : 'shifted', from: ymd(nf), to: ymd(nt) };
   if (S.recP.from < loadedSince()) setLoadAll(true);
@@ -1249,7 +1252,8 @@ function recLabel() {
     if (p.from === cur[0]) return 'This month'; if (p.from === lm[0]) return 'Last month';
     return f.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   }
-  if (p.unit === 'year') return p.from === cur[0] ? 'This year' : String(f.getFullYear());
+  if (p.unit === 'year') return p.from === cur[0] ? 'This year' : p.from === recPresetRange('last_year')[0] ? 'Last year' : String(f.getFullYear());
+  if (p.unit === '2y') return p.from === cur[0] ? 'Since last year' : `${f.getFullYear()} – ${t.getFullYear()}`;
   if (p.unit === 'week' && p.from === cur[0]) return 'This week';
   if (p.unit === '6m' && p.to === today) return 'Last 6 months';
   const d = (x) => (ymd(x) === today ? 'Today' : x.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: f.getFullYear() !== t.getFullYear() || p.unit === 'custom' ? 'numeric' : undefined }));
@@ -2226,7 +2230,7 @@ document.addEventListener('click', async (e) => {
       case 'txf': S.txFilter = el.dataset.f; go(`#/tx?f=${el.dataset.f}`, true); break;
       case 'load-all': setLoadAll(!S.loadAll); break;
       case 'rec-shift': shiftRec(Number(el.dataset.dir)); render(); break;
-      case 'rec-kind': openOptions('Period', Object.entries(REC_KINDS).map(([k, l]) => ({ value: k, label: l, iconHtml: glyph(k === 'custom' ? 'date_range' : k === 'all' ? 'all_inclusive' : 'calendar_month', '#3478F6') })), recPeriod().kind, (v) => {
+      case 'rec-kind': openOptions('Period', Object.entries(REC_KINDS).map(([k, l]) => ({ value: k, label: l, iconHtml: glyph(k === 'custom' ? 'date_range' : k === 'all' ? 'all_inclusive' : 'calendar_month', '#3478F6') })), (() => { const p = recPeriod(); if (p.kind !== 'shifted') return p.kind; const k = Object.keys(REC_KINDS).find((x) => x !== 'all' && x !== 'custom' && recPresetRange(x)[0] === p.from && recPresetRange(x)[1] === p.to); return k || ''; })(), (v) => {
         if (v === 'custom') { sheetRecCustom(); return; }
         setRecKind(v); if (v === 'all') setLoadAll(true); closeSheet(); render();
       }); break;
