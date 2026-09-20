@@ -340,19 +340,14 @@ input.row-select { direction: ltr; }
 .sp-note { border: 0; background: none; padding: 6px 0; width: 100%; }
 .sp-lbls { padding: 8px 16px 12px; }
 
-/* swipe-to-delete rows */
-.swipe { position: relative; overflow: hidden; }
-.swipe + .swipe { border-top: 1px solid var(--line); }
-.swipe > .tx { border-top: 0; }
-.swipe-act { position: absolute; top: 0; right: 0; bottom: 0; width: 88px; display: flex; }
-.swipe-del { flex: 1; border: 0; background: var(--exp); color: #fff; font-size: 13px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
-.swipe-del .ms { font-size: 22px; }
-.swipe-del:disabled { background: #C7C7CC; color: #fff; }
-.swipe-main { position: relative; background: var(--card); transition: transform .2s ease; }
-.swipe.open .swipe-main { transform: translateX(-88px); }
-.sp-swipe { border-radius: 14px; margin-bottom: 12px; }
-.sp-swipe + .sp-swipe { border-top: 0; }
-.sp-swipe .sp-part { margin-bottom: 0; }
+/* sheet header (Wallet style): ✕ left, title centered, action right; drag it down to close */
+.sheet-top, .sheet-top.compact { position: sticky; top: -12px; z-index: 3; margin: -12px -16px 0; padding: 12px 16px; min-height: 64px;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; background: var(--bg); border-bottom: 1px solid var(--line); touch-action: none; }
+.sheet-close { justify-self: start; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,.08); color: var(--text); padding: 0; }
+.sheet-close .ms { font-size: 22px; }
+.sheet-title { font-size: 17px; font-weight: 600; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60vw; }
+.sheet-right { justify-self: end; display: flex; align-items: center; gap: 6px; }
+.sheet-right .pill-btn { margin: 0; }
 
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
@@ -487,7 +482,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '5.8';
+const APP_VERSION = '6.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1276,12 +1271,11 @@ function viewTx(params) {
     const c = S.cats[t.categoryId]; const acc = S.accounts[t.accountId];
     const inflow = t.amount < 0;
     const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
-    const canDel = !!t.manual && !t.parentId; // only records you entered yourself; bank (and demo bank) records can't be deleted
-    html += `<div class="swipe"><div class="swipe-act"><button class="swipe-del" data-act="del-tx" data-id="${t.id}" ${canDel ? '' : 'disabled'}>${icon('delete')}Delete</button></div><div class="tx swipe-main${t.isTransfer ? ' transfer' : ''}">
+    html += `<div class="tx${t.isTransfer ? ' transfer' : ''}">
       <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c)}</button>
       <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(txTitle(t))}</span>
       <span class="meta">${esc(t.isTransfer ? 'Transfer' : txCatName(c))} · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
-      <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div></div>`;
+      <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
   if (!shown.length) html = `<div class="empty">${f === 'unknown' && !q ? 'Everything is categorized' : 'No records'}</div>`;
@@ -1425,8 +1419,16 @@ function openDrawer() {
 function closeDrawer() { $('drawer').innerHTML = ''; }
 function openSheet(html, opts = {}) {
   $('sheet').innerHTML = `<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true">
-    <div class="sheet-top compact"><button class="grab-btn" data-act="close-sheet" aria-label="Close"><span class="grab"></span></button></div>${html}</div>`;
-  if (opts.short) $('sheet').querySelector('.sheet').classList.add('short');
+    <div class="sheet-top"><button class="sheet-close" data-act="close-sheet" aria-label="Close">${icon('close')}</button><div class="sheet-title"></div><div class="sheet-right"></div></div>${html}</div>`;
+  // Header in Wallet style: ✕ on the left, the sheet's title centered, its action (Sort, Clear filter…) on the right
+  const sh = $('sheet').querySelector('.sheet'); const top = sh.querySelector('.sheet-top'); const first = top.nextElementSibling;
+  const h = first?.tagName === 'H3' ? first : first?.classList.contains('rec-head') ? first.querySelector('h3') : null;
+  if (h) {
+    top.querySelector('.sheet-title').textContent = h.textContent;
+    if (first !== h) { [...first.children].filter((x) => x !== h).forEach((x) => top.querySelector('.sheet-right').appendChild(x)); }
+    first.remove();
+  }
+  if (opts.short) sh.classList.add('short');
   enableSwipeClose($('sheet').querySelector('.sheet'));
   document.body.classList.add('sheet-open');
 }
@@ -1436,7 +1438,8 @@ function focusNow(id) { const f = $(id); if (!f) return; f.focus({ preventScroll
 // Drag the sheet down from its top area (or anywhere when it is scrolled to the top) to close it
 function enableSwipeClose(sheet) {
   let y0 = null; let dy = 0;
-  sheet.addEventListener('touchstart', (e) => { y0 = sheet.scrollTop <= 0 ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
+  // Dragging the header always works; elsewhere only when the sheet is scrolled to the top
+  sheet.addEventListener('touchstart', (e) => { y0 = e.target.closest('.sheet-top') || sheet.scrollTop <= 0 ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
   sheet.addEventListener('touchmove', (e) => {
     if (y0 === null) return; dy = e.touches[0].clientY - y0;
     if (dy > 0) sheet.style.transform = `translateY(${dy}px)`;
@@ -1789,19 +1792,19 @@ function renderSplit() {
     if (sp.mode === 'equal' || i === 0) right = sp.mode === 'pct' && i === 0 ? `<span class="sp-stack"><span class="num" id="sp-p0">${spPct0()}%</span>${money$}</span>` : money$;
     else if (sp.mode === 'pct') right = `<span class="sp-stack"><span class="sp-field"><input class="sp-in num" data-i="${i}" data-f="pct" inputmode="decimal" placeholder="0" value="${esc(pt.pct)}" aria-label="Percent">%</span>${money$}</span>`;
     else right = `<span class="sp-field">$<input class="sp-in num" data-i="${i}" data-f="amt" inputmode="decimal" placeholder="0.00" value="${esc(pt.amt)}" aria-label="Amount"></span>`;
-    return `<div class="swipe sp-swipe"><div class="swipe-act"><button class="swipe-del" data-act="sp-del" data-i="${i}">${icon('delete')}Delete</button></div><div class="set-list sp-part swipe-main">
+    return `<div class="set-list sp-part">
       <div class="set-item"><button class="sp-icon" data-act="sp-cat" data-i="${i}" aria-label="Choose category">${ic}</button>
         <button class="n sp-name" data-act="sp-cat" data-i="${i}">${esc(nm)}</button>${right}
-</div>
+        ${sp.parts.length > 1 ? `<button class="icon-btn sp-rm" data-act="sp-del" data-i="${i}" aria-label="Remove part">${icon('close')}</button>` : ''}</div>
       <label class="set-item"><span class="n">Transfer <span class="meta">Not counted</span></span><input type="checkbox" class="switch" data-sp-transfer="${i}" ${pt.isTransfer ? 'checked' : ''}></label>
       <div class="set-item sp-note-row"><input class="input sp-note" data-i="${i}" data-f="note" value="${esc(pt.note)}" placeholder="Add note" autocomplete="off" aria-label="Note"></div>
-    </div></div>`;
+    </div>`;
   };
   openSheet(`<h3>Split record</h3>
     <div class="sp-head"><div class="meta">${esc(txTitle(t) || '')} · ${esc(accName(S.accounts[t.accountId]))} · ${shortDate(t.date)}</div>
       <div class="amount-row num" style="color:var(${inflow ? '--inc' : '--exp'})">${sign}$${fmt.format(Math.abs(t.amount))}</div></div>
     <div class="seg" style="align-self:stretch">${modes.map(([k, l]) => `<button style="flex:1" data-act="sp-mode" data-mode="${k}" aria-pressed="${sp.mode === k}">${l}</button>`).join('')}</div>
-    <div class="meta">Tap an icon to change the category. Swipe a part left to delete it. ${sp.mode === 'equal' ? 'The total is split evenly.' : 'The first part takes whatever is left.'}</div>
+    <div class="meta">Tap an icon to change the category. ✕ removes a part. ${sp.mode === 'equal' ? 'The total is split evenly.' : 'The first part takes whatever is left.'}</div>
     <div id="sp-list">${sp.parts.map(part).join('')}</div>
     <div class="meta" id="sp-warn" style="color:var(--exp);visibility:${c.some((x) => x <= 0) ? 'visible' : 'hidden'}">Every part must be more than $0</div>
     <button class="pill-btn primary wide" data-act="sp-add">${icon('add')}Add split</button>
@@ -2050,35 +2053,6 @@ async function newLabel() {
   return { id: ref.id, name, color };
 }
 
-// ---- swipe left on a .swipe row to reveal its action button ----
-const SW = 88; let sw = null;
-function closeSwipes(except) { document.querySelectorAll('.swipe.open').forEach((r) => { if (r !== except) r.classList.remove('open'); }); }
-document.addEventListener('touchstart', (e) => {
-  const r = e.target.closest('.swipe'); if (!e.target.closest('.swipe-del')) closeSwipes(r);
-  sw = r ? { r, x0: e.touches[0].clientX, y0: e.touches[0].clientY, base: r.classList.contains('open') ? -SW : 0, dx: 0, lock: null } : null;
-}, { passive: true });
-document.addEventListener('touchmove', (e) => {
-  if (!sw) return;
-  const dx = e.touches[0].clientX - sw.x0; const dy = e.touches[0].clientY - sw.y0;
-  if (!sw.lock && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) sw.lock = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-  if (sw.lock !== 'x') return;
-  e.preventDefault(); sw.dx = dx;
-  const m = sw.r.querySelector('.swipe-main'); m.style.transition = 'none';
-  m.style.transform = `translateX(${Math.max(-SW - 20, Math.min(0, sw.base + dx))}px)`;
-}, { passive: false });
-document.addEventListener('touchend', () => {
-  if (!sw) return;
-  if (sw.lock === 'x') {
-    const m = sw.r.querySelector('.swipe-main'); m.style.transition = ''; m.style.transform = '';
-    sw.r.classList.toggle('open', sw.base + sw.dx < -SW / 2); sw.r.dataset.swiped = Date.now();
-  }
-  sw = null;
-});
-document.addEventListener('click', (e) => {
-  const r = e.target.closest('.swipe');
-  if (r && Date.now() - (+r.dataset.swiped || 0) < 400) { e.stopImmediatePropagation(); e.preventDefault(); return; }
-  if (r?.classList.contains('open') && !e.target.closest('.swipe-del')) { r.classList.remove('open'); e.stopImmediatePropagation(); e.preventDefault(); }
-}, true);
 document.addEventListener('click', async (e) => {
   // A selected bar in Spending by Category is cleared by any tap that is not on a bar,
   // except opening one of its listed records (or taps inside popups)
