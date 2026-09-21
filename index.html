@@ -375,6 +375,10 @@ input.row-select { direction: ltr; }
 .bank-details .k { color: var(--sub); flex: 0 0 38%; }
 .bank-details .v { flex: 1; min-width: 0; word-break: break-word; }
 
+.conn-row .n { min-width: 0; flex: 1; }
+.conn-name { display: inline-flex; align-items: center; gap: 8px; }
+.st-tag { font-size: 11px; font-weight: 600; padding: 1px 6px; border: 1px solid; border-radius: 6px; white-space: nowrap; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -508,7 +512,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '7.1';
+const APP_VERSION = '7.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -894,9 +898,11 @@ function viewConns() {
   const rows = items.map((i) => {
     const accs = connAccounts(i.id); const st = connStatus(i);
     const masks = accs.map((a) => (a.mask ? '••' + a.mask : a.name)).join(', ');
+    // Status sits next to the bank name: a green dot when all is well, a colored tag otherwise
+    const tag = st.text === 'Connected' ? `<span class="dot-s" style="background:${st.color}" aria-label="Connected"></span>` : `<span class="st-tag" style="color:${st.color};border-color:${st.color}">${st.text}</span>`;
     return `<a class="set-item conn-row" href="#/conn/${i.id}">${glyph('account_balance', '#0A7AFF')}
-      <span class="n">${esc(i.institutionName || 'Bank')}<div class="meta">${accs.length} account${accs.length === 1 ? '' : 's'}${masks ? ' · ' + esc(masks) : ''}</div></span>
-      <span class="v conn-st"><span class="dot-s" style="background:${st.color}"></span>${st.text}</span>${icon('chevron_right')}</a>`;
+      <span class="n"><span class="conn-name">${esc(i.institutionName || 'Bank')}${tag}</span><div class="meta">${accs.length} account${accs.length === 1 ? '' : 's'}${masks ? ' · ' + esc(masks) : ''}</div></span>
+      ${icon('chevron_right')}</a>`;
   }).join('');
   const others = Object.values(S.accounts).filter((a) => !a.itemId || !S.items[a.itemId]);
   return `<div class="page">
