@@ -361,6 +361,14 @@ input.row-select { direction: ltr; }
 .search-clear .ms { font-size: 20px; }
 .searchbar input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
 
+/* bank connections */
+.conn-st { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.dot-s { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.conn-row .n .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.amt-row { gap: 8px; }
+.amt-row input { flex: 1; min-width: 0; text-align: right; border-bottom: 1px solid var(--line); }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -494,7 +502,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '6.7';
+const APP_VERSION = '7.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -730,7 +738,8 @@ async function seedCategories() {
 // Keyword rules with the same account and the same actions are kept as one rule
 function sameRuleTarget(a, b) {
   return a.field === 'description' && b.field === 'description' && (a.accountId || null) === (b.accountId || null)
-    && (a.categoryId || null) === (b.categoryId || null) && (a.labelId || null) === (b.labelId || null) && !!a.transfer === !!b.transfer;
+    && (a.categoryId || null) === (b.categoryId || null) && (a.labelId || null) === (b.labelId || null) && !!a.transfer === !!b.transfer
+    && (a.amtMode || 'any') === (b.amtMode || 'any') && (a.amtMin ?? null) === (b.amtMin ?? null) && (a.amtMax ?? null) === (b.amtMax ?? null);
 }
 async function mergeDupRules() {
   if (S.mergingRules) return; const groups = [];
@@ -747,13 +756,27 @@ async function mergeDupRules() {
   } catch (e) { console.error(e); } finally { S.mergingRules = false; }
 }
 function ruleList() { return Object.values(S.rules).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
+// Amount condition (size only, sign ignored): exactly X, or between min and max (inclusive)
+function amountOk(r, t) {
+  if (!r.amtMode || r.amtMode === 'any') return true;
+  const v = Math.round(Math.abs(t.amount) * 100);
+  if (r.amtMode === 'exact') return v === Math.round((r.amtMin || 0) * 100);
+  return v >= Math.round((r.amtMin || 0) * 100) && v <= Math.round((r.amtMax || 0) * 100);
+}
+function amtText(r) {
+  if (!r.amtMode || r.amtMode === 'any') return '';
+  return r.amtMode === 'exact' ? `amount is $${fmt.format(r.amtMin || 0)}` : `amount $${fmt.format(r.amtMin || 0)}–$${fmt.format(r.amtMax || 0)}`;
+}
 function ruleMatches(r, t) {
+  if (!amountOk(r, t)) return false;
   if (r.field === 'account') return t.accountId === r.accountId;
   if (r.accountId && t.accountId !== r.accountId) return false; // "Only in account"
   const hay = `${t.name || ''} ${t.merchant || ''}`.toLowerCase();
   return (r.keywords || []).some((k) => k && hay.includes(k));
 }
 function ruleUpdates(t) {
+  // Rules only fill in records that are still uncategorized; a categorized (or transfer) record is never touched
+  if (t.categoryId || t.isTransfer) return {};
   const upd = {}; let labels = null;
   for (const r of ruleList()) {
     if (!ruleMatches(r, t)) continue;
@@ -812,7 +835,7 @@ window.addEventListener('hashchange', () => {
   if (left && left === drawerOrigin && MAIN.includes(route().name)) { drawerOrigin = null; openDrawer(); }
 });
 const MAIN = ['accounts', 'dash', 'tx'];
-const SUB_TITLES = { cats: 'Categories', labels: 'Labels', filters: 'Filters', rules: 'Automatic Rules' };
+const SUB_TITLES = { cats: 'Categories', labels: 'Labels', filters: 'Filters', rules: 'Automatic Rules', conns: 'Accounts' };
 
 // ---------- render ----------
 function render() {
@@ -820,7 +843,7 @@ function render() {
   const r = route();
   const y = window.scrollY;
   const focusId = document.activeElement?.id; const caret = document.activeElement?.selectionStart;
-  const views = { dash: viewDash, tx: () => viewTx(r.params), cats: viewCats, cat: () => viewCat(r.id), labels: viewLabels, filters: viewFilters, rules: viewRules };
+  const views = { dash: viewDash, tx: () => viewTx(r.params), cats: viewCats, cat: () => viewCat(r.id), labels: viewLabels, filters: viewFilters, rules: viewRules, conns: viewConns, conn: () => viewConn(r.id) };
   const main = !views[r.name] || MAIN.includes(r.name);
   const body = (views[r.name] || viewAccounts)();
   $('app').innerHTML = (main ? headerMain(r.name) : headerSub(r)) + body
@@ -844,9 +867,74 @@ function headerSub(r) {
     title = c?.parentId ? 'Edit subcategory' : 'Edit category';
     back = c?.parentId ? `#/cat/${c.parentId}` : '#/cats';
   }
+  if (r.name === 'conn') { title = S.items[r.id]?.institutionName || 'Bank connection'; back = '#/conns'; }
   return `<header class="top sub"><div class="bar">
     <a class="icon-btn round" href="${back}" data-act="nav-up" aria-label="Back">${icon('chevron_left')}</a>
     <h1>${title}</h1><span style="width:44px"></span></div></header>`;
+}
+
+// ---------- bank connections (Menu → Accounts) ----------
+const TRIAL_ITEMS = 10;
+function fmtWhen(ts) { const d = ts?.toDate?.(); return d ? d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'; }
+function connAccounts(itemId) { return Object.values(S.accounts).filter((a) => a.itemId === itemId).sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
+function connStatus(i) {
+  if (i.paused) return { text: 'Paused', color: '#8E8E93' };
+  if (i.status === 'login_required') return { text: 'Needs reconnect', color: '#D93025' };
+  if (i.status === 'error') return { text: 'Sync error', color: '#E0A100' };
+  return { text: 'Connected', color: '#22A06B' };
+}
+function viewConns() {
+  const items = Object.entries(S.items).map(([id, i]) => ({ id, ...i })).sort((a, b) => (a.institutionName || '').localeCompare(b.institutionName || '') || ((a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)));
+  const rows = items.map((i) => {
+    const accs = connAccounts(i.id); const st = connStatus(i);
+    const masks = accs.map((a) => (a.mask ? '••' + a.mask : a.name)).join(', ');
+    return `<a class="set-item conn-row" href="#/conn/${i.id}">${glyph('account_balance', '#0A7AFF')}
+      <span class="n">${esc(i.institutionName || 'Bank')}<div class="meta">${accs.length} account${accs.length === 1 ? '' : 's'}${masks ? ' · ' + esc(masks) : ''}</div></span>
+      <span class="v conn-st"><span class="dot-s" style="background:${st.color}"></span>${st.text}</span>${icon('chevron_right')}</a>`;
+  }).join('');
+  const others = Object.values(S.accounts).filter((a) => !a.itemId || !S.items[a.itemId]);
+  return `<div class="page">
+    <div class="sec-head">Bank connections<span>${items.length} of ${TRIAL_ITEMS} used</span></div>
+    ${items.length ? `<div class="set-list">${rows}</div>` : '<div class="meta" style="padding:0 4px">No banks connected yet.</div>'}
+    <button class="pill-btn primary wide" data-act="link">${icon('add')}Connect a bank</button>
+    <div class="meta" style="padding:0 4px">Each bank login is one connection. Connecting the same login twice uses an extra slot, so use “Add or remove accounts” on an existing connection instead.</div>
+    ${others.length ? `<div class="sec-head">Other accounts</div><div class="set-list">${others.map((a) => `<button class="set-item" data-act="acc" data-id="${a.id}">${glyph(a.manual ? 'payments' : 'credit_card', '#8E8E93')}
+      <span class="n">${esc(accName(a))}<div class="meta">${esc(a.manual ? 'Manual' : a.demo ? 'Demo' : a.disconnected ? `Disconnected${a.institution ? ' · ' + a.institution : ''}` : 'Not linked')}${a.mask ? ' ••' + esc(a.mask) : ''}</div></span>
+      <span class="v num">${money(accountBalance(a))}</span></button>`).join('')}</div>` : ''}
+  </div>`;
+}
+function viewConn(id) {
+  const i = S.items[id];
+  if (!i) return '<div class="page"><div class="meta">This connection was removed.</div></div>';
+  const st = connStatus(i); const accs = connAccounts(id);
+  return `<div class="page">
+    <div class="set-list">
+      <div class="set-item">${glyph('account_balance', '#0A7AFF')}<span class="n">${esc(i.institutionName || 'Bank')}</span><span class="v conn-st"><span class="dot-s" style="background:${st.color}"></span>${st.text}</span></div>
+      ${i.status === 'error' && i.errorMessage ? `<div class="set-item"><span class="meta">${esc(i.errorMessage)}</span></div>` : ''}
+      <div class="set-item"><span class="n">Last synced</span><span class="v">${fmtWhen(i.lastSyncAt)}</span></div>
+      <div class="set-item"><span class="n">Connected on</span><span class="v">${fmtWhen(i.createdAt)}</span></div>
+    </div>
+    <div class="sec-head">Accounts in this login<span>${accs.length}</span></div>
+    ${accs.length ? `<div class="set-list">${accs.map((a) => `<button class="set-item" data-act="acc" data-id="${a.id}">${glyph(a.type === 'credit' ? 'credit_card' : 'account_balance_wallet', '#5856D6')}
+      <span class="n">${esc(accName(a))}<div class="meta">${[a.mask && '••' + a.mask, a.subtype || a.type].filter(Boolean).map(esc).join(' · ')}${a.hidden ? ' · Hidden' : ''}</div></span>
+      <span class="v num">${money(accountBalance(a))}</span>${icon('chevron_right')}</button>`).join('')}</div>` : '<div class="meta" style="padding:0 4px">No accounts yet. Tap Sync now.</div>'}
+    <div class="meta" style="padding:0 4px">Tap an account to rename it, change its color or hide it.</div>
+    <div class="set-list">
+      <button class="set-item" data-act="sync" data-id="${id}">${glyph('sync', '#0A7AFF')}<span class="n">Sync now</span></button>
+      <button class="set-item" data-act="conn-accounts" data-id="${id}">${glyph('playlist_add', '#34C759')}<span class="n">Add or remove accounts<div class="meta">E.g. a new card under the same login</div></span>${icon('chevron_right')}</button>
+      <button class="set-item" data-act="reconnect" data-id="${id}">${glyph('link', i.status === 'login_required' ? '#D93025' : '#FF9500')}<span class="n">Reconnect<div class="meta">Sign in again if the bank login expired</div></span>${icon('chevron_right')}</button>
+      <label class="set-item">${glyph('pause_circle', '#8E8E93')}<span class="n">Pause syncing<div class="meta">Stops daily and Refresh sync for this login</div></span><input type="checkbox" class="switch" data-conn-pause="${id}" ${i.paused ? 'checked' : ''}></label>
+    </div>
+    <button class="pill-btn danger wide" data-act="conn-remove" data-id="${id}">${icon('link_off')}Remove connection</button>
+  </div>`;
+}
+function sheetRemoveConn(id) {
+  const i = S.items[id]; if (!i) return;
+  const n = S.raw.filter((t) => t.itemId === id).length;
+  openSheet(`<h3>Remove connection</h3>
+    <div class="meta">${esc(i.institutionName || 'This bank')} will be disconnected and its slot freed. This can’t be undone; you can connect it again later as a new connection.</div>
+    <button class="pill-btn wide" data-act="conn-remove-go" data-id="${id}" data-del="0">${icon('link_off')}Remove, keep ${n} imported record${n === 1 ? '' : 's'}</button>
+    <button class="pill-btn danger wide" data-act="conn-remove-go" data-id="${id}" data-del="1">${icon('delete')}Remove and delete its ${n} record${n === 1 ? '' : 's'}</button>`);
 }
 
 // ---------- accounts ----------
@@ -884,8 +972,7 @@ function viewAccounts() {
       <button class="pill-btn primary" data-act="link">Connect your first bank</button></div></div>`;
   }
   return `<div class="page">
-    <div class="row-between"><div><p class="h2">${accs.length} account${accs.length > 1 ? 's' : ''}</p><div class="meta">${lastSyncText()}</div></div>
-      <button class="pill-btn" data-act="sync">${icon('sync')}Refresh</button></div>
+    <div><p class="h2">${accs.length} account${accs.length > 1 ? 's' : ''}</p><div class="meta">${lastSyncText()}</div></div>
     <div class="acc-grid">${tiles}<button class="tile add" data-act="link">${icon('add')}Add</button></div>
     ${banners}
   </div>`;
@@ -1424,13 +1511,14 @@ function viewFilters() {
 }
 function ruleText(r) {
   const cond = r.field === 'account' ? `Account is ${accName(S.accounts[r.accountId]) || '(removed account)'}` : `Description contains “${(r.keywords || []).join('”, “')}”${r.accountId ? ` · only in ${accName(S.accounts[r.accountId]) || '(removed account)'}` : ''}`;
+  const at = amtText(r); const cond2 = at ? `${cond} · ${at}` : cond;
   const acts = [r.categoryId && `Category → ${S.cats[r.categoryId]?.name || '(deleted)'}`, r.labelId && `Label → ${S.labels[r.labelId]?.name || '(deleted)'}`, r.transfer && 'Mark as transfer'].filter(Boolean);
-  return { cond, acts: acts.join(' · ') };
+  return { cond: cond2, acts: acts.join(' · ') };
 }
 function viewRules() {
   const list = ruleList();
   return `<div class="page">
-    <div class="meta" style="padding:0 4px">Rules run on new records when the app opens. They only fill in records that have no category yet, and never undo your manual changes.</div>
+    <div class="meta" style="padding:0 4px">Rules run on new records when the app opens. They only touch records that have no category yet (and aren’t transfers); records you’ve already sorted are never changed.</div>
     ${list.length ? `<div class="set-list">${list.map((r) => { const t = ruleText(r); return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${icon('bolt')}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`; }).join('')}</div>` : '<div class="empty">No rules yet</div>'}
     <button class="pill-btn primary wide" data-act="add-rule">${icon('add')}New rule</button>
     ${list.length ? '<button class="pill-btn wide" data-act="run-rules">Apply rules to existing records</button>' : ''}</div>`;
@@ -1440,7 +1528,7 @@ function viewRules() {
 function openDrawer() {
   $('drawer').innerHTML = `<div class="scrim" data-act="close-drawer"></div><nav class="drawer" aria-label="Menu">
     <div class="who"><img src="icon-192.png" alt="" width="44" height="44" class="who-logo"><div><div class="who-name">${APP_NAME}</div><div>${esc(S.user.email)}</div></div></div>
-    <a href="#/accounts" data-act="drawer-link">${icon('account_balance_wallet')}Accounts</a>
+    <a href="#/conns" data-act="drawer-link">${icon('account_balance_wallet')}Accounts</a>
     <a href="#/cats" data-act="drawer-link">${icon('folder')}Categories</a>
     <a href="#/labels" data-act="drawer-link">${icon('sell')}Labels</a>
     <a href="#/filters" data-act="drawer-link">${icon('filter_alt')}Filters</a>
@@ -1919,7 +2007,8 @@ function sheetRule(id) {
   const r = id ? S.rules[id] : {};
   const field = r.field || 'description';
   S.ruleDraft = { id: id || null, field, kw: [...(r.keywords || [])], kwInput: '', accountId: field === 'account' ? r.accountId || null : null, onlyAcc: field === 'description' ? r.accountId || null : null,
-    categoryId: r.categoryId || null, labelId: r.labelId || null, transfer: !!r.transfer, applyPast: !id };
+    categoryId: r.categoryId || null, labelId: r.labelId || null, transfer: !!r.transfer, applyPast: !id,
+    amtMode: r.amtMode || 'any', amtA: r.amtMin != null ? String(r.amtMin) : '', amtB: r.amtMax != null ? String(r.amtMax) : '' };
   renderRule();
 }
 // Keyword ideas from a bank record: its first word, and the whole name without trailing store numbers
@@ -1936,11 +2025,13 @@ function sheetRuleFromTx(txId, e) {
   const t = S.txById[txId]; if (!t) return;
   const sug = kwSuggest(t);
   S.ruleDraft = { id: null, field: 'description', kw: sug[0] ? [sug[0]] : [], kwInput: '', accountId: null, onlyAcc: t.accountId || null, suggestions: sug,
-    categoryId: (e ? e.categoryId : t.categoryId) || null, labelId: (e ? e.labels : t.labels || [])[0] || null, transfer: e ? e.type === 'transfer' : !!t.isTransfer, applyPast: true };
+    categoryId: (e ? e.categoryId : t.categoryId) || null, labelId: (e ? e.labels : t.labels || [])[0] || null, transfer: e ? e.type === 'transfer' : !!t.isTransfer, applyPast: true,
+    amtMode: 'any', amtA: Math.abs(t.amount).toFixed(2), amtB: '' };
   renderRule();
 }
 function captureRule() {
   const d = S.ruleDraft; if (!d) return;
+  if ($('ru-amt-a')) d.amtA = $('ru-amt-a').value; if ($('ru-amt-b')) d.amtB = $('ru-amt-b').value;
   if ($('ru-kw')) d.kwInput = $('ru-kw').value; if ($('ru-tr')) d.transfer = $('ru-tr').checked; if ($('ru-past')) d.applyPast = $('ru-past').checked;
 }
 // Keywords are chips; text still in the box (commas allowed) counts too
@@ -1948,7 +2039,10 @@ function parseKw(v) { return String(v || '').split(',').map((x) => x.trim().toLo
 function allKw(d) { return [...new Set([...(d.kw || []), ...parseKw(d.kwInput)])]; }
 function draftRule(d) {
   return { field: d.field, keywords: d.field === 'description' ? allKw(d) : [],
-    accountId: d.field === 'account' ? d.accountId : (d.onlyAcc || null), categoryId: d.categoryId || null, labelId: d.labelId || null, transfer: !!d.transfer };
+    accountId: d.field === 'account' ? d.accountId : (d.onlyAcc || null), categoryId: d.categoryId || null, labelId: d.labelId || null, transfer: !!d.transfer,
+    amtMode: d.amtMode || 'any', amtMin: d.amtMode === 'any' ? null : num(d.amtA), amtMax: d.amtMode === 'range' ? num(d.amtB) : null };
+}
+function num(v) { const n = parseFloat(String(v || '').replace(/[$,]/g, '')); return Number.isFinite(n) ? Math.abs(n) : null;
 }
 // Past bank records the rule would sort now: matching and still uncategorized
 function rulePastMatches(d) {
@@ -1969,6 +2063,9 @@ function renderRule() {
             <button class="icon-btn kw-add" data-act="ru-kw-add" aria-label="Add keyword">${icon('add_circle')}</button></div>
           ${d.kw.length ? `<div class="set-item kw-row"><div class="chips wrap">${d.kw.map((k, i) => `<span class="chip kw-chip">${esc(k)}<button data-act="ru-kw-del" data-i="${i}" aria-label="Remove ${esc(k)}">${icon('cancel')}</button></span>`).join('')}</div></div>` : ''}
           ${valueRow('ru-only', glyph('credit_card', '#5856D6'), 'Only in account', esc(d.onlyAcc ? accName(S.accounts[d.onlyAcc]) || '(removed account)' : 'Any account'))}`}
+      ${valueRow('ru-amt', glyph('attach_money', '#34C759'), 'Amount', { any: 'Any amount', exact: 'Exactly', range: 'Between' }[d.amtMode || 'any'])}
+      ${d.amtMode === 'exact' ? `<div class="set-item amt-row"><span class="meta">$</span><input class="bare-input num" id="ru-amt-a" inputmode="decimal" value="${esc(d.amtA)}" placeholder="0.00" aria-label="Exact amount"></div>` : ''}
+      ${d.amtMode === 'range' ? `<div class="set-item amt-row"><span class="meta">$</span><input class="bare-input num" id="ru-amt-a" inputmode="decimal" value="${esc(d.amtA)}" placeholder="From" aria-label="From amount"><span class="meta">to $</span><input class="bare-input num" id="ru-amt-b" inputmode="decimal" value="${esc(d.amtB)}" placeholder="To" aria-label="To amount"></div>` : ''}
     </div>
     ${d.field === 'account' ? '' : `${(d.suggestions || []).filter((v) => !d.kw.includes(v)).length ? `<div class="chips wrap"><span class="meta">Suggestions</span>${d.suggestions.filter((v) => !d.kw.includes(v)).map((v) => `<button class="chip" data-act="ru-sug" data-v="${esc(v)}">${icon('add')}${esc(v)}</button>`).join('')}</div>` : ''}
       <div class="meta" style="padding:0 4px">Any one keyword matches. Not case-sensitive. A shorter word matches more records.</div>`}
@@ -1988,6 +2085,8 @@ async function saveRule() {
   if (d.field === 'description' && !data.keywords.length) { toast('Enter at least one keyword'); return; }
   if (d.field === 'account' && !data.accountId) { toast('Choose an account'); return; }
   if (!data.categoryId && !data.labelId && !data.transfer) { toast('Choose at least one action'); return; }
+  if (data.amtMode === 'exact' && !data.amtMin) { toast('Enter the amount'); return; }
+  if (data.amtMode === 'range' && (data.amtMin == null || data.amtMax == null || data.amtMin > data.amtMax)) { toast('Enter a valid amount range'); return; }
   const past = d.applyPast ? rulePastMatches(d) : [];
   // Same account and same actions as an existing rule → just add the keywords to that rule
   const twin = ruleList().find((r) => r.id !== d.id && sameRuleTarget(r, data));
@@ -2060,10 +2159,10 @@ async function doSync(itemId) {
     toast(errs.length ? `${errs.length} bank(s) had sync errors. See the Accounts page.` : `Synced. ${added} new record${added === 1 ? '' : 's'}.`);
   } catch (e) { toast('Sync failed: ' + errMsg(e)); }
 }
-async function openLink(itemId) {
+async function openLink(itemId, accountSelection = false) {
   toast('Opening bank connection…');
   try {
-    const { data } = await call('createLinkToken')({ itemId: itemId || null });
+    const { data } = await call('createLinkToken')({ itemId: itemId || null, accountSelection });
     localStorage.setItem('plaidLink', JSON.stringify({ token: data.linkToken, itemId: itemId || null }));
     startLink(data.linkToken, itemId, null);
   } catch (e) { toast('Could not open: ' + errMsg(e)); }
@@ -2180,6 +2279,16 @@ document.addEventListener('click', async (e) => {
       case 'sync': await doSync(id); break;
       case 'link': await openLink(null); break;
       case 'reconnect': await openLink(id); break;
+      case 'conn-accounts': await openLink(id, true); break;
+      case 'conn-remove': sheetRemoveConn(id); break;
+      case 'conn-remove-go': {
+        const del = el.dataset.del === '1';
+        if (del && !confirm('Delete all records from this connection? This can’t be undone.')) break;
+        closeSheet(); toast('Removing connection…', 60000);
+        try { await call('removeItem')({ itemId: id, deleteRecords: del }); toast('Connection removed'); go('#/conns', true); }
+        catch (e) { toast('Could not remove: ' + errMsg(e)); }
+        break;
+      }
       case 'acc': sheetAccount(id); break;
       case 'card-settings': sheetCard(el.dataset.card); break;
       case 'save-card': await saveCard(); break;
@@ -2284,6 +2393,7 @@ document.addEventListener('click', async (e) => {
       case 'ru-field': captureRule(); openOptions('Match by', [{ value: 'description', label: 'Description contains', iconHtml: glyph('text_fields', '#3478F6') }, { value: 'account', label: 'Account is', iconHtml: glyph('credit_card', '#3478F6') }], S.ruleDraft.field, (v) => { S.ruleDraft.field = v; renderRule(); }); break;
       case 'ru-acc': captureRule(); openOptions('Account', accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash), S.ruleDraft.accountId, (v) => { S.ruleDraft.accountId = v; renderRule(); }); break;
       case 'ru-cat': captureRule(); openPicker({ mode: 'rule' }); break;
+      case 'ru-amt': captureRule(); openOptions('Amount', [{ value: 'any', label: 'Any amount' }, { value: 'exact', label: 'Exactly' }, { value: 'range', label: 'Between' }].map((o) => ({ ...o, iconHtml: glyph('attach_money', '#34C759') })), S.ruleDraft.amtMode || 'any', (v) => { S.ruleDraft.amtMode = v; renderRule(); }); break;
       case 'ru-only': captureRule(); openOptions('Only in account', [{ value: '', label: 'Any account', iconHtml: glyph('all_inclusive', '#8E8E93') }, ...accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash)], S.ruleDraft.onlyAcc || '', (v) => { S.ruleDraft.onlyAcc = v || null; renderRule(); }); break;
       case 'ru-sug': captureRule(); S.ruleDraft.kw = [...new Set([...S.ruleDraft.kw, el.dataset.v])]; renderRule(); break;
       case 'ru-kw-add': captureRule(); S.ruleDraft.kw = allKw(S.ruleDraft); S.ruleDraft.kwInput = ''; renderRule(); break;
@@ -2376,6 +2486,7 @@ document.addEventListener('input', (e) => {
   if (e.target.id === 'nm' && $('lbl-prev')) { $('lbl-prev').innerHTML = labelPill({ name: e.target.value || 'Label', color: $('sheet').dataset.color }); return; }
   if (e.target.id === 'ed-amt') { e.target.style.width = `${Math.max(4, e.target.value.length) + 0.5}ch`; return; }
   if (e.target.classList.contains('sp-in')) { spCapture(); spRefresh(); return; }
+  if ((e.target.id === 'ru-amt-a' || e.target.id === 'ru-amt-b') && S.ruleDraft) { captureRule(); const n = $('ru-past-n'); if (n) n.textContent = rulePastText(rulePastMatches(S.ruleDraft).length); return; }
   if (e.target.id === 'ru-kw' && S.ruleDraft) { S.ruleDraft.kwInput = e.target.value; const n = $('ru-past-n'); if (n) n.textContent = rulePastText(rulePastMatches(S.ruleDraft).length); return; }
   if (e.target.id === 'catq') { $('catpick').innerHTML = pickerBody(e.target.value.trim().toLowerCase()); return; }
   if (e.target.id !== 'txsearch') return;
@@ -2383,6 +2494,7 @@ document.addEventListener('input', (e) => {
   clearTimeout(searchTimer); searchTimer = setTimeout(render, 150);
 });
 document.addEventListener('change', async (e) => {
+  if (e.target.dataset.connPause) { const on = e.target.checked; await updateDoc(doc(db, 'items', e.target.dataset.connPause), { paused: on }); toast(on ? 'Syncing paused' : 'Syncing resumed'); return; }
   if (e.target.dataset.spTransfer != null) { spCapture(); S.split.parts[+e.target.dataset.spTransfer].isTransfer = e.target.checked; renderSplit(); return; }
   const el = e.target;
   if (el.dataset.cardShow) {
