@@ -512,7 +512,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '7.2';
+const APP_VERSION = '7.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2042,7 +2042,7 @@ function sheetRule(id) {
   const r = id ? S.rules[id] : {};
   const field = r.field || 'description';
   S.ruleDraft = { id: id || null, field, kw: [...(r.keywords || [])], kwInput: '', accountId: field === 'account' ? r.accountId || null : null, onlyAcc: field === 'description' ? r.accountId || null : null,
-    categoryId: r.categoryId || null, labelId: r.labelId || null, transfer: !!r.transfer, applyPast: !id,
+    categoryId: r.categoryId || null, labelId: r.labelId || null, transfer: !!r.transfer, applyPast: !id, overwrite: false,
     amtMode: r.amtMode || 'any', amtA: r.amtMin != null ? String(r.amtMin) : '', amtB: r.amtMax != null ? String(r.amtMax) : '' };
   renderRule();
 }
@@ -2060,14 +2060,14 @@ function sheetRuleFromTx(txId, e) {
   const t = S.txById[txId]; if (!t) return;
   const sug = kwSuggest(t);
   S.ruleDraft = { id: null, field: 'description', kw: sug[0] ? [sug[0]] : [], kwInput: '', accountId: null, onlyAcc: t.accountId || null, suggestions: sug,
-    categoryId: (e ? e.categoryId : t.categoryId) || null, labelId: (e ? e.labels : t.labels || [])[0] || null, transfer: e ? e.type === 'transfer' : !!t.isTransfer, applyPast: true,
+    categoryId: (e ? e.categoryId : t.categoryId) || null, labelId: (e ? e.labels : t.labels || [])[0] || null, transfer: e ? e.type === 'transfer' : !!t.isTransfer, applyPast: true, overwrite: false,
     amtMode: 'any', amtA: Math.abs(t.amount).toFixed(2), amtB: '' };
   renderRule();
 }
 function captureRule() {
   const d = S.ruleDraft; if (!d) return;
   if ($('ru-amt-a')) d.amtA = $('ru-amt-a').value; if ($('ru-amt-b')) d.amtB = $('ru-amt-b').value;
-  if ($('ru-kw')) d.kwInput = $('ru-kw').value; if ($('ru-tr')) d.transfer = $('ru-tr').checked; if ($('ru-past')) d.applyPast = $('ru-past').checked;
+  if ($('ru-kw')) d.kwInput = $('ru-kw').value; if ($('ru-tr')) d.transfer = $('ru-tr').checked; if ($('ru-past')) d.applyPast = $('ru-past').checked; if ($('ru-over')) d.overwrite = $('ru-over').checked;
 }
 // Keywords are chips; text still in the box (commas allowed) counts too
 function parseKw(v) { return String(v || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean); }
@@ -2086,6 +2086,18 @@ function rulePastMatches(d) {
   return S.txs.filter((t) => !t.manual && !t.parentId && !t.categoryId && !t.isTransfer && ruleMatches(r, t));
 }
 function rulePastText(n) { return `Also apply to ${n} past uncategorized record${n === 1 ? '' : 's'}`; }
+// Past bank records that already have a (different) category but match this rule — only changed when you switch it on
+function rulePastCatMatches(d) {
+  const r = draftRule(d); if (r.field === 'description' && !r.keywords.length) return [];
+  if (r.field === 'account' && !r.accountId) return [];
+  return S.txs.filter((t) => !t.manual && !t.parentId && t.categoryId && !t.isTransfer && ruleMatches(r, t) && (!r.categoryId || t.categoryId !== r.categoryId || r.transfer));
+}
+function ruleOverText(n) { return `Also change ${n} past record${n === 1 ? '' : 's'} that already ${n === 1 ? 'has' : 'have'} a category`; }
+function refreshRuleCounts() {
+  const d = S.ruleDraft; if (!d) return;
+  const a = $('ru-past-n'); if (a) a.textContent = rulePastText(rulePastMatches(d).length);
+  const b = $('ru-over-n'); if (b) b.textContent = ruleOverText(rulePastCatMatches(d).length);
+}
 function renderRule() {
   const d = S.ruleDraft; const c = S.cats[d.categoryId]; const l = S.labels[d.labelId]; const a = S.accounts[d.accountId];
   openSheet(`<h3>${d.id ? 'Edit rule' : 'New rule'}</h3>
@@ -2110,7 +2122,8 @@ function renderRule() {
       ${valueRow('ru-lbl', l ? `<span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span>` : glyph('sell', '#C7C7CC'), 'Label', l ? labelPill(l) : 'No label')}
       <label class="set-item">${glyph('swap_horiz', '#8E8E93')}<span class="n">Mark as transfer</span><input type="checkbox" class="switch" id="ru-tr" ${d.transfer ? 'checked' : ''}></label>
     </div>
-    <div class="set-list"><label class="set-item">${glyph('history', '#8E8E93')}<span class="n" id="ru-past-n">${rulePastText(rulePastMatches(d).length)}</span><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''}></label></div>
+    <div class="set-list"><label class="set-item">${glyph('history', '#8E8E93')}<span class="n" id="ru-past-n">${rulePastText(rulePastMatches(d).length)}</span><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''}></label>
+      <label class="set-item">${glyph('published_with_changes', '#FF9500')}<span class="n"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length)}</span><div class="meta">Off by default. Replaces their category with this rule’s.</div></span><input type="checkbox" class="switch" id="ru-over" ${d.overwrite ? 'checked' : ''}></label></div>
     ${d.id ? `<button class="pill-btn danger wide" data-act="del-rule" data-id="${d.id}">${icon('delete')}Delete rule</button>` : ''}
     ${saveBar('save-rule', 'Save')}`);
 }
@@ -2122,7 +2135,7 @@ async function saveRule() {
   if (!data.categoryId && !data.labelId && !data.transfer) { toast('Choose at least one action'); return; }
   if (data.amtMode === 'exact' && !data.amtMin) { toast('Enter the amount'); return; }
   if (data.amtMode === 'range' && (data.amtMin == null || data.amtMax == null || data.amtMin > data.amtMax)) { toast('Enter a valid amount range'); return; }
-  const past = d.applyPast ? rulePastMatches(d) : [];
+  const past = [...(d.applyPast ? rulePastMatches(d) : []), ...(d.overwrite ? rulePastCatMatches(d) : [])];
   // Same account and same actions as an existing rule → just add the keywords to that rule
   const twin = ruleList().find((r) => r.id !== d.id && sameRuleTarget(r, data));
   if (twin) {
@@ -2521,8 +2534,8 @@ document.addEventListener('input', (e) => {
   if (e.target.id === 'nm' && $('lbl-prev')) { $('lbl-prev').innerHTML = labelPill({ name: e.target.value || 'Label', color: $('sheet').dataset.color }); return; }
   if (e.target.id === 'ed-amt') { e.target.style.width = `${Math.max(4, e.target.value.length) + 0.5}ch`; return; }
   if (e.target.classList.contains('sp-in')) { spCapture(); spRefresh(); return; }
-  if ((e.target.id === 'ru-amt-a' || e.target.id === 'ru-amt-b') && S.ruleDraft) { captureRule(); const n = $('ru-past-n'); if (n) n.textContent = rulePastText(rulePastMatches(S.ruleDraft).length); return; }
-  if (e.target.id === 'ru-kw' && S.ruleDraft) { S.ruleDraft.kwInput = e.target.value; const n = $('ru-past-n'); if (n) n.textContent = rulePastText(rulePastMatches(S.ruleDraft).length); return; }
+  if ((e.target.id === 'ru-amt-a' || e.target.id === 'ru-amt-b') && S.ruleDraft) { captureRule(); refreshRuleCounts(); return; }
+  if (e.target.id === 'ru-kw' && S.ruleDraft) { S.ruleDraft.kwInput = e.target.value; refreshRuleCounts(); return; }
   if (e.target.id === 'catq') { $('catpick').innerHTML = pickerBody(e.target.value.trim().toLowerCase()); return; }
   if (e.target.id !== 'txsearch') return;
   S.search = e.target.value;
