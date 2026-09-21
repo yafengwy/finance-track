@@ -369,6 +369,12 @@ input.row-select { direction: ltr; }
 .amt-row { gap: 8px; }
 .amt-row input { flex: 1; min-width: 0; text-align: right; border-bottom: 1px solid var(--line); }
 
+/* bank details on the edit page */
+.bank-details { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; background: var(--card); border-radius: 12px; font-size: 13px; }
+.bank-details > div { display: flex; gap: 10px; }
+.bank-details .k { color: var(--sub); flex: 0 0 38%; }
+.bank-details .v { flex: 1; min-width: 0; word-break: break-word; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -502,7 +508,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '7.0';
+const APP_VERSION = '7.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1792,6 +1798,29 @@ function openEdit(txId) {
   };
   renderEdit();
 }
+// Everything the bank sent for this record, in small print under the edit page
+function titleCase(v) { return String(v || '').toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()); }
+function bankDetails(t) {
+  const pfc = t.pfcDetailed ? `${titleCase(t.pfcPrimary)} · ${titleCase(t.pfcDetailed.replace(t.pfcPrimary + '_', ''))}` : titleCase(t.pfcPrimary);
+  const loc = t.location || {};
+  const place = [loc.address, loc.city, [loc.region, loc.postalCode].filter(Boolean).join(' '), loc.country && loc.country !== 'US' ? loc.country : ''].filter(Boolean).join(', ');
+  const when = (iso, d) => (iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : d ? shortDate(d) : '');
+  const acc = S.accounts[t.accountId];
+  const rows = [
+    ['Bank description', t.originalDescription || t.name],
+    ['Merchant', t.merchant],
+    ['Bank category', pfc],
+    ['Channel', { 'in store': 'In store', online: 'Online', other: 'Other' }[t.paymentChannel] || t.paymentChannel],
+    ['Location', place], ['Store number', loc.storeNumber],
+    ['Website', t.website],
+    ['Counterparties', (t.counterparties || []).map((c) => c.name + (c.type ? ` (${titleCase(c.type)})` : '')).join(', ')],
+    ['Authorized', when(t.authorizedDatetime, t.authorizedDate)],
+    ['Posted', t.pending ? 'Pending' : when(t.datetime, t.date)],
+    ['Check number', t.checkNumber],
+    ['Account', acc ? `${acc.officialName || acc.name}${acc.mask ? ' ••' + acc.mask : ''}` : ''],
+  ].filter(([, v]) => v);
+  return `<div class="sec-head">Bank details</div><div class="bank-details">${rows.map(([k, v]) => `<div><span class="k">${k}</span><span class="v">${esc(v)}</span></div>`).join('')}</div>`;
+}
 function openNew() {
   S.edit = { txId: null, manual: true, type: 'expense', categoryId: null, labels: [], note: '', name: '', amount: 0, date: ymd(new Date()), accountId: 'cash' };
   renderEdit();
@@ -1840,7 +1869,7 @@ function renderEdit() {
     <div class="sec-head">Labels</div>${labelChips(e.labels, '')}
     ${e.manual ? `<div class="sec-head">Name</div><input class="input" id="ed-name" value="${esc(e.name || '')}" placeholder="e.g. Animal Hospital" autocomplete="off" aria-label="Name">` : ''}
     <div class="sec-head">Note</div><input class="input" id="ed-note" value="${esc(e.note)}" placeholder="${esc(t ? (t.merchant || t.name || '') : 'Add a note')}" autocomplete="off" aria-label="Note">
-    ${t && !t.manual && t.name ? `<div class="meta">Bank description: ${esc(t.name)}</div>` : ''}
+    ${t && !t.manual ? bankDetails(t) : ''}
     ${t && !e.part && e.manual ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
     ${saveBar('save-edit', 'Save')}`);
 }
