@@ -571,7 +571,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '10.4';
+const APP_VERSION = '10.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1324,7 +1324,11 @@ function sheetRecords(pop) {
     <div class="list">${rows || '<div class="empty">No records</div>'}</div>`, { noClose: true, short: true });
 }
 // After editing a record opened from a records popup, go back to that popup
-function backToPopup() { if (S.back === 'rec' && S.recPop) { S.back = null; sheetRecords(); } else S.back = null; }
+function backToPopup() {
+  const b = S.back; S.back = null;
+  if (b === 'search') sheetSearch(); // saving from a search result goes back to the results
+  else if (b === 'rec' && S.recPop) sheetRecords();
+}
 function sheetShowMore() {
   const m = S.spendMore; if (!m) return;
   sheetRecords({ title: m.title, period: m.period, ids: m.ids, sort: 'amt_desc' });
