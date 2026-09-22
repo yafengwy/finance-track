@@ -379,6 +379,17 @@ input.row-select { direction: ltr; }
 .conn-name { display: inline-flex; align-items: center; gap: 8px; }
 .st-tag { font-size: 11px; font-weight: 600; padding: 1px 6px; border: 1px solid; border-radius: 6px; white-space: nowrap; }
 
+/* rules grouped by category */
+.rule-group { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; padding: 10px 4px 6px; font: inherit; color: var(--text); text-align: left; }
+.rule-group .n { flex: 1; font-weight: 600; font-size: 15px; }
+.rule-group .ms { color: var(--sub); }
+
+.rule-hits { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 14px; background: #FFF6E5; }
+.rule-hits > .meta { padding: 0 4px; color: #8A5A00; }
+
+/* category name stands out from the account name in record rows */
+.meta .m-cat { font-weight: 600; color: #48484A; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -512,7 +523,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '7.3';
+const APP_VERSION = '7.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -670,6 +681,7 @@ function listen() {
   watch('filters', 'filters');
   watch('rules', 'rules', () => { S.rulesLoaded = true; mergeDupRules(); scheduleRules(); });
   watch('items', 'items');
+  watch('meta', 'meta');
   if (Object.keys(CARDS).some((c) => prevRange(rangeOf(getPeriod(c)))[0] < loadedSince())) S.loadAll = true;
   subscribeTx();
 }
@@ -906,10 +918,10 @@ function viewConns() {
   }).join('');
   const others = Object.values(S.accounts).filter((a) => !a.itemId || !S.items[a.itemId]);
   return `<div class="page">
-    <div class="sec-head">Bank connections<span>${items.length} of ${TRIAL_ITEMS} used</span></div>
+    <div class="sec-head">Bank connections<span>${Math.max(items.length, S.meta?.plaid?.itemsCreated || 0)} of ${TRIAL_ITEMS} used</span></div>
     ${items.length ? `<div class="set-list">${rows}</div>` : '<div class="meta" style="padding:0 4px">No banks connected yet.</div>'}
     <button class="pill-btn primary wide" data-act="link">${icon('add')}Connect a bank</button>
-    <div class="meta" style="padding:0 4px">Each bank login is one connection. Connecting the same login twice uses an extra slot, so use “Add or remove accounts” on an existing connection instead.</div>
+    <div class="meta" style="padding:0 4px">Each bank login is one connection. On the Plaid Trial plan every connection ever made counts, and removing one does not give the slot back. To add a new card under a login you already connected, use “Add or remove accounts” on that connection.</div>
     ${others.length ? `<div class="sec-head">Other accounts</div><div class="set-list">${others.map((a) => `<button class="set-item" data-act="acc" data-id="${a.id}">${glyph(a.manual ? 'payments' : 'credit_card', '#8E8E93')}
       <span class="n">${esc(accName(a))}<div class="meta">${esc(a.manual ? 'Manual' : a.demo ? 'Demo' : a.disconnected ? `Disconnected${a.institution ? ' · ' + a.institution : ''}` : 'Not linked')}${a.mask ? ' ••' + esc(a.mask) : ''}</div></span>
       <span class="v num">${money(accountBalance(a))}</span></button>`).join('')}</div>` : ''}
@@ -944,7 +956,7 @@ function sheetRemoveConn(id) {
   const i = S.items[id]; if (!i) return;
   const n = S.raw.filter((t) => t.itemId === id).length;
   openSheet(`<h3>Remove connection</h3>
-    <div class="meta">${esc(i.institutionName || 'This bank')} will be disconnected and its slot freed. This can’t be undone; you can connect it again later as a new connection.</div>
+    <div class="meta">${esc(i.institutionName || 'This bank')} will be disconnected. On the Trial plan this does not free up a slot, and connecting it again later uses a new one.</div>
     <button class="pill-btn wide" data-act="conn-remove-go" data-id="${id}" data-del="0">${icon('link_off')}Remove, keep ${n} imported record${n === 1 ? '' : 's'}</button>
     <button class="pill-btn danger wide" data-act="conn-remove-go" data-id="${id}" data-del="1">${icon('delete')}Remove and delete its ${n} record${n === 1 ? '' : 's'}</button>`);
 }
@@ -1083,7 +1095,7 @@ function barChart(bs, values, color, opts = {}) {
 }
 function txRowHtml(t, cls = 'top-row') {
   const c = S.cats[t.categoryId];
-  return `<button class="${cls}" data-act="tx" data-id="${t.id}">${catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta">${esc(txCatName(c))} · ${esc(accName(S.accounts[t.accountId]))}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
+  return `<button class="${cls}" data-act="tx" data-id="${t.id}">${catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
 }
 function cardStructure() {
   const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
@@ -1409,7 +1421,7 @@ function viewTx(params) {
     html += `<div class="tx${t.isTransfer ? ' transfer' : ''}">
       <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c)}</button>
       <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(txTitle(t))}</span>
-      <span class="meta">${esc(t.isTransfer ? 'Transfer' : txCatName(c))} · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
+      <span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
       <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
@@ -1527,11 +1539,38 @@ function ruleText(r) {
   const acts = [r.categoryId && `Category → ${S.cats[r.categoryId]?.name || '(deleted)'}`, r.labelId && `Label → ${S.labels[r.labelId]?.name || '(deleted)'}`, r.transfer && 'Mark as transfer'].filter(Boolean);
   return { cond: cond2, acts: acts.join(' · ') };
 }
+// Rules grouped by the main category they sort into (in your category order); each row shows its category's icon.
+// Tap a group header to fold it.
+function ruleGroupsHtml(list) {
+  const top = (c) => (c?.parentId ? top(S.cats[c.parentId]) : c);
+  const rank = (c) => { const chain = []; for (let x = c; x; x = S.cats[x.parentId]) chain.unshift(String(x.order ?? 999).padStart(4, '0')); return chain.join('.'); };
+  const groups = new Map();
+  list.forEach((r) => {
+    const c = S.cats[r.categoryId]; const t = top(c);
+    const key = t ? t.id : r.transfer ? '_transfer' : '_label';
+    if (!groups.has(key)) groups.set(key, { key, cat: t, rules: [] });
+    groups.get(key).rules.push(r);
+  });
+  const gs = [...groups.values()].sort((a, b) => (a.cat ? rank(a.cat) : 'zzz' + a.key).localeCompare(b.cat ? rank(b.cat) : 'zzz' + b.key));
+  const fold = S.ruleFold ||= new Set();
+  return gs.map((g) => {
+    const name = g.cat ? g.cat.name : g.key === '_transfer' ? 'Transfers' : 'Labels only';
+    const gIcon = g.cat ? catIcon(g.cat) : glyph(g.key === '_transfer' ? 'swap_horiz' : 'sell', '#8E8E93');
+    const rows = g.rules.sort((a, b) => rank(S.cats[a.categoryId]).localeCompare(rank(S.cats[b.categoryId])) || ruleText(a).cond.localeCompare(ruleText(b).cond)).map((r) => {
+      const t = ruleText(r); const c = S.cats[r.categoryId];
+      const ic = c ? catIcon(c) : glyph(r.transfer ? 'swap_horiz' : 'sell', '#8E8E93');
+      return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${ic}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`;
+    }).join('');
+    const open = !fold.has(g.key);
+    return `<button class="rule-group" data-act="rule-fold" data-id="${g.key}" aria-expanded="${open}">${gIcon}<span class="n">${esc(name)}</span><span class="meta">${g.rules.length}</span>${icon(open ? 'expand_less' : 'expand_more')}</button>
+      ${open ? `<div class="set-list">${rows}</div>` : ''}`;
+  }).join('');
+}
 function viewRules() {
   const list = ruleList();
   return `<div class="page">
     <div class="meta" style="padding:0 4px">Rules run on new records when the app opens. They only touch records that have no category yet (and aren’t transfers); records you’ve already sorted are never changed.</div>
-    ${list.length ? `<div class="set-list">${list.map((r) => { const t = ruleText(r); return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${icon('bolt')}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`; }).join('')}</div>` : '<div class="empty">No rules yet</div>'}
+    ${list.length ? ruleGroupsHtml(list) : '<div class="empty">No rules yet</div>'}
     <button class="pill-btn primary wide" data-act="add-rule">${icon('add')}New rule</button>
     ${list.length ? '<button class="pill-btn wide" data-act="run-rules">Apply rules to existing records</button>' : ''}</div>`;
 }
@@ -1869,7 +1908,7 @@ function renderEdit() {
       <div class="set-item">${glyph('calendar_today', '#FF3B30')}<span class="n">Date</span>
         ${e.manual ? `<input id="ed-date" type="date" class="row-date" value="${e.date}">` : `<span class="v">${shortDate(e.date)}${t.pending ? ' (pending)' : ''}</span>`}</div>
       ${t ? valueRow('ed-split', glyph('call_split', '#5856D6'), 'Split', t.parentId ? `Part ${t.splitIdx + 1} of ${t.splitN}` : 'None') : ''}
-      ${t && !t.manual ? valueRow('ed-rule', glyph('bolt', '#FF9500'), 'Create rule', esc(`Auto-sort “${kwSuggest(t)[0] || 'this merchant'}”`)) : ''}
+      ${t && !t.manual ? (() => { const n = ruleList().filter((r) => ruleMatches(r, t)).length; return valueRow('ed-rule', glyph('bolt', '#FF9500'), 'Create rule', esc(n ? `${n} rule${n === 1 ? '' : 's'} match` : `Auto-sort “${kwSuggest(t)[0] || 'this merchant'}”`)); })() : ''}
     </div>
     ${t && !e.manual && !e.part && e.type !== 'transfer' ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply the category to other uncategorized records from this merchant</label>` : ''}
     <div class="sec-head">Labels</div>${labelChips(e.labels, '')}
@@ -2059,7 +2098,7 @@ function kwSuggest(t) {
 function sheetRuleFromTx(txId, e) {
   const t = S.txById[txId]; if (!t) return;
   const sug = kwSuggest(t);
-  S.ruleDraft = { id: null, field: 'description', kw: sug[0] ? [sug[0]] : [], kwInput: '', accountId: null, onlyAcc: t.accountId || null, suggestions: sug,
+  S.ruleDraft = { id: null, fromTx: txId, field: 'description', kw: sug[0] ? [sug[0]] : [], kwInput: '', accountId: null, onlyAcc: t.accountId || null, suggestions: sug,
     categoryId: (e ? e.categoryId : t.categoryId) || null, labelId: (e ? e.labels : t.labels || [])[0] || null, transfer: e ? e.type === 'transfer' : !!t.isTransfer, applyPast: true, overwrite: false,
     amtMode: 'any', amtA: Math.abs(t.amount).toFixed(2), amtB: '' };
   renderRule();
@@ -2100,7 +2139,13 @@ function refreshRuleCounts() {
 }
 function renderRule() {
   const d = S.ruleDraft; const c = S.cats[d.categoryId]; const l = S.labels[d.labelId]; const a = S.accounts[d.accountId];
+  // Opened from a record: say which existing rules already match it (tap one to open it)
+  const src = d.fromTx && !d.id ? S.txById[d.fromTx] : null;
+  const hits = src ? ruleList().filter((r) => ruleMatches(r, src)) : [];
+  const hitHtml = hits.length ? `<div class="rule-hits"><div class="meta">This record already matches ${hits.length === 1 ? 'a rule' : `${hits.length} rules`}. Tap to view, or create a new one below.</div>
+    <div class="set-list">${hits.map((r) => { const t = ruleText(r); const c = S.cats[r.categoryId]; return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${c ? catIcon(c) : glyph(r.transfer ? 'swap_horiz' : 'sell', '#8E8E93')}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`; }).join('')}</div></div>` : '';
   openSheet(`<h3>${d.id ? 'Edit rule' : 'New rule'}</h3>
+    ${hitHtml}
     <div class="sec-head">When</div>
     <div class="set-list">
       ${valueRow('ru-field', glyph(d.field === 'account' ? 'credit_card' : 'text_fields', '#3478F6'), 'Match by', d.field === 'account' ? 'Account' : 'Description')}
@@ -2198,12 +2243,16 @@ async function removeDemo() {
   for (let i = 0; i < refs.length; i += 450) { const bb = writeBatch(db); refs.slice(i, i + 450).forEach((r) => bb.delete(r)); await bb.commit(); }
   toast('Demo data removed');
 }
-async function doSync(itemId) {
-  toast('Syncing…', 60000);
+async function doSync(itemId, again = false) {
+  const refresh = !again && Date.now() - (S.lastRefresh || 0) > 60000; // Plaid allows 2 refreshes a minute per bank
+  if (refresh) S.lastRefresh = Date.now();
+  toast(refresh ? 'Asking your banks for new data… (about 30 s)' : 'Syncing…', 90000);
   try {
-    const { data } = await call('syncNow')(itemId ? { itemId } : {});
+    const { data } = await call('syncNow')({ ...(itemId ? { itemId } : {}), refresh });
+    if (data.refreshed && !again) setTimeout(() => doSync(itemId, true), 120000); // banks can be slow: pick up late arrivals quietly
     const errs = data.results.filter((r) => r.error);
     const added = data.results.reduce((n, r) => n + (r.added || 0), 0);
+    if (again && !added && !errs.length) return; // the quiet follow-up only speaks up when something new arrived
     toast(errs.length ? `${errs.length} bank(s) had sync errors. See the Accounts page.` : `Synced. ${added} new record${added === 1 ? '' : 's'}.`);
   } catch (e) { toast('Sync failed: ' + errMsg(e)); }
 }
@@ -2441,6 +2490,7 @@ document.addEventListener('click', async (e) => {
       case 'ru-field': captureRule(); openOptions('Match by', [{ value: 'description', label: 'Description contains', iconHtml: glyph('text_fields', '#3478F6') }, { value: 'account', label: 'Account is', iconHtml: glyph('credit_card', '#3478F6') }], S.ruleDraft.field, (v) => { S.ruleDraft.field = v; renderRule(); }); break;
       case 'ru-acc': captureRule(); openOptions('Account', accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash), S.ruleDraft.accountId, (v) => { S.ruleDraft.accountId = v; renderRule(); }); break;
       case 'ru-cat': captureRule(); openPicker({ mode: 'rule' }); break;
+      case 'rule-fold': { const f = S.ruleFold ||= new Set(); f.has(id) ? f.delete(id) : f.add(id); render(); break; }
       case 'ru-amt': captureRule(); openOptions('Amount', [{ value: 'any', label: 'Any amount' }, { value: 'exact', label: 'Exactly' }, { value: 'range', label: 'Between' }].map((o) => ({ ...o, iconHtml: glyph('attach_money', '#34C759') })), S.ruleDraft.amtMode || 'any', (v) => { S.ruleDraft.amtMode = v; renderRule(); }); break;
       case 'ru-only': captureRule(); openOptions('Only in account', [{ value: '', label: 'Any account', iconHtml: glyph('all_inclusive', '#8E8E93') }, ...accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash)], S.ruleDraft.onlyAcc || '', (v) => { S.ruleDraft.onlyAcc = v || null; renderRule(); }); break;
       case 'ru-sug': captureRule(); S.ruleDraft.kw = [...new Set([...S.ruleDraft.kw, el.dataset.v])]; renderRule(); break;
