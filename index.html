@@ -426,7 +426,8 @@ input.row-select { direction: ltr; }
 .ci.bank-logo img { width: 70%; height: 70%; object-fit: contain; }
 
 /* All / Personal / Business switch under each card title */
-.scope-seg { display: inline-flex; gap: 2px; margin-top: 8px; padding: 2px; background: #EDEDF0; border-radius: 9px; }
+.scope-seg { display: inline-flex; width: fit-content; max-width: 100%; align-self: flex-start; gap: 2px; margin-top: 8px; padding: 2px; background: #EDEDF0; border-radius: 9px; }
+.scope-seg button { flex: 0 0 auto; }
 .scope-seg button { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; color: var(--sub); padding: 4px 10px; border-radius: 7px; }
 .scope-seg button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 
@@ -563,7 +564,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '9.0';
+const APP_VERSION = '9.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
