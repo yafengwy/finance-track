@@ -564,7 +564,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '9.9';
+const APP_VERSION = '10.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1526,6 +1526,15 @@ function recMatcher() {
     && (!fm || fm(t));
 }
 function signed(t) { return t.isTransfer ? 0 : -t.amount; }
+function searchClearBtn() { return S.search ? `<button class="search-clear" data-act="search-clear" aria-label="Clear search">${icon('cancel')}</button>` : ''; }
+// While typing, only the results below the search box are redrawn; the box itself is never replaced,
+// so the keyboard (and Chinese/predictive input) is not interrupted
+function refreshRecResults() {
+  const box = $('rec-results'); if (!box) { render(); return; }
+  const tmp = document.createElement('div'); tmp.innerHTML = viewTx(route().params);
+  const fresh = tmp.querySelector('#rec-results'); if (fresh) box.innerHTML = fresh.innerHTML;
+  const slot = $('search-clear-slot'); if (slot) slot.innerHTML = searchClearBtn();
+}
 function viewTx(params) {
   const f = params.get('f') || S.txFilter;
   const catKey = params.get('cat');
@@ -1561,7 +1570,7 @@ function viewTx(params) {
   if (day) html += '</div>';
   if (!shown.length) html = `<div class="empty">${f === 'unknown' && !q ? 'Everything is categorized' : 'No records'}</div>`;
   const total = list.reduce((n, t) => n + signed(t), 0);
-  const searchBar = `<div class="searchbar">${icon('search')}<input id="txsearch" type="search" placeholder="Search merchant, note, category, amount" value="${esc(S.search)}" autocomplete="off" aria-label="Search records">${S.search ? `<button class="search-clear" data-act="search-clear" aria-label="Clear search">${icon('cancel')}</button>` : ''}</div>`;
+  const searchBar = `<div class="searchbar">${icon('search')}<input id="txsearch" type="search" placeholder="Search merchant, note, category, amount" value="${esc(S.search)}" autocomplete="off" aria-label="Search records"><span id="search-clear-slot">${searchClearBtn()}</span></div>`;
   const nf = recFilterCount(); const p = recPeriod();
   const dock = `<div class="rec-dock">
     <button class="dock-grab" data-act="rec-panel" aria-label="Accounts, categories and filter"><span class="grab"></span><span class="meta">${nf ? `${nf} filter${nf > 1 ? 's' : ''} on · ` : ''}Accounts · Categories · Filter</span></button>
@@ -1570,10 +1579,10 @@ function viewTx(params) {
       <button class="pp-mid" data-act="rec-kind">${esc(recLabel())} ${icon('arrow_drop_down')}</button>
       <button class="pp-arrow" data-act="rec-shift" data-dir="1" aria-label="Next period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_right')}</button>
     </div></div>`;
-  return `<div class="page rec-page">${title}${searchBar}
+  return `<div class="page rec-page">${title}${searchBar}<div id="rec-results" class="page" style="padding:0">
     ${catKey ? '' : `<div class="chips">${chip('all', 'All')}${chip('unknown', `Uncategorized ${unknownCount}`)}${chip('transfer', 'Transfers')}</div>`}
     <div class="row-between rec-sum"><span class="meta">${esc(recLabel())} · ${list.length} record${list.length === 1 ? '' : 's'}</span><span class="num">Σ ${money(total, true)}</span></div>
-    <div>${html}</div>${list.length > 500 ? '<div class="meta">Showing the latest 500. Narrow the period or search.</div>' : ''}</div>${dock}`;
+    <div>${html}</div>${list.length > 500 ? '<div class="meta">Showing the latest 500. Narrow the period or search.</div>' : ''}</div></div>${dock}`;
 }
 function sheetRecCustom() {
   const p = recPeriod(); const today = ymd(new Date());
@@ -2802,7 +2811,12 @@ document.addEventListener('input', (e) => {
   if (e.target.id === 'catq') { $('catpick').innerHTML = pickerBody(e.target.value.trim().toLowerCase()); return; }
   if (e.target.id !== 'txsearch') return;
   S.search = e.target.value;
-  clearTimeout(searchTimer); searchTimer = setTimeout(render, 150);
+  if (e.isComposing) return; // still composing a word on the keyboard: wait until it's committed
+  clearTimeout(searchTimer); searchTimer = setTimeout(refreshRecResults, 200);
+});
+document.addEventListener('compositionend', (e) => {
+  if (e.target.id !== 'txsearch') return;
+  S.search = e.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refreshRecResults, 200);
 });
 document.addEventListener('change', async (e) => {
   if (e.target.dataset.ruacc && S.ruleDraft) { const id = e.target.dataset.ruacc; const a = new Set(S.ruleDraft.onlyAccs || []); e.target.checked ? a.add(id) : a.delete(id); S.ruleDraft.onlyAccs = [...a]; return; }
