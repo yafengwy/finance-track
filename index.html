@@ -422,6 +422,9 @@ input.row-select { direction: ltr; }
 .nw-st { width: 4px; height: 24px; border-radius: 2px; flex-shrink: 0; }
 .nw-acc .n { flex: 1; }
 
+.ci.bank-logo { background: #fff; box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.ci.bank-logo img { width: 70%; height: 70%; object-fit: contain; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -555,7 +558,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '8.6';
+const APP_VERSION = '8.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -939,6 +942,10 @@ function headerSub(r) {
 
 // ---------- bank connections (Menu → Accounts) ----------
 const TRIAL_ITEMS = 10;
+// Bank logo from Plaid (base64 PNG) in a white circle; falls back to the bank icon
+function bankIcon(i) {
+  return i?.logo ? `<span class="ci bank-logo"><img src="data:image/png;base64,${i.logo}" alt=""></span>` : glyph('account_balance', i?.brandColor || '#0A7AFF');
+}
 function fmtWhen(ts) { const d = ts?.toDate?.(); return d ? d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'; }
 function connAccounts(itemId) { return Object.values(S.accounts).filter((a) => a.itemId === itemId).sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
 function connStatus(i) {
@@ -954,7 +961,7 @@ function viewConns() {
     const masks = accs.map((a) => (a.mask ? '••' + a.mask : a.name)).join(', ');
     // Status sits next to the bank name: a green dot when all is well, a colored tag otherwise
     const tag = st.text === 'Connected' ? `<span class="dot-s" style="background:${st.color}" aria-label="Connected"></span>` : `<span class="st-tag" style="color:${st.color};border-color:${st.color}">${st.text}</span>`;
-    return `<a class="set-item conn-row" href="#/conn/${i.id}">${glyph('account_balance', '#0A7AFF')}
+    return `<a class="set-item conn-row" href="#/conn/${i.id}">${bankIcon(i)}
       <span class="n"><span class="conn-name">${esc(i.institutionName || 'Bank')}${tag}</span><div class="meta">${accs.length} account${accs.length === 1 ? '' : 's'}${masks ? ' · ' + esc(masks) : ''}</div></span>
       ${icon('chevron_right')}</a>`;
   }).join('');
@@ -975,7 +982,7 @@ function viewConn(id) {
   const st = connStatus(i); const accs = connAccounts(id);
   return `<div class="page">
     <div class="set-list">
-      <div class="set-item">${glyph('account_balance', '#0A7AFF')}<span class="n">${esc(i.institutionName || 'Bank')}</span><span class="v conn-st"><span class="dot-s" style="background:${st.color}"></span>${st.text}</span></div>
+      <div class="set-item">${bankIcon(i)}<span class="n">${esc(i.institutionName || 'Bank')}</span><span class="v conn-st"><span class="dot-s" style="background:${st.color}"></span>${st.text}</span></div>
       ${i.status === 'error' && i.errorMessage ? `<div class="set-item"><span class="meta">${esc(i.errorMessage)}</span></div>` : ''}
       <div class="set-item"><span class="n">Last synced</span><span class="v">${fmtWhen(i.lastSyncAt)}</span></div>
       <div class="set-item"><span class="n">Connected on</span><span class="v">${fmtWhen(i.createdAt)}</span></div>
