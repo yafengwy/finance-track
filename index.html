@@ -397,8 +397,8 @@ input.row-select { direction: ltr; }
 .nw-l { display: inline-flex; align-items: center; gap: 6px; }
 .nw-l .meta { font-size: 12px; }
 .nw-l .ms { font-size: 18px; color: var(--sub); }
-.nw-list { display: flex; flex-direction: column; padding: 0 0 6px 12px; }
-.nw-acc { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; border: 0; background: none; font: inherit; font-size: 14px; color: var(--text); padding: 6px 0; text-align: left; }
+.nw-list { display: flex; flex-direction: column; margin: 0 0 8px; padding: 2px 12px 8px; background: #F4F4F6; border-radius: 12px; }
+.nw-acc { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; border: 0; background: none; font: inherit; font-size: 13px; color: var(--text); padding: 5px 0 5px 2px; text-align: left; }
 .nw-acc .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .nw-sec { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 16px; padding: 12px 0 4px; border-top: 1px solid var(--line); }
@@ -407,6 +407,11 @@ input.row-select { direction: ltr; }
 
 .nw-ic { width: 34px; height: 34px; border-radius: 50%; background: #F0F0F3; display: inline-flex; align-items: center; justify-content: center; margin-right: 4px; flex-shrink: 0; }
 .nw-l .nw-ic .ms { font-size: 20px; color: #3A3A3C; }
+
+.nw-bank { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; font-weight: 600; padding: 10px 0 4px; }
+.nw-bank .meta { font-weight: 400; font-size: 12px; }
+.nw-bank + .nw-acc, .nw-acc { border-top: 0; }
+.nw-zero { border: 0; background: none; font: inherit; font-size: 13px; color: var(--accent); text-align: left; padding: 8px 0 2px; }
 
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
@@ -541,7 +546,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '8.3';
+const APP_VERSION = '8.4';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1016,10 +1021,17 @@ function netWorthCard(accs) {
   const ICONS = { cash: 'account_balance', credit: 'credit_card', loan: 'request_quote', invest: 'bar_chart' }; // same icon in Personal and Business
   const row = (gk, k) => {
     const x = groups[gk][k] || { sum: 0, list: [] }; const id = `${gk}-${k}`; const on = open.has(id);
-    const items = x.list.sort((p, q) => Math.abs(q.b) - Math.abs(p.b)).map(({ a, b }) => {
-      const inst = (S.items[a.itemId] || {}).institutionName || a.institution || '';
-      return `<button class="nw-acc" data-act="acc" data-id="${a.id}"><span class="n">${esc(accName(a))}<span class="meta"> ${esc([inst, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</span></span><span class="num" style="${col(b)}">${money(b)}</span></button>`;
-    }).join('');
+    // Grouped by bank (bank name + subtotal in the larger type); $0 accounts folded into one line
+    const instOf = (a) => (S.items[a.itemId] || {}).institutionName || a.institution || (a.manual ? 'Manual' : 'Other');
+    const nonzero = x.list.filter((y) => Math.round(y.b * 100) !== 0); const zero = x.list.length - nonzero.length;
+    const showZero = (S.nwZero ||= new Set()).has(id);
+    const byBank = new Map();
+    (showZero ? x.list : nonzero).forEach((y) => { const k = instOf(y.a); if (!byBank.has(k)) byBank.set(k, []); byBank.get(k).push(y); });
+    const banks = [...byBank.entries()].map(([bank, ys]) => ({ bank, ys, sum: ys.reduce((n, y) => n + y.b, 0), all: x.list.filter((y) => instOf(y.a) === bank).length }))
+      .sort((p, q) => Math.abs(q.sum) - Math.abs(p.sum) || p.bank.localeCompare(q.bank));
+    const items = banks.map((g) => `<div class="nw-bank"><span>${esc(g.bank)} <span class="meta">· ${g.all}</span></span><span class="num" style="${col(g.sum)}">${money(g.sum)}</span></div>
+      ${g.ys.sort((p, q) => Math.abs(q.b) - Math.abs(p.b)).map(({ a, b }) => `<button class="nw-acc" data-act="acc" data-id="${a.id}"><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}</span><span class="num" style="${col(b)}">${money(b)}</span></button>`).join('')}`).join('')
+      + (zero ? `<button class="nw-zero" data-act="nw-zero" data-id="${id}">${showZero ? 'Hide' : `+ ${zero}`} account${zero === 1 ? '' : 's'} with $0 balance</button>` : '');
     return `<button class="nw-row" data-act="nw-fold" data-id="${id}" aria-expanded="${on}"><span class="nw-l"><span class="nw-ic">${icon(ICONS[k])}</span>${LABELS[k]}<span class="meta">${x.list.length}</span>${icon(on ? 'expand_less' : 'expand_more')}</span><span class="num" style="${col(x.sum)}">${money(x.sum)}</span></button>
       ${on ? `<div class="nw-list">${items || '<div class="meta">No accounts</div>'}</div>` : ''}`;
   };
@@ -2602,6 +2614,7 @@ document.addEventListener('click', async (e) => {
         sheet.dataset.icon = el.dataset.icon;
         sheet.querySelectorAll('[data-act="pick-icon"]').forEach((b) => b.setAttribute('aria-pressed', b === el));
         break;
+      case 'nw-zero': { const z = S.nwZero ||= new Set(); z.has(id) ? z.delete(id) : z.add(id); render(); break; }
       case 'nw-fold': { const o = S.nwOpen ||= new Set(); o.has(id) ? o.delete(id) : o.add(id); render(); break; }
       case 'save-acc': {
         const name = $('an').value.trim();
