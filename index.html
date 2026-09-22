@@ -571,7 +571,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '10.7';
+const APP_VERSION = '10.9';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2381,10 +2381,10 @@ function rulePastText(n) { return `Also apply to ${n} past uncategorized record$
 function rulePastCatMatches(d) {
   const r = draftRule(d); if (r.field === 'description' && !r.keywords.length) return [];
   if (r.field === 'account' && !r.accountId) return [];
-  const changes = (t) => (r.categoryId && t.categoryId !== r.categoryId) || (r.labelId && S.labels[r.labelId] && !(t.labels || []).includes(r.labelId)) || r.transfer;
-  return S.txs.filter((t) => !t.manual && !t.parentId && t.categoryId && !t.isTransfer && ruleMatches(r, t) && changes(t));
+  const changes = (t) => (r.categoryId && (t.categoryId !== r.categoryId || t.isTransfer)) || (r.labelId && S.labels[r.labelId] && !(t.labels || []).includes(r.labelId)) || (r.transfer && !t.isTransfer);
+  return S.txs.filter((t) => !t.manual && !t.parentId && (t.categoryId || t.isTransfer) && ruleMatches(r, t) && changes(t));
 }
-function ruleOverText(n) { return `Also update ${n} past record${n === 1 ? '' : 's'} that already ${n === 1 ? 'has' : 'have'} a category`; }
+function ruleOverText(n) { return `Also update ${n} past record${n === 1 ? '' : 's'} that ${n === 1 ? 'is' : 'are'} already sorted`; }
 function refreshRuleCounts() {
   const d = S.ruleDraft; if (!d) return;
   const a = $('ru-past-n'); if (a) a.textContent = rulePastText(rulePastMatches(d).length);
@@ -2421,7 +2421,7 @@ function renderRule() {
       <label class="set-item">${glyph('swap_horiz', '#8E8E93')}<span class="n">Mark as transfer</span><input type="checkbox" class="switch" id="ru-tr" ${d.transfer ? 'checked' : ''}></label>
     </div>
     <div class="set-list"><label class="set-item">${glyph('history', '#8E8E93')}<span class="n" id="ru-past-n">${rulePastText(rulePastMatches(d).length)}</span><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''}></label>
-      <label class="set-item">${glyph('published_with_changes', '#FF9500')}<span class="n"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length)}</span><div class="meta">Off by default. Gives them this rule’s category and label.</div></span><input type="checkbox" class="switch" id="ru-over" ${d.overwrite ? 'checked' : ''}></label></div>
+      <label class="set-item">${glyph('published_with_changes', '#FF9500')}<span class="n"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length)}</span><div class="meta">Off by default. Records with a category, and transfers. Gives them this rule’s category and label; a record given a category stops being a transfer.</div></span><input type="checkbox" class="switch" id="ru-over" ${d.overwrite ? 'checked' : ''}></label></div>
     ${d.id ? `<button class="pill-btn danger wide" data-act="del-rule" data-id="${d.id}">${icon('delete')}Delete rule</button>` : ''}
     ${saveBar('save-rule', 'Save')}`);
 
@@ -2449,7 +2449,7 @@ async function saveRule() {
     const b = writeBatch(db);
     past.slice(i, i + 450).forEach((t) => {
       const u = { ruled: true };
-      if (data.categoryId && S.cats[data.categoryId]) u.categoryId = data.categoryId;
+      if (data.categoryId && S.cats[data.categoryId]) { u.categoryId = data.categoryId; if (!data.transfer) u.isTransfer = false; }
       if (data.labelId && S.labels[data.labelId] && !(t.labels || []).includes(data.labelId)) u.labels = [...(t.labels || []), data.labelId];
       if (data.transfer) u.isTransfer = true;
       b.update(doc(db, 'transactions', t.id), u);
@@ -2459,6 +2459,7 @@ async function saveRule() {
   S.ruleDraft = null; closeSheet();
   const head = twin ? 'Keywords added to an existing rule' : 'Rule saved';
   toast(past.length ? `${head} · ${past.length} record${past.length === 1 ? '' : 's'} updated` : `${head}. It applies to new records from now on.`, 4000);
+  backToPopup(); // came from a record in the search results or a card list: go back there
 }
 
 // ---------- actions ----------
