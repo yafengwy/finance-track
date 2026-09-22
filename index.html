@@ -564,7 +564,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '9.1';
+const APP_VERSION = '9.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -855,7 +855,7 @@ function ruleMatches(r, t) {
   if (!amountOk(r, t)) return false;
   if (r.field === 'account') return t.accountId === r.accountId;
   if (r.accountId && t.accountId !== r.accountId) return false; // "Only in account"
-  const hay = `${t.name || ''} ${t.merchant || ''}`.toLowerCase();
+  const hay = `${t.name || ''} ${t.merchant || ''} ${t.originalDescription || ''}`.toLowerCase(); // name, merchant and the full bank description
   return (r.keywords || []).some((k) => k && hay.includes(k));
 }
 function ruleUpdates(t) {
@@ -1445,7 +1445,7 @@ function rowHtml(row, prev) {
 // ---------- transactions ----------
 function matchSearch(t, q) {
   const c = S.cats[t.categoryId];
-  const hay = [t.merchant, t.name, t.note, c?.name, topOf(c)?.name, ...(t.labels || []).map((l) => S.labels[l]?.name),
+  const hay = [t.merchant, t.name, t.originalDescription, t.note, c?.name, topOf(c)?.name, ...(t.labels || []).map((l) => S.labels[l]?.name),
     fmt.format(Math.abs(t.amount)), String(Math.abs(t.amount))].join(' ').toLowerCase();
   return q.split(/\s+/).every((w) => hay.includes(w.replace(/[$,]/g, '')));
 }
@@ -1710,14 +1710,13 @@ function openDrawer() {
     <a href="#/filters" data-act="drawer-link">${icon('filter_alt')}Filters</a>
     <a href="#/rules" data-act="drawer-link">${icon('bolt')}Automatic Rules</a>
     <div class="drawer-sep"></div>
-    <button data-act="demo-add">${icon('science')}Add demo data</button>
-    <button data-act="demo-del">${icon('delete_sweep')}Remove demo data</button>
     <button data-act="logout">${icon('logout')}Sign out</button>
     <button data-act="check-update">${icon('system_update')}Check for updates</button>
     <div class="meta" style="padding:12px;margin-top:auto">Version ${APP_VERSION}</div></nav>`;
 }
 function closeDrawer() { $('drawer').innerHTML = ''; }
 function openSheet(html, opts = {}) {
+  S.sheetBack = null; // the opener sets this again after drawing, if closing should go back to a parent sheet
   $('sheet').innerHTML = `<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true">
     <div class="sheet-top"><button class="sheet-close" data-act="close-sheet" aria-label="Close">${icon('close')}</button><div class="sheet-title"></div><div class="sheet-right"></div></div>${html}</div>`;
   // Header in Wallet style: ✕ on the left, the sheet's title centered, its action (Sort, Clear filter…) on the right
@@ -1746,11 +1745,13 @@ function enableSwipeClose(sheet) {
   }, { passive: true });
   sheet.addEventListener('touchend', () => {
     if (y0 === null) return;
-    if (dy > 90) closeSheet(); else sheet.style.transform = '';
+    if (dy > 90) dismissSheet(); else sheet.style.transform = '';
     y0 = null;
   });
 }
-function closeSheet() { $('sheet').innerHTML = ''; document.body.classList.remove('sheet-open'); }
+function closeSheet() { S.sheetBack = null; $('sheet').innerHTML = ''; document.body.classList.remove('sheet-open'); }
+// ✕, swipe down or tapping outside: go back to the sheet this one was opened from, else close
+function dismissSheet() { const back = S.sheetBack; if (back) { S.sheetBack = null; back(); } else closeSheet(); }
 const saveBar = (act, label = 'Done', extra = '') => `<div class="sticky-save"><button class="pill-btn primary" data-act="${act}"${extra}>${label}</button></div>`;
 
 // ---- reorder categories (main list, or the subcategories of one category) ----
@@ -1958,6 +1959,8 @@ function openPicker(opts) {
     ${opts.mode === 'direct' && t && !t.manual && !t.parentId ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply to other uncategorized records from this merchant</label>` : ''}
     <div id="catpick">${pickerBody('')}</div>
     <button class="pill-btn wide" data-act="pick-cat" data-id="">${opts.mode === 'rule' ? 'No change' : 'Set as uncategorized'}</button>`);
+
+  S.sheetBack = { edit: renderEdit, rule: renderRule, split: renderSplit }[opts.mode] || (opts.mode === 'direct' && S.back === 'rec' && S.recPop ? backToPopup : null);
 }
 function pickerBody(q) {
   const t = S.txById[S.picker.txId];
@@ -2069,6 +2072,8 @@ function renderEdit() {
     ${t && !t.manual ? bankDetails(t) : ''}
     ${t && !e.part && e.manual ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
     ${saveBar('save-edit', 'Save')}`);
+
+  if (S.back === 'rec' && S.recPop) S.sheetBack = backToPopup;
 }
 async function saveEdit() {
   captureEdit();
@@ -2162,6 +2167,8 @@ function renderSplit() {
     <button class="pill-btn primary wide" data-act="sp-add">${icon('add')}Add split</button>
     ${t.splits?.length > 1 ? `<button class="pill-btn danger wide" data-act="sp-remove">${icon('undo')}Undo split</button>` : ''}
     ${saveBar('sp-save', 'Save')}`);
+
+  if (sp.fromEdit && S.edit) S.sheetBack = renderEdit;
 }
 async function saveSplit() {
   spCapture(); const sp = S.split; const t = S.rawById[sp.txId]; if (!t) { closeSheet(); return; }
@@ -2241,12 +2248,18 @@ function sheetRule(id) {
 }
 // Keyword ideas from a bank record: its first word, and the whole name without trailing store numbers
 function kwSuggest(t) {
-  const raw = String(t.merchant || t.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const out = kwSuggestFrom(t.merchant || t.name);
+  if (t.originalDescription) kwSuggestFrom(t.originalDescription).forEach((k) => { if (!out.includes(k)) out.push(k); });
+  return out.slice(0, 5);
+}
+function kwSuggestFrom(text) {
+  const raw = String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
   const full = raw.replace(/\s*[#*]?\s*\d{3,}.*$/, '').trim();
   // Card processors put a short code before "*" (TST*, SQ *, WEIXIN*): suggest the name after it first
   const core = full.replace(/^[a-z0-9]{1,8}\s*\*\s*/, '').trim() || full;
   const first = (core.match(/[a-z0-9\u4e00-\u9fff&']+/) || [''])[0];
-  return [...new Set([first.length >= 3 ? first : core, core, full].filter(Boolean))];
+  const pre = (full.match(/^([a-z0-9]{2,8})\s*\*/) || [])[1]; // payment prefix like "alp*" (Alipay), "sq*", "tst*"
+  return [...new Set([first.length >= 3 ? first : core, core, full, pre && pre + '*'].filter(Boolean))];
 }
 // "Create rule" from a record: prefilled with its keyword, its account, and the category/labels/type being edited
 function sheetRuleFromTx(txId, e) {
@@ -2326,6 +2339,8 @@ function renderRule() {
       <label class="set-item">${glyph('published_with_changes', '#FF9500')}<span class="n"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length)}</span><div class="meta">Off by default. Gives them this rule’s category and label.</div></span><input type="checkbox" class="switch" id="ru-over" ${d.overwrite ? 'checked' : ''}></label></div>
     ${d.id ? `<button class="pill-btn danger wide" data-act="del-rule" data-id="${d.id}">${icon('delete')}Delete rule</button>` : ''}
     ${saveBar('save-rule', 'Save')}`);
+
+  if (d.fromTx && !d.id && S.edit?.txId) S.sheetBack = renderEdit;
 }
 async function saveRule() {
   captureRule(); const d = S.ruleDraft;
@@ -2526,7 +2541,7 @@ document.addEventListener('click', async (e) => {
     switch (act) {
       case 'drawer': openDrawer(); break;
       case 'close-drawer': closeDrawer(); break;
-      case 'close-sheet': closeSheet(); break;
+      case 'close-sheet': dismissSheet(); break;
       case 'logout': closeDrawer(); await signOut(auth); break;
       case 'sync': await doSync(id); break;
       case 'link': await openLink(null); break;
@@ -2646,7 +2661,7 @@ document.addEventListener('click', async (e) => {
       case 'edit-type': captureEdit(); S.edit.type = el.dataset.type; renderEdit(); break;
       case 'save-edit': await saveEdit(); break;
       case 'search-clear': S.search = ''; clearTimeout(searchTimer); render(); break;
-      case 'ed-split': { captureEdit(); const et = S.txById[S.edit.txId]; if (et?.parentId) openSplit(et.parentId); else openSplit(S.edit.txId, S.edit); break; }
+      case 'ed-split': { captureEdit(); const et = S.txById[S.edit.txId]; if (et?.parentId) openSplit(et.parentId); else openSplit(S.edit.txId, S.edit); if (S.split) { S.split.fromEdit = true; S.sheetBack = renderEdit; } break; }
       case 'sp-mode': spCapture(); S.split.mode = el.dataset.mode; renderSplit(); break;
       case 'sp-cat': spCapture(); openPicker({ mode: 'split', i: +el.dataset.i }); break;
       case 'sp-add': spCapture(); S.split.parts.push(newPart()); renderSplit(); break;
@@ -2745,8 +2760,6 @@ document.addEventListener('click', async (e) => {
       case 'save-rule': await saveRule(); break;
       case 'del-rule': if (!confirm('Delete this rule?')) break; await deleteDoc(doc(db, 'rules', id)); closeSheet(); toast('Rule deleted'); break;
       case 'run-rules': { toast('Applying rules…'); const n = await applyRules(true); toast(n ? `Updated ${n} record${n === 1 ? '' : 's'}` : 'No records needed changes'); break; }
-      case 'demo-add': closeDrawer(); await addDemo(); break;
-      case 'demo-del': closeDrawer(); await removeDemo(); break;
       default: break;
     }
   } catch (err) { console.error(err); toast('Something went wrong: ' + errMsg(err)); }
