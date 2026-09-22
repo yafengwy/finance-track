@@ -558,7 +558,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '8.8';
+const APP_VERSION = '8.9';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1857,7 +1857,10 @@ function mselBody(opts = S.mselOpts || {}) {
   const labels = opts.labels === false ? '' : sortedLabels().map((l) => `<label class="msel-row"><input type="checkbox" data-msel="l:${l.id}" ${sel.has('l:' + l.id) ? 'checked' : ''}><span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span><span class="n">${esc(l.name)}</span></label>`).join('');
   const accList = opts.accounts ? Object.values(S.accounts).filter((a) => !a.hidden && !isInvest(a)).sort((a, b) => accName(a).localeCompare(accName(b))) : [];
   const accs = accList.map((a) => `<label class="msel-row"><input type="checkbox" data-msel="a:${a.id}" ${sel.has('a:' + a.id) ? 'checked' : ''}><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}</span></label>`).join('');
-  return `${accs ? `<div class="sec-head">Accounts <span class="meta">None ticked = all accounts</span></div><div class="set-list">${accs}</div>` : ''}
+  // Accounts start folded; the header says what's picked (nothing ticked = all accounts)
+  const nSel = accList.filter((a) => sel.has('a:' + a.id)).length;
+  const accHead = `<button class="set-item msel-fold" data-act="msel-acc-fold" aria-expanded="${!!S.mselAccOpen}">${glyph('account_balance_wallet', '#5856D6')}<span class="n">Accounts</span><span class="v">${nSel ? `${nSel} selected` : 'All accounts'}</span>${icon(S.mselAccOpen ? 'expand_less' : 'expand_more')}</button>`;
+  return `${accs ? `<div class="set-list">${accHead}${S.mselAccOpen ? accs : ''}</div>` : ''}
     <div class="sec-head">Categories <span class="meta">Untick a subcategory to leave it out</span></div><div class="set-list">${noneRow}${cats}</div>
     ${labels ? `<div class="sec-head">Labels</div><div class="set-list">${labels}</div>` : ''}`;
 }
@@ -1904,7 +1907,7 @@ function mselSpec() {
 }
 function recentInstant() { try { return JSON.parse(localStorage.getItem('recentInstant')) || []; } catch { return []; } }
 function sheetInstant(card) {
-  S.mselOpts = { general: true, accounts: true }; S.msel = new Set(); const cur = S.instant[card];
+  S.mselOpts = { general: true, accounts: true }; S.mselAccOpen = false; S.msel = new Set(); const cur = S.instant[card];
   if (cur) { S.msel = mselLoad(cur.cats || []); (cur.labels || []).forEach((id) => S.msel.add('l:' + id)); (cur.accounts || []).forEach((id) => S.msel.add('a:' + id)); }
   const recents = recentInstant().slice(0, 1).filter((r) => specName(r));
   openSheet(`<h3>Instant filter</h3>
@@ -1920,7 +1923,7 @@ function applyInstant(card, spec) {
   closeSheet(); render();
 }
 function sheetFilter(id) {
-  S.mselOpts = { general: true, accounts: true };
+  S.mselOpts = { general: true, accounts: true }; S.mselAccOpen = false;
   const f = id ? S.filters[id] : null;
   S.msel = mselLoad(f?.cats || []); if (f) { (f.labels || []).forEach((l) => S.msel.add('l:' + l)); (f.accounts || []).forEach((a) => S.msel.add('a:' + a)); }
   openSheet(`<h3>${f ? 'Edit filter' : 'New filter'}</h3>
@@ -2544,6 +2547,7 @@ document.addEventListener('click', async (e) => {
         if (S.cardDraft?.card === c) S.cardDraft.filter = '';
         captureCard(); render(); renderCard(); toast('Filter cleared'); break;
       }
+      case 'msel-acc-fold': S.mselAccOpen = !S.mselAccOpen; $('msel').innerHTML = mselBody(); break;
       case 'msel-open': S.mselOpen.has(id) ? S.mselOpen.delete(id) : S.mselOpen.add(id); $('msel').innerHTML = mselBody(); break;
       case 'reorder': sheetReorder(); break;
       case 'cat-reorder': sheetCatReorder(id || null); break;
@@ -2757,7 +2761,7 @@ document.addEventListener('change', async (e) => {
   if (el.dataset.accsel && el.checked && $('acc-all')) { $('acc-all').checked = false; return; }
   if (el.dataset.msel) {
     if (el.dataset.msel.startsWith('c:')) { mselToggle(el.dataset.msel, el.checked); const box = $('msel'); if (box) box.innerHTML = mselBody(); }
-    else el.checked ? S.msel.add(el.dataset.msel) : S.msel.delete(el.dataset.msel);
+    else { el.checked ? S.msel.add(el.dataset.msel) : S.msel.delete(el.dataset.msel); if (el.dataset.msel.startsWith('a:')) { const v = document.querySelector('.msel-fold .v'); if (v) { const n = [...S.msel].filter((k) => k.startsWith('a:')).length; v.textContent = n ? `${n} selected` : 'All accounts'; } } }
     return;
   }
   try {
