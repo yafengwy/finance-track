@@ -558,7 +558,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '8.7';
+const APP_VERSION = '8.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -651,7 +651,8 @@ function cardSpec(card) {
   return f ? { spec: f, label: 'Filter: ' + f.name } : { spec: null, label: '' };
 }
 function specName(spec) {
-  const names = [...(spec.cats || []).map((id) => (id.startsWith('=') ? (S.cats[id.slice(1)] ? `General – ${S.cats[id.slice(1)].name}` : null) : S.cats[id]?.name)), ...(spec.labels || []).map((id) => '#' + (S.labels[id]?.name || ''))].filter(Boolean);
+  const names = [...(spec.accounts || []).map((id) => (S.accounts[id] ? accName(S.accounts[id]) + (S.accounts[id].mask ? ' ••' + S.accounts[id].mask : '') : null)),
+    ...(spec.cats || []).map((id) => (id.startsWith('=') ? (S.cats[id.slice(1)] ? `General – ${S.cats[id.slice(1)].name}` : null) : S.cats[id]?.name)), ...(spec.labels || []).map((id) => '#' + (S.labels[id]?.name || ''))].filter(Boolean);
   return names.length > 3 ? `${names.slice(0, 3).join(', ')} +${names.length - 3}` : names.join(', ');
 }
 // ids -> Set of category ids that count. "=id" = only records put directly on id (its General row).
@@ -669,11 +670,15 @@ function catSet(ids) {
   return cats;
 }
 function specMatcher(spec) {
-  if (!spec || (!spec.cats?.length && !spec.labels?.length)) return () => true;
+  const accs = spec?.accounts?.length ? new Set(spec.accounts) : null;
+  const hasCL = !!(spec?.cats?.length || spec?.labels?.length);
+  if (!accs && !hasCL) return () => true;
   const cats = catSet(spec.cats || []);
   const labels = new Set(spec.labels || []);
-  return (t) => cats.has(t.categoryId) || (t.labels || []).some((l) => labels.has(l));
+  // Accounts narrow the result; within them a record shows if it is in a picked category OR has a picked label
+  return (t) => (!accs || accs.has(t.accountId)) && (!hasCL || cats.has(t.categoryId) || (t.labels || []).some((l) => labels.has(l)));
 }
+function specEmpty(spec) { return !spec?.cats?.length && !spec?.labels?.length && !spec?.accounts?.length; }
 
 // ---------- stats ----------
 // Income vs expense comes from the money direction (Plaid: positive = money out), not from the category.
@@ -1850,7 +1855,10 @@ function mselBody(opts = S.mselOpts || {}) {
   }).join('');
   const noneRow = opts.none ? `<label class="msel-row"><input type="checkbox" data-msel="c:__none" ${sel.has('c:__none') ? 'checked' : ''}><span class="ci unknown">${icon('help')}</span><span class="n">Uncategorized</span></label>` : '';
   const labels = opts.labels === false ? '' : sortedLabels().map((l) => `<label class="msel-row"><input type="checkbox" data-msel="l:${l.id}" ${sel.has('l:' + l.id) ? 'checked' : ''}><span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span><span class="n">${esc(l.name)}</span></label>`).join('');
-  return `<div class="sec-head">Categories <span class="meta">Untick a subcategory to leave it out</span></div><div class="set-list">${noneRow}${cats}</div>
+  const accList = opts.accounts ? Object.values(S.accounts).filter((a) => !a.hidden && !isInvest(a)).sort((a, b) => accName(a).localeCompare(accName(b))) : [];
+  const accs = accList.map((a) => `<label class="msel-row"><input type="checkbox" data-msel="a:${a.id}" ${sel.has('a:' + a.id) ? 'checked' : ''}><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}</span></label>`).join('');
+  return `${accs ? `<div class="sec-head">Accounts <span class="meta">None ticked = all accounts</span></div><div class="set-list">${accs}</div>` : ''}
+    <div class="sec-head">Categories <span class="meta">Untick a subcategory to leave it out</span></div><div class="set-list">${noneRow}${cats}</div>
     ${labels ? `<div class="sec-head">Labels</div><div class="set-list">${labels}</div>` : ''}`;
 }
 // Picker keys are 'c:<id>' / 'c:=<id>'. A parent is checked only when everything under it is checked.
@@ -1889,15 +1897,15 @@ function mselIds() {
   });
 }
 function mselSpec() {
-  const cats = []; const labels = [];
+  const cats = []; const labels = []; const accounts = [];
   mselIds().forEach((id) => { if (id !== '__none') cats.push(id); });
-  S.msel.forEach((k) => { const id = k.slice(2); if (k.startsWith('l:') && S.labels[id]) labels.push(id); });
-  return { cats, labels };
+  S.msel.forEach((k) => { const id = k.slice(2); if (k.startsWith('l:') && S.labels[id]) labels.push(id); if (k.startsWith('a:') && S.accounts[id]) accounts.push(id); });
+  return { cats, labels, accounts };
 }
 function recentInstant() { try { return JSON.parse(localStorage.getItem('recentInstant')) || []; } catch { return []; } }
 function sheetInstant(card) {
-  S.mselOpts = { general: true }; S.msel = new Set(); const cur = S.instant[card];
-  if (cur) { S.msel = mselLoad(cur.cats); cur.labels.forEach((id) => S.msel.add('l:' + id)); }
+  S.mselOpts = { general: true, accounts: true }; S.msel = new Set(); const cur = S.instant[card];
+  if (cur) { S.msel = mselLoad(cur.cats || []); (cur.labels || []).forEach((id) => S.msel.add('l:' + id)); (cur.accounts || []).forEach((id) => S.msel.add('a:' + id)); }
   const recents = recentInstant().slice(0, 1).filter((r) => specName(r));
   openSheet(`<h3>Instant filter</h3>
     ${recents.length ? `<div class="sec-head">Recent</div><div class="chips wrap">${recents.map((r, i) => `<button class="chip" data-act="instant-recent" data-i="${i}" data-card="${card}">${esc(specName(r))}</button>`).join('')}</div>` : ''}
@@ -1905,16 +1913,16 @@ function sheetInstant(card) {
     ${saveBar('apply-instant', 'Apply', ` data-card="${card}"`)}`);
 }
 function applyInstant(card, spec) {
-  if (!spec.cats.length && !spec.labels.length) { delete S.instant[card]; closeSheet(); render(); return; }
+  if (specEmpty(spec)) { delete S.instant[card]; closeSheet(); render(); return; }
   S.instant[card] = spec;
   const rec = [spec];
   localStorage.setItem('recentInstant', JSON.stringify(rec));
   closeSheet(); render();
 }
 function sheetFilter(id) {
-  S.mselOpts = { general: true };
+  S.mselOpts = { general: true, accounts: true };
   const f = id ? S.filters[id] : null;
-  S.msel = mselLoad(f?.cats || []); if (f) (f.labels || []).forEach((l) => S.msel.add('l:' + l));
+  S.msel = mselLoad(f?.cats || []); if (f) { (f.labels || []).forEach((l) => S.msel.add('l:' + l)); (f.accounts || []).forEach((a) => S.msel.add('a:' + a)); }
   openSheet(`<h3>${f ? 'Edit filter' : 'New filter'}</h3>
     <div class="field"><label for="fl-name">Name</label><input class="input" id="fl-name" value="${esc(f?.name || '')}" placeholder="e.g. Groceries" autocomplete="off"></div>
     <div id="msel">${mselBody()}</div>
@@ -2703,7 +2711,7 @@ document.addEventListener('click', async (e) => {
       case 'edit-filter': sheetFilter(id); break;
       case 'save-filter': {
         const name = $('fl-name').value.trim(); if (!name) { toast('Give the filter a name'); return; }
-        const spec = mselSpec(); if (!spec.cats.length && !spec.labels.length) { toast('Pick at least one category or label'); return; }
+        const spec = mselSpec(); if (specEmpty(spec)) { toast('Pick at least one account, category or label'); return; }
         if (id) await updateDoc(doc(db, 'filters', id), { name, ...spec }); else await setDoc(doc(collection(db, 'filters')), { name, ...spec });
         closeSheet(); toast('Filter saved'); break;
       }
