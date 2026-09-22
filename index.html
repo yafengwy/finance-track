@@ -180,8 +180,13 @@ body.sheet-open { overflow: hidden; }
 .check { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .check input { width: 20px; height: 20px; accent-color: var(--brand); }
 
-.fab { position: fixed; right: max(20px, calc(50vw - 260px)); bottom: calc(24px + var(--safe-bottom)); width: 60px; height: 60px; border-radius: 50%; border: 0; background: #2563EB; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(37,99,235,.35); z-index: 6; }
-.fab .ms { font-size: 30px; }
+.fab { width: 50px; height: 50px; border-radius: 50%; border: 0; background: #2563EB; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(37,99,235,.35); }
+.fab .ms { font-size: 26px; }
+/* the round button opens two actions: add a record, or jump to the search box */
+.fab-wrap { position: fixed; right: max(20px, calc(50vw - 260px)); bottom: calc(24px + var(--safe-bottom)); z-index: 6; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.fab-mini { display: none; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 0; border-radius: 20px; background: var(--card); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; box-shadow: 0 3px 10px rgba(21,24,29,.18); }
+.fab-wrap.open .fab-mini { display: inline-flex; }
+.fab-mini .ms { font-size: 20px; color: var(--accent); }
 .chips.wrap { flex-wrap: wrap; overflow: visible; }
 .chip .ms { font-size: 16px; vertical-align: -3px; }
 select.input { appearance: auto; }
@@ -291,7 +296,7 @@ input.row-select { direction: ltr; }
 .pp-arrow:disabled { opacity: .35; }
 .pp-arrow .ms { font-size: 26px; }
 .pp-mid { flex: 1; height: 40px; border: 0; border-radius: 999px; background: #fff; font-size: 16px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 2px; color: var(--text); }
-.rec-page ~ .fab, .fab { bottom: calc(140px + var(--safe-bottom)); }
+.rec-page ~ .fab-wrap, .fab-wrap { bottom: calc(140px + var(--safe-bottom)); }
 .tx-main { padding: 10px 0; }
 .rec-head { align-items: center; }
 .rec-head h3 { flex: 1; min-width: 0; }
@@ -566,7 +571,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '10.2';
+const APP_VERSION = '10.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -951,7 +956,10 @@ function render() {
   const main = !views[r.name] || MAIN.includes(r.name);
   const body = (views[r.name] || viewAccounts)();
   $('app').innerHTML = (main ? headerMain(r.name) : headerSub(r)) + body
-    + (r.name === 'tx' ? `<button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button>` : '');
+    + (r.name === 'tx' ? `<div class="fab-wrap${S.fabOpen ? ' open' : ''}">
+      <button class="fab-mini" data-act="fab-search" aria-label="Search records">${icon('search')}<span>Search</span></button>
+      <button class="fab-mini" data-act="add-tx" aria-label="Add a record">${icon('add')}<span>Add record</span></button>
+      <button class="fab" data-act="fab-toggle" aria-expanded="${!!S.fabOpen}" aria-label="More">${icon(S.fabOpen ? 'close' : 'add')}</button></div>` : '');
   window.scrollTo(0, y);
   if (focusId && $(focusId)) { const f = $(focusId); f.focus(); if (caret != null && f.setSelectionRange) f.setSelectionRange(caret, caret); }
 }
@@ -2740,6 +2748,8 @@ document.addEventListener('click', async (e) => {
         sheet.querySelectorAll('[data-act="pick-icon"]').forEach((b) => b.setAttribute('aria-pressed', b === el));
         break;
       case 'card-scope': { const c = el.dataset.card; if (el.dataset.v === 'all') localStorage.removeItem('scope:' + c); else localStorage.setItem('scope:' + c, el.dataset.v); S.barSel = c === 'structure' ? null : S.barSel; render(); break; }
+      case 'fab-toggle': S.fabOpen = !S.fabOpen; render(); break;
+      case 'fab-search': S.fabOpen = false; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); focusNow('txsearch'); break;
       case 'nw-zero': { const z = S.nwZero ||= new Set(); z.has(id) ? z.delete(id) : z.add(id); render(); break; }
       case 'nw-fold': { const o = S.nwOpen ||= new Set(); o.has(id) ? o.delete(id) : o.add(id); render(); break; }
       case 'save-acc': {
@@ -2764,7 +2774,7 @@ document.addEventListener('click', async (e) => {
       case 'save-top': { const name = $('nm').value.trim(); if (!name) { toast('Name can’t be empty'); return; } const nid = await addCategory(name, null); closeSheet(); location.hash = `#/cat/${nid}`; break; }
       case 'del-cat': await deleteCategory(id); break;
       case 'cat-type': await updateDoc(doc(db, 'categories', id), { type: el.dataset.type }); break;
-      case 'add-tx': openNew(); break;
+      case 'add-tx': S.fabOpen = false; openNew(); break;
       case 'toggle-label': {
         const on = el.getAttribute('aria-pressed') !== 'true';
         el.setAttribute('aria-pressed', on);
