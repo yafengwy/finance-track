@@ -571,7 +571,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '10.6';
+const APP_VERSION = '10.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1252,7 +1252,7 @@ function barChart(bs, values, color, opts = {}) {
 }
 function txRowHtml(t, cls = 'top-row', back = '') {
   const c = S.cats[t.categoryId];
-  return `<button class="${cls}" data-act="tx" data-id="${t.id}"${back ? ` data-back="${back}"` : ''}>${catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
+  return `<button class="${cls}" data-act="tx" data-id="${t.id}"${back ? ` data-back="${back}"` : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
 }
 function cardStructure() {
   const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
