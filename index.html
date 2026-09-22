@@ -431,6 +431,8 @@ input.row-select { direction: ltr; }
 .scope-seg button { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; color: var(--sub); padding: 4px 10px; border-radius: 7px; }
 .scope-seg button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 
+.acc-bank-h { font-size: 13px; font-weight: 600; color: var(--sub); padding: 10px 4px 4px; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -564,7 +566,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '10.0';
+const APP_VERSION = '10.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -658,6 +660,18 @@ function cardSpec(card) {
   if (S.instant[card]) return { spec: withScope(S.instant[card]), label: 'Instant: ' + specName(S.instant[card]) };
   const f = S.filters[savedFilterId(card)];
   return f ? { spec: withScope(f), label: 'Filter: ' + f.name } : { spec: withScope(null), label: '' };
+}
+// Account pickers are grouped by bank (A–Z), accounts A–Z inside each bank; manual accounts last
+function bankName(a) { return S.items[a.itemId]?.institutionName || a.institution || (a.manual || a.id === 'cash' ? 'Manual' : 'Other'); }
+function byBank(list) {
+  const man = (a) => (bankName(a) === 'Manual' ? 1 : 0);
+  return [...list].sort((a, b) => man(a) - man(b) || bankName(a).localeCompare(bankName(b)) || accName(a).localeCompare(accName(b)) || (a.mask || '').localeCompare(b.mask || ''));
+}
+// rows of an account checklist, split into one list per bank with the bank name above it
+function bankGroups(list, rowFn) {
+  const out = []; let cur = null;
+  byBank(list).forEach((a) => { const b = bankName(a); if (b !== cur) { cur = b; out.push({ bank: b, rows: [] }); } out[out.length - 1].rows.push(rowFn(a)); });
+  return out.map((g) => `<div class="acc-bank-h">${esc(g.bank)}</div><div class="set-list">${g.rows.join('')}</div>`).join('');
 }
 function hasBusiness() { return Object.values(S.accounts).some((a) => isBusiness(a) && !isInvest(a)); }
 function specName(spec) {
@@ -1613,10 +1627,10 @@ function sheetRecPanel() {
 }
 function sheetRecAccounts() {
   const r = recFilterState(); const sel = new Set(r.accounts || []);
-  const accs = Object.values(S.accounts).filter((a) => !a.hidden || sel.has(a.id));
+  const accs = Object.values(S.accounts).filter((a) => (!a.hidden || sel.has(a.id)) && !isInvest(a));
   openSheet(`<h3>Accounts</h3>
     <div class="set-list"><label class="msel-row"><input type="checkbox" id="acc-all" ${r.accounts ? '' : 'checked'}>${glyph('account_balance', '#8E8E93')}<span class="n">All accounts</span></label></div>
-    <div class="set-list">${accs.map((a, i) => `<label class="msel-row"><input type="checkbox" data-accsel="${a.id}" ${sel.has(a.id) ? 'checked' : ''}><span class="ci sq" style="background:${esc(a.color || TILE_COLORS[i % TILE_DEFAULTS])}">${icon(a.type === 'depository' ? 'account_balance' : 'credit_card')}</span><span class="n">${esc(accName(a))}<div class="meta">${esc([S.items[a.itemId]?.institutionName || a.institution, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</div></span></label>`).join('')}</div>
+    ${bankGroups(accs, (a) => `<label class="msel-row"><input type="checkbox" data-accsel="${a.id}" ${sel.has(a.id) ? 'checked' : ''}><span class="ci sq" style="background:${esc(accColor(a))}">${icon(a.type === 'depository' ? 'account_balance' : 'credit_card')}</span><span class="n">${esc(accName(a))}<div class="meta">${esc([S.items[a.itemId]?.institutionName || a.institution, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</div></span></label>`)}
     ${saveBar('rf-acc-save', 'Done')}`);
 }
 function sheetRecCats() {
@@ -1832,9 +1846,9 @@ function openOptions(title, opts, selected, onPick) {
 }
 const glyph = (name, bg) => `<span class="ci" style="background:${bg}">${icon(name)}</span>`;
 function accountOptionList() {
-  const accs = Object.values(S.accounts).filter((a) => a.id !== 'cash' && !a.hidden);
+  const accs = byBank(Object.values(S.accounts).filter((a) => a.id !== 'cash' && !a.hidden && !isInvest(a)));
   return [{ value: 'cash', label: 'Cash', iconHtml: glyph('payments', '#4DBE9F') },
-    ...accs.map((a, i) => ({ value: a.id, label: accName(a), sub: a.mask ? '••' + a.mask : '', iconHtml: `<span class="ci sq" style="background:${esc(a.color || TILE_COLORS[i % TILE_DEFAULTS])}">${icon('credit_card')}</span>` }))];
+    ...accs.map((a, i) => ({ value: a.id, label: accName(a), sub: [bankName(a), a.mask && '••' + a.mask].filter(Boolean).join(' '), iconHtml: `<span class="ci sq" style="background:${esc(a.color || TILE_COLORS[i % TILE_DEFAULTS])}">${icon('credit_card')}</span>` }))];
 }
 function labelOptionList(noneLabel) {
   return [{ value: '', label: noneLabel, iconHtml: glyph('block', '#C7C7CC') },
@@ -1893,12 +1907,12 @@ function mselBody(opts = S.mselOpts || {}) {
   }).join('');
   const noneRow = opts.none ? `<label class="msel-row"><input type="checkbox" data-msel="c:__none" ${sel.has('c:__none') ? 'checked' : ''}><span class="ci unknown">${icon('help')}</span><span class="n">Uncategorized</span></label>` : '';
   const labels = opts.labels === false ? '' : sortedLabels().map((l) => `<label class="msel-row"><input type="checkbox" data-msel="l:${l.id}" ${sel.has('l:' + l.id) ? 'checked' : ''}><span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span><span class="n">${esc(l.name)}</span></label>`).join('');
-  const accList = opts.accounts ? Object.values(S.accounts).filter((a) => !a.hidden && !isInvest(a)).sort((a, b) => accName(a).localeCompare(accName(b))) : [];
-  const accs = accList.map((a) => `<label class="msel-row"><input type="checkbox" data-msel="a:${a.id}" ${sel.has('a:' + a.id) ? 'checked' : ''}><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}</span></label>`).join('');
+  const accList = opts.accounts ? Object.values(S.accounts).filter((a) => !a.hidden && !isInvest(a)) : [];
+  const accs = bankGroups(accList, (a) => `<label class="msel-row"><input type="checkbox" data-msel="a:${a.id}" ${sel.has('a:' + a.id) ? 'checked' : ''}><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}</span></label>`);
   // Accounts start folded; the header says what's picked (nothing ticked = all accounts)
   const nSel = accList.filter((a) => sel.has('a:' + a.id)).length;
   const accHead = `<button class="set-item msel-fold" data-act="msel-acc-fold" aria-expanded="${!!S.mselAccOpen}">${glyph('account_balance_wallet', '#5856D6')}<span class="n">Accounts</span><span class="v">${nSel ? `${nSel} selected` : 'All accounts'}</span>${icon(S.mselAccOpen ? 'expand_less' : 'expand_more')}</button>`;
-  return `${accs ? `<div class="set-list">${accHead}${S.mselAccOpen ? accs : ''}</div>` : ''}
+  return `${accList.length ? `<div class="set-list">${accHead}</div>${S.mselAccOpen ? accs : ''}` : ''}
     <div class="sec-head">Categories <span class="meta">Untick a subcategory to leave it out</span></div><div class="set-list">${noneRow}${cats}</div>
     ${labels ? `<div class="sec-head">Labels</div><div class="set-list">${labels}</div>` : ''}`;
 }
@@ -2304,10 +2318,10 @@ function allKw(d) { return [...new Set([...(d.kw || []), ...parseKw(d.kwInput)])
 // "Only in accounts": tick any number of accounts (none = any account)
 function sheetRuleAccounts() {
   const d = S.ruleDraft; const sel = new Set(d.onlyAccs || []);
-  const list = Object.values(S.accounts).filter((a) => !isInvest(a) && (!a.hidden || sel.has(a.id))).sort((a, b) => accName(a).localeCompare(accName(b)));
+  const list = Object.values(S.accounts).filter((a) => !isInvest(a) && (!a.hidden || sel.has(a.id)));
   openSheet(`<h3>Only in accounts</h3>
     <div class="meta">Nothing ticked = the rule works in every account.</div>
-    <div class="set-list">${list.map((a) => `<label class="msel-row"><input type="checkbox" data-ruacc="${a.id}" ${sel.has(a.id) ? 'checked' : ''}><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}</span></label>`).join('')}</div>
+    ${bankGroups(list, (a) => `<label class="msel-row"><input type="checkbox" data-ruacc="${a.id}" ${sel.has(a.id) ? 'checked' : ''}><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}</span></label>`)}
     ${sel.size ? `<button class="pill-btn wide" data-act="ru-accs-any">${icon('all_inclusive')}Any account</button>` : ''}
     ${saveBar('ru-accs-done', 'Done')}`);
   S.sheetBack = renderRule;
