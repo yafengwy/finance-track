@@ -393,7 +393,13 @@ input.row-select { direction: ltr; }
 /* Net Worth card */
 .nw-card { display: flex; flex-direction: column; gap: 6px; }
 .nw-total { font-size: 30px; font-weight: 700; margin-bottom: 4px; }
-.nw-row { display: flex; justify-content: space-between; font-size: 15px; padding: 6px 0; border-top: 1px solid var(--line); }
+.nw-row { display: flex; justify-content: space-between; align-items: center; width: 100%; font: inherit; font-size: 15px; color: var(--text); background: none; border: 0; border-top: 1px solid var(--line); padding: 8px 0; text-align: left; }
+.nw-l { display: inline-flex; align-items: center; gap: 6px; }
+.nw-l .meta { font-size: 12px; }
+.nw-l .ms { font-size: 18px; color: var(--sub); }
+.nw-list { display: flex; flex-direction: column; padding: 0 0 6px 12px; }
+.nw-acc { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; border: 0; background: none; font: inherit; font-size: 14px; color: var(--text); padding: 6px 0; text-align: left; }
+.nw-acc .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
@@ -528,7 +534,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '7.9';
+const APP_VERSION = '8.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -987,15 +993,26 @@ function accountBalance(a) {
 }
 // Net Worth = Cash (checking, savings, manual cash) + Investments − credit cards − loans. Hidden accounts are left out.
 function netWorthCard(accs) {
-  const sum = { cash: 0, credit: 0, loan: 0, invest: 0 };
+  const sum = { cash: 0, credit: 0, loan: 0, invest: 0 }; const list = { cash: [], credit: [], loan: [], invest: [] };
   accs.forEach((a) => {
     const b = accountBalance(a);
-    if (isInvest(a)) sum.invest += b; else if (a.type === 'credit') sum.credit += b; else if (a.type === 'loan') sum.loan += b; else sum.cash += b;
+    const k = isInvest(a) ? 'invest' : a.type === 'credit' ? 'credit' : a.type === 'loan' ? 'loan' : 'cash';
+    sum[k] += b; list[k].push({ a, b });
   });
   const total = sum.cash + sum.credit + sum.loan + sum.invest;
-  const row = (label, v) => `<div class="nw-row"><span>${label}</span><span class="num" style="color:var(${v < 0 ? '--exp' : '--text'})">${money(v)}</span></div>`;
+  const open = S.nwOpen ||= new Set(); // rows are folded by default; tap one to see its accounts
+  const col = (v) => `color:var(${v < 0 ? '--exp' : '--text'})`;
+  const row = (k, label) => {
+    const on = open.has(k);
+    const items = list[k].sort((x, y) => Math.abs(y.b) - Math.abs(x.b)).map(({ a, b }) => {
+      const inst = (S.items[a.itemId] || {}).institutionName || a.institution || '';
+      return `<button class="nw-acc" data-act="acc" data-id="${a.id}"><span class="n">${esc(accName(a))}<span class="meta"> ${esc([inst, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</span></span><span class="num" style="${col(b)}">${money(b)}</span></button>`;
+    }).join('');
+    return `<button class="nw-row" data-act="nw-fold" data-id="${k}" aria-expanded="${on}"><span class="nw-l">${label}<span class="meta">${list[k].length}</span>${icon(on ? 'expand_less' : 'expand_more')}</span><span class="num" style="${col(sum[k])}">${money(sum[k])}</span></button>
+      ${on ? `<div class="nw-list">${items || '<div class="meta">No accounts</div>'}</div>` : ''}`;
+  };
   return `<div class="card nw-card"><div class="meta">Net Worth</div><div class="nw-total num">${money(total)}</div>
-    ${row('Cash', sum.cash)}${row('Credit cards', sum.credit)}${sum.loan ? row('Loans', sum.loan) : ''}${row('Investments', sum.invest)}</div>`;
+    ${row('cash', 'Cash')}${row('credit', 'Credit cards')}${sum.loan || list.loan.length ? row('loan', 'Loans') : ''}${row('invest', 'Investments')}</div>`;
 }
 function viewAccounts() {
   const accs = Object.values(S.accounts).filter((a) => !a.hidden).sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || ((a.itemId || '') + a.name).localeCompare((b.itemId || '') + b.name));
@@ -2535,6 +2552,7 @@ document.addEventListener('click', async (e) => {
         sheet.dataset.icon = el.dataset.icon;
         sheet.querySelectorAll('[data-act="pick-icon"]').forEach((b) => b.setAttribute('aria-pressed', b === el));
         break;
+      case 'nw-fold': { const o = S.nwOpen ||= new Set(); o.has(id) ? o.delete(id) : o.add(id); render(); break; }
       case 'save-acc': {
         const name = $('an').value.trim();
         const inv = $('ainv').checked; const acc = S.accounts[id];
