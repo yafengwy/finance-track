@@ -564,7 +564,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '9.5';
+const APP_VERSION = '9.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -821,7 +821,8 @@ async function seedCategories() {
 // Runs in the app: each new transaction is checked once (marked ruled: true). Manual changes are never overwritten.
 // Keyword rules with the same account and the same actions are kept as one rule
 function sameRuleTarget(a, b) {
-  return a.field === 'description' && b.field === 'description' && (a.accountId || null) === (b.accountId || null)
+  const accs = (r) => [...(r.accountIds?.length ? r.accountIds : r.accountId ? [r.accountId] : [])].sort().join(',');
+  return a.field === 'description' && b.field === 'description' && accs(a) === accs(b)
     && (a.categoryId || null) === (b.categoryId || null) && (a.labelId || null) === (b.labelId || null) && !!a.transfer === !!b.transfer
     && (a.amtMode || 'any') === (b.amtMode || 'any') && (a.amtMin ?? null) === (b.amtMin ?? null) && (a.amtMax ?? null) === (b.amtMax ?? null);
 }
@@ -854,7 +855,8 @@ function amtText(r) {
 function ruleMatches(r, t) {
   if (!amountOk(r, t)) return false;
   if (r.field === 'account') return t.accountId === r.accountId;
-  if (r.accountId && t.accountId !== r.accountId) return false; // "Only in account"
+  const only = r.accountIds?.length ? r.accountIds : r.accountId ? [r.accountId] : null; // "Only in accounts" (older rules: one account)
+  if (only && !only.includes(t.accountId)) return false;
   const hay = `${t.name || ''} ${t.merchant || ''} ${t.originalDescription || ''}`.toLowerCase(); // name, merchant and the full bank description
   return (r.keywords || []).some((k) => k && hay.includes(k));
 }
@@ -907,6 +909,9 @@ function go(h, replace = false) {
 }
 // Go to a parent page: pop history if the parent is the previous entry, otherwise swap the current entry.
 function goUp(h) { if (NAV.length > 1 && NAV[NAV.length - 2] === h) history.back(); else go(h, true); }
+// Each page keeps its own scroll position (Records stays where you left it after visiting the menu or another tab)
+let scrollKey = location.hash || '#/accounts'; const scrollPos = {};
+window.addEventListener('scroll', () => { scrollPos[scrollKey] = window.scrollY; }, { passive: true });
 window.addEventListener('hashchange', () => {
   const h = location.hash || '#/accounts';
   let left = null;
@@ -914,7 +919,8 @@ window.addEventListener('hashchange', () => {
   else if (NAV.length > 1 && NAV[NAV.length - 2] === h) left = NAV.pop();
   else NAV.push(h);
   closeSheet(); closeDrawer();
-  window.scrollTo(0, 0); render();
+  scrollKey = h; const keep = scrollPos[h] || 0;
+  window.scrollTo(0, 0); render(); window.scrollTo(0, keep); scrollPos[h] = keep;
   // Back from a page opened from the menu → show the menu again, like before
   if (left && left === drawerOrigin && MAIN.includes(route().name)) { drawerOrigin = null; openDrawer(); }
 });
@@ -1659,7 +1665,9 @@ function viewFilters() {
     <button class="pill-btn primary wide" data-act="add-filter">${icon('add')}New filter</button></div>`;
 }
 function ruleText(r) {
-  const cond = r.field === 'account' ? `Account is ${accName(S.accounts[r.accountId]) || '(removed account)'}` : `Description contains “${(r.keywords || []).join('”, “')}”${r.accountId ? ` · only in ${accName(S.accounts[r.accountId]) || '(removed account)'}` : ''}`;
+  const only = r.accountIds?.length ? r.accountIds : r.accountId ? [r.accountId] : [];
+  const onlyTxt = only.map((id) => accName(S.accounts[id]) || '(removed account)').join(', ');
+  const cond = r.field === 'account' ? `Account is ${accName(S.accounts[r.accountId]) || '(removed account)'}` : `Description contains “${(r.keywords || []).join('”, “')}”${only.length ? ` · only in ${onlyTxt}` : ''}`;
   const at = amtText(r); const cond2 = at ? `${cond} · ${at}` : cond;
   const acts = [r.categoryId && `Category → ${S.cats[r.categoryId]?.name || '(deleted)'}`, r.labelId && `Label → ${S.labels[r.labelId]?.name || '(deleted)'}`, r.transfer && 'Mark as transfer'].filter(Boolean);
   return { cond: cond2, acts: acts.join(' · ') };
@@ -2241,7 +2249,7 @@ function sheetLabel(id) {
 function sheetRule(id) {
   const r = id ? S.rules[id] : {};
   const field = r.field || 'description';
-  S.ruleDraft = { id: id || null, field, kw: [...(r.keywords || [])], kwInput: '', accountId: field === 'account' ? r.accountId || null : null, onlyAcc: field === 'description' ? r.accountId || null : null,
+  S.ruleDraft = { id: id || null, field, kw: [...(r.keywords || [])], kwInput: '', accountId: field === 'account' ? r.accountId || null : null, onlyAccs: field === 'description' ? (r.accountIds?.length ? [...r.accountIds] : r.accountId ? [r.accountId] : []) : [],
     categoryId: r.categoryId || null, labelId: r.labelId || null, transfer: !!r.transfer, applyPast: !id, overwrite: false,
     amtMode: r.amtMode || 'any', amtA: r.amtMin != null ? String(r.amtMin) : '', amtB: r.amtMax != null ? String(r.amtMax) : '' };
   renderRule();
@@ -2265,7 +2273,7 @@ function kwSuggestFrom(text) {
 function sheetRuleFromTx(txId, e) {
   const t = S.txById[txId]; if (!t) return;
   const sug = kwSuggest(t);
-  S.ruleDraft = { id: null, fromTx: txId, field: 'description', kw: sug[0] ? [sug[0]] : [], kwInput: '', accountId: null, onlyAcc: t.accountId || null, suggestions: sug,
+  S.ruleDraft = { id: null, fromTx: txId, field: 'description', kw: sug[0] ? [sug[0]] : [], kwInput: '', accountId: null, onlyAccs: [], suggestions: sug, // Any account by default
     categoryId: (e ? e.categoryId : t.categoryId) || null, labelId: (e ? e.labels : t.labels || [])[0] || null, transfer: e ? e.type === 'transfer' : !!t.isTransfer, applyPast: true, overwrite: false,
     amtMode: 'any', amtA: Math.abs(t.amount).toFixed(2), amtB: '' };
   renderRule();
@@ -2278,9 +2286,20 @@ function captureRule() {
 // Keywords are chips; text still in the box (commas allowed) counts too
 function parseKw(v) { return String(v || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean); }
 function allKw(d) { return [...new Set([...(d.kw || []), ...parseKw(d.kwInput)])]; }
+// "Only in accounts": tick any number of accounts (none = any account)
+function sheetRuleAccounts() {
+  const d = S.ruleDraft; const sel = new Set(d.onlyAccs || []);
+  const list = Object.values(S.accounts).filter((a) => !isInvest(a) && (!a.hidden || sel.has(a.id))).sort((a, b) => accName(a).localeCompare(accName(b)));
+  openSheet(`<h3>Only in accounts</h3>
+    <div class="meta">Nothing ticked = the rule works in every account.</div>
+    <div class="set-list">${list.map((a) => `<label class="msel-row"><input type="checkbox" data-ruacc="${a.id}" ${sel.has(a.id) ? 'checked' : ''}><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}</span></label>`).join('')}</div>
+    ${sel.size ? `<button class="pill-btn wide" data-act="ru-accs-any">${icon('all_inclusive')}Any account</button>` : ''}
+    ${saveBar('ru-accs-done', 'Done')}`);
+  S.sheetBack = renderRule;
+}
 function draftRule(d) {
   return { field: d.field, keywords: d.field === 'description' ? allKw(d) : [],
-    accountId: d.field === 'account' ? d.accountId : (d.onlyAcc || null), categoryId: d.categoryId || null, labelId: d.labelId || null, transfer: !!d.transfer,
+    accountId: d.field === 'account' ? d.accountId : null, accountIds: d.field === 'description' ? (d.onlyAccs || []) : [], categoryId: d.categoryId || null, labelId: d.labelId || null, transfer: !!d.transfer,
     amtMode: d.amtMode || 'any', amtMin: d.amtMode === 'any' ? null : num(d.amtA), amtMax: d.amtMode === 'range' ? num(d.amtB) : null };
 }
 function num(v) { const n = parseFloat(String(v || '').replace(/[$,]/g, '')); return Number.isFinite(n) ? Math.abs(n) : null;
@@ -2322,7 +2341,7 @@ function renderRule() {
         : `<div class="set-item">${glyph('key', '#8E8E93')}<input class="bare-input" id="ru-kw" value="${esc(d.kwInput)}" placeholder="Add a keyword" autocomplete="off" enterkeyhint="done" aria-label="Add a keyword">
             <button class="icon-btn kw-add" data-act="ru-kw-add" aria-label="Add keyword">${icon('add_circle')}</button></div>
           ${d.kw.length ? `<div class="set-item kw-row"><div class="chips wrap">${d.kw.map((k, i) => `<span class="chip kw-chip">${esc(k)}<button data-act="ru-kw-del" data-i="${i}" aria-label="Remove ${esc(k)}">${icon('cancel')}</button></span>`).join('')}</div></div>` : ''}
-          ${valueRow('ru-only', glyph('credit_card', '#5856D6'), 'Only in account', esc(d.onlyAcc ? accName(S.accounts[d.onlyAcc]) || '(removed account)' : 'Any account'))}`}
+          ${valueRow('ru-only', glyph('credit_card', '#5856D6'), 'Only in accounts', esc(!d.onlyAccs?.length ? 'Any account' : d.onlyAccs.length === 1 ? accName(S.accounts[d.onlyAccs[0]]) || '(removed account)' : `${d.onlyAccs.length} accounts`))}`}
       ${valueRow('ru-amt', glyph('attach_money', '#34C759'), 'Amount', { any: 'Any amount', exact: 'Exactly', range: 'Between' }[d.amtMode || 'any'])}
       ${d.amtMode === 'exact' ? `<div class="set-item amt-row"><span class="meta">$</span><input class="bare-input num" id="ru-amt-a" inputmode="decimal" value="${esc(d.amtA)}" placeholder="0.00" aria-label="Exact amount"></div>` : ''}
       ${d.amtMode === 'range' ? `<div class="set-item amt-row"><span class="meta">$</span><input class="bare-input num" id="ru-amt-a" inputmode="decimal" value="${esc(d.amtA)}" placeholder="From" aria-label="From amount"><span class="meta">to $</span><input class="bare-input num" id="ru-amt-b" inputmode="decimal" value="${esc(d.amtB)}" placeholder="To" aria-label="To amount"></div>` : ''}
@@ -2674,7 +2693,9 @@ document.addEventListener('click', async (e) => {
       case 'ru-cat': captureRule(); openPicker({ mode: 'rule' }); break;
       case 'rule-fold': { const f = S.ruleFold ||= new Set(); f.has(id) ? f.delete(id) : f.add(id); render(); break; }
       case 'ru-amt': captureRule(); openOptions('Amount', [{ value: 'any', label: 'Any amount' }, { value: 'exact', label: 'Exactly' }, { value: 'range', label: 'Between' }].map((o) => ({ ...o, iconHtml: glyph('attach_money', '#34C759') })), S.ruleDraft.amtMode || 'any', (v) => { S.ruleDraft.amtMode = v; renderRule(); }); break;
-      case 'ru-only': captureRule(); openOptions('Only in account', [{ value: '', label: 'Any account', iconHtml: glyph('all_inclusive', '#8E8E93') }, ...accountOptionList().filter((o) => o.value !== 'cash' || S.accounts.cash)], S.ruleDraft.onlyAcc || '', (v) => { S.ruleDraft.onlyAcc = v || null; renderRule(); }); break;
+      case 'ru-only': captureRule(); sheetRuleAccounts(); break;
+      case 'ru-accs-done': renderRule(); break;
+      case 'ru-accs-any': S.ruleDraft.onlyAccs = []; sheetRuleAccounts(); break;
       case 'ru-sug': captureRule(); S.ruleDraft.kw = [...new Set([...S.ruleDraft.kw, el.dataset.v])]; renderRule(); break;
       case 'ru-kw-add': captureRule(); S.ruleDraft.kw = allKw(S.ruleDraft); S.ruleDraft.kwInput = ''; renderRule(); break;
       case 'ru-kw-del': captureRule(); S.ruleDraft.kw.splice(+el.dataset.i, 1); renderRule(); break;
@@ -2778,6 +2799,7 @@ document.addEventListener('input', (e) => {
   clearTimeout(searchTimer); searchTimer = setTimeout(render, 150);
 });
 document.addEventListener('change', async (e) => {
+  if (e.target.dataset.ruacc && S.ruleDraft) { const id = e.target.dataset.ruacc; const a = new Set(S.ruleDraft.onlyAccs || []); e.target.checked ? a.add(id) : a.delete(id); S.ruleDraft.onlyAccs = [...a]; return; }
   if (e.target.dataset.connPause) { const on = e.target.checked; await updateDoc(doc(db, 'items', e.target.dataset.connPause), { paused: on }); toast(on ? 'Syncing paused' : 'Syncing resumed'); return; }
   if (e.target.dataset.spTransfer != null) { spCapture(); S.split.parts[+e.target.dataset.spTransfer].isTransfer = e.target.checked; renderSplit(); return; }
   const el = e.target;
