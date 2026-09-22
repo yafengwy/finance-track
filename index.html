@@ -382,13 +382,18 @@ input.row-select { direction: ltr; }
 /* rules grouped by category */
 .rule-group { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; padding: 10px 4px 6px; font: inherit; color: var(--text); text-align: left; }
 .rule-group .n { flex: 1; font-weight: 600; font-size: 15px; }
-.rule-group .ms { color: var(--sub); }
+.rule-group .fold-ic { color: var(--sub); display: flex; }
 
 .rule-hits { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 14px; background: #FFF6E5; }
 .rule-hits > .meta { padding: 0 4px; color: #8A5A00; }
 
 /* category name stands out from the account name in record rows */
 .meta .m-cat { font-weight: 600; color: #48484A; }
+
+/* Net Worth card */
+.nw-card { display: flex; flex-direction: column; gap: 6px; }
+.nw-total { font-size: 30px; font-weight: 700; margin-bottom: 4px; }
+.nw-row { display: flex; justify-content: space-between; font-size: 15px; padding: 6px 0; border-top: 1px solid var(--line); }
 
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
@@ -523,7 +528,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '7.7';
+const APP_VERSION = '7.9';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -676,7 +681,7 @@ function listen() {
     if (after) after(snap); render();
   }, onErr));
   watch('categories', 'cats', (snap) => { S.catsLoaded = true; if (snap.empty) seedCategories(); });
-  watch('accounts', 'accounts');
+  watch('accounts', 'accounts', () => rebuildTxs());
   watch('labels', 'labels');
   watch('filters', 'filters');
   watch('rules', 'rules', () => { S.rulesLoaded = true; mergeDupRules(); scheduleRules(); });
@@ -691,17 +696,25 @@ function subscribeTx() {
   const col = collection(db, 'transactions');
   const q = S.loadAll ? query(col, orderBy('date', 'desc')) : query(col, where('date', '>=', loadedSince()), orderBy('date', 'desc'));
   S.txUnsub = onSnapshot(q, (snap) => {
-    S.txs = []; S.txById = {}; S.raw = []; S.rawById = {};
-    snap.forEach((d) => {
-      const t = { id: d.id, ...d.data() }; S.raw.push(t); S.rawById[t.id] = t;
-      for (const x of expandTx(t)) { S.txs.push(x); S.txById[x.id] = x; }
-    });
+    S.raw = []; S.rawById = {};
+    snap.forEach((d) => { const t = { id: d.id, ...d.data() }; S.raw.push(t); S.rawById[t.id] = t; });
+    rebuildTxs();
     S.txLoaded = true; scheduleRules(); render();
   }, onErr);
 }
 // A split record is stored once with splits: [{ amount, categoryId, isTransfer, note, labels }].
 // Everywhere else it appears as separate parts with id "<recordId>~<n>".
 // If the bank later changes the total (e.g. a tip added), the parts follow the split mode (see below).
+// Investment accounts: Plaid type "investment" unless you switch it off (or on) in the account settings.
+// Only their balance is used (Net Worth); their records stay out of Records, charts and rules.
+function isInvest(a) { return !!a && (a.investment ?? a.type === 'investment'); }
+function rebuildTxs() {
+  S.txs = []; S.txById = {};
+  for (const t of S.raw || []) {
+    if (isInvest(S.accounts[t.accountId])) continue;
+    for (const x of expandTx(t)) { S.txs.push(x); S.txById[x.id] = x; }
+  }
+}
 function expandTx(t) {
   if (!Array.isArray(t.splits) || t.splits.length < 2) return [t];
   const { splits, ...base } = t;
@@ -968,9 +981,21 @@ function lastSyncText() {
   return `Last sync ${ts.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`;
 }
 function accountBalance(a) {
-  if (a.manual) return -S.txs.filter((t) => t.accountId === a.id).reduce((n, t) => n + t.amount, 0);
+  if (a.manual) return -(S.raw || []).filter((t) => t.accountId === a.id).reduce((n, t) => n + t.amount, 0);
   const cur = a.balanceCurrent ?? 0;
   return ['credit', 'loan'].includes(a.type) ? -cur : cur;
+}
+// Net Worth = Cash (checking, savings, manual cash) + Investments − credit cards − loans. Hidden accounts are left out.
+function netWorthCard(accs) {
+  const sum = { cash: 0, credit: 0, loan: 0, invest: 0 };
+  accs.forEach((a) => {
+    const b = accountBalance(a);
+    if (isInvest(a)) sum.invest += b; else if (a.type === 'credit') sum.credit += b; else if (a.type === 'loan') sum.loan += b; else sum.cash += b;
+  });
+  const total = sum.cash + sum.credit + sum.loan + sum.invest;
+  const row = (label, v) => `<div class="nw-row"><span>${label}</span><span class="num" style="color:var(${v < 0 ? '--exp' : '--text'})">${money(v)}</span></div>`;
+  return `<div class="card nw-card"><div class="meta">Net Worth</div><div class="nw-total num">${money(total)}</div>
+    ${row('Cash', sum.cash)}${row('Credit cards', sum.credit)}${sum.loan ? row('Loans', sum.loan) : ''}${row('Investments', sum.invest)}</div>`;
 }
 function viewAccounts() {
   const accs = Object.values(S.accounts).filter((a) => !a.hidden).sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || ((a.itemId || '') + a.name).localeCompare((b.itemId || '') + b.name));
@@ -996,6 +1021,7 @@ function viewAccounts() {
       <button class="pill-btn primary" data-act="link">Connect your first bank</button></div></div>`;
   }
   return `<div class="page">
+    ${netWorthCard(accs)}
     <div><p class="h2">${accs.length} account${accs.length > 1 ? 's' : ''}</p><div class="meta">${lastSyncText()}</div></div>
     <div class="acc-grid">${tiles}<button class="tile add" data-act="link">${icon('add')}Add</button></div>
     ${banners}
@@ -1562,7 +1588,7 @@ function ruleGroupsHtml(list) {
       return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${ic}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`;
     }).join('');
     const open = !fold.has(g.key);
-    return `<button class="rule-group" data-act="rule-fold" data-id="${g.key}" aria-expanded="${open}">${gIcon}<span class="n">${esc(name)}</span><span class="meta">${g.rules.length}</span>${icon(open ? 'expand_less' : 'expand_more')}</button>
+    return `<button class="rule-group" data-act="rule-fold" data-id="${g.key}" aria-expanded="${open}">${gIcon}<span class="n">${esc(name)}</span><span class="meta">${g.rules.length}</span><span class="fold-ic">${icon(open ? 'expand_less' : 'expand_more')}</span></button>
       ${open ? `<div class="set-list">${rows}</div>` : ''}`;
   }).join('');
 }
@@ -2047,6 +2073,7 @@ function sheetAccount(id) {
     <div class="meta">Bank name: ${esc(a.officialName || a.name)} ${a.mask ? '••' + esc(a.mask) : ''}</div>
     <div class="field"><label>Color</label><div class="swatches">${TILE_COLORS.map((col) => `<button data-act="pick-color" data-color="${col}" aria-pressed="${a.color === col}" style="background:${col}" aria-label="Color ${col}"></button>`).join('')}</div></div>
     <label class="check"><input type="checkbox" id="ah" ${a.hidden ? 'checked' : ''}>Hide on the Accounts page</label>
+    <div class="set-list"><label class="set-item">${glyph('trending_up', '#34C759')}<span class="n">Investment account<div class="meta">Only its balance counts, in Net Worth → Investments. Its records stay out of Records and charts.${a.type === 'investment' ? ' Detected as an investment account.' : ''}</div></span><input type="checkbox" class="switch" id="ainv" ${isInvest(a) ? 'checked' : ''}></label></div>
     ${saveBar('save-acc', 'Save', ` data-id="${id}"`)}`);
   $('sheet').dataset.color = a.color || '';
 }
@@ -2129,9 +2156,10 @@ function rulePastText(n) { return `Also apply to ${n} past uncategorized record$
 function rulePastCatMatches(d) {
   const r = draftRule(d); if (r.field === 'description' && !r.keywords.length) return [];
   if (r.field === 'account' && !r.accountId) return [];
-  return S.txs.filter((t) => !t.manual && !t.parentId && t.categoryId && !t.isTransfer && ruleMatches(r, t) && (!r.categoryId || t.categoryId !== r.categoryId || r.transfer));
+  const changes = (t) => (r.categoryId && t.categoryId !== r.categoryId) || (r.labelId && S.labels[r.labelId] && !(t.labels || []).includes(r.labelId)) || r.transfer;
+  return S.txs.filter((t) => !t.manual && !t.parentId && t.categoryId && !t.isTransfer && ruleMatches(r, t) && changes(t));
 }
-function ruleOverText(n) { return `Also change ${n} past record${n === 1 ? '' : 's'} that already ${n === 1 ? 'has' : 'have'} a category`; }
+function ruleOverText(n) { return `Also update ${n} past record${n === 1 ? '' : 's'} that already ${n === 1 ? 'has' : 'have'} a category`; }
 function refreshRuleCounts() {
   const d = S.ruleDraft; if (!d) return;
   const a = $('ru-past-n'); if (a) a.textContent = rulePastText(rulePastMatches(d).length);
@@ -2168,7 +2196,7 @@ function renderRule() {
       <label class="set-item">${glyph('swap_horiz', '#8E8E93')}<span class="n">Mark as transfer</span><input type="checkbox" class="switch" id="ru-tr" ${d.transfer ? 'checked' : ''}></label>
     </div>
     <div class="set-list"><label class="set-item">${glyph('history', '#8E8E93')}<span class="n" id="ru-past-n">${rulePastText(rulePastMatches(d).length)}</span><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''}></label>
-      <label class="set-item">${glyph('published_with_changes', '#FF9500')}<span class="n"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length)}</span><div class="meta">Off by default. Replaces their category with this rule’s.</div></span><input type="checkbox" class="switch" id="ru-over" ${d.overwrite ? 'checked' : ''}></label></div>
+      <label class="set-item">${glyph('published_with_changes', '#FF9500')}<span class="n"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length)}</span><div class="meta">Off by default. Gives them this rule’s category and label.</div></span><input type="checkbox" class="switch" id="ru-over" ${d.overwrite ? 'checked' : ''}></label></div>
     ${d.id ? `<button class="pill-btn danger wide" data-act="del-rule" data-id="${d.id}">${icon('delete')}Delete rule</button>` : ''}
     ${saveBar('save-rule', 'Save')}`);
 }
@@ -2509,7 +2537,9 @@ document.addEventListener('click', async (e) => {
         break;
       case 'save-acc': {
         const name = $('an').value.trim();
-        await updateDoc(doc(db, 'accounts', id), { customName: name || deleteField(), color: sheet.dataset.color || deleteField(), hidden: $('ah').checked });
+        const inv = $('ainv').checked; const acc = S.accounts[id];
+        await updateDoc(doc(db, 'accounts', id), { customName: name || deleteField(), color: sheet.dataset.color || deleteField(), hidden: $('ah').checked,
+          investment: inv === (acc?.type === 'investment') ? deleteField() : inv }); // store only when it differs from what the bank says
         closeSheet(); toast('Saved'); break;
       }
       case 'edit-icon': sheetIcon(id); break;
