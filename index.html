@@ -401,6 +401,10 @@ input.row-select { direction: ltr; }
 .nw-acc { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; border: 0; background: none; font: inherit; font-size: 14px; color: var(--text); padding: 6px 0; text-align: left; }
 .nw-acc .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.nw-sec { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 16px; padding: 12px 0 4px; border-top: 1px solid var(--line); }
+
+.acc-sw { width: 14px; height: 32px; border-radius: 4px; flex-shrink: 0; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -534,7 +538,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '8.0';
+const APP_VERSION = '8.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -991,28 +995,36 @@ function accountBalance(a) {
   const cur = a.balanceCurrent ?? 0;
   return ['credit', 'loan'].includes(a.type) ? -cur : cur;
 }
-// Net Worth = Cash (checking, savings, manual cash) + Investments − credit cards − loans. Hidden accounts are left out.
+// Business accounts: names containing "Business" unless you switch it off (or on) in the account settings
+function isBusiness(a) { return !!a && (a.business ?? /\bbusiness\b/i.test(`${a.name || ''} ${a.officialName || ''} ${a.customName || ''}`)); }
+// Net Worth = Personal + Business. Each: Cash (checking, savings, manual cash) − credit cards − loans (+ investments).
+// Hidden accounts are left out. Rows fold open to list their accounts.
 function netWorthCard(accs) {
-  const sum = { cash: 0, credit: 0, loan: 0, invest: 0 }; const list = { cash: [], credit: [], loan: [], invest: [] };
+  const groups = { per: {}, biz: {} };
   accs.forEach((a) => {
-    const b = accountBalance(a);
+    const b = accountBalance(a); const g = groups[isBusiness(a) ? 'biz' : 'per'];
     const k = isInvest(a) ? 'invest' : a.type === 'credit' ? 'credit' : a.type === 'loan' ? 'loan' : 'cash';
-    sum[k] += b; list[k].push({ a, b });
+    (g[k] ||= { sum: 0, list: [] }); g[k].sum += b; g[k].list.push({ a, b });
   });
-  const total = sum.cash + sum.credit + sum.loan + sum.invest;
-  const open = S.nwOpen ||= new Set(); // rows are folded by default; tap one to see its accounts
+  const tot = (g) => Object.values(g).reduce((n, x) => n + x.sum, 0);
+  const open = S.nwOpen ||= new Set();
   const col = (v) => `color:var(${v < 0 ? '--exp' : '--text'})`;
-  const row = (k, label) => {
-    const on = open.has(k);
-    const items = list[k].sort((x, y) => Math.abs(y.b) - Math.abs(x.b)).map(({ a, b }) => {
+  const LABELS = { cash: 'Cash', credit: 'Credit cards', loan: 'Loans', invest: 'Investments' };
+  const row = (gk, k) => {
+    const x = groups[gk][k] || { sum: 0, list: [] }; const id = `${gk}-${k}`; const on = open.has(id);
+    const items = x.list.sort((p, q) => Math.abs(q.b) - Math.abs(p.b)).map(({ a, b }) => {
       const inst = (S.items[a.itemId] || {}).institutionName || a.institution || '';
       return `<button class="nw-acc" data-act="acc" data-id="${a.id}"><span class="n">${esc(accName(a))}<span class="meta"> ${esc([inst, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</span></span><span class="num" style="${col(b)}">${money(b)}</span></button>`;
     }).join('');
-    return `<button class="nw-row" data-act="nw-fold" data-id="${k}" aria-expanded="${on}"><span class="nw-l">${label}<span class="meta">${list[k].length}</span>${icon(on ? 'expand_less' : 'expand_more')}</span><span class="num" style="${col(sum[k])}">${money(sum[k])}</span></button>
+    return `<button class="nw-row" data-act="nw-fold" data-id="${id}" aria-expanded="${on}"><span class="nw-l">${LABELS[k]}<span class="meta">${x.list.length}</span>${icon(on ? 'expand_less' : 'expand_more')}</span><span class="num" style="${col(x.sum)}">${money(x.sum)}</span></button>
       ${on ? `<div class="nw-list">${items || '<div class="meta">No accounts</div>'}</div>` : ''}`;
   };
-  return `<div class="card nw-card"><div class="meta">Net Worth</div><div class="nw-total num">${money(total)}</div>
-    ${row('cash', 'Cash')}${row('credit', 'Credit cards')}${sum.loan || list.loan.length ? row('loan', 'Loans') : ''}${row('invest', 'Investments')}</div>`;
+  const section = (gk, title, keys) => `<div class="nw-sec"><span>${title}</span><span class="num" style="${col(tot(groups[gk]))}">${money(tot(groups[gk]))}</span></div>
+    ${keys.filter((k) => ['cash', 'credit'].includes(k) || groups[gk][k]).map((k) => row(gk, k)).join('')}`;
+  const hasBiz = Object.keys(groups.biz).length > 0;
+  return `<div class="card nw-card"><div class="meta">Net Worth</div><div class="nw-total num">${money(tot(groups.per) + tot(groups.biz))}</div>
+    ${hasBiz ? section('per', 'Personal', ['cash', 'credit', 'loan', 'invest']) + section('biz', 'Business', ['cash', 'credit', 'loan', 'invest'])
+      : ['cash', 'credit', 'loan', 'invest'].filter((k) => ['cash', 'credit', 'invest'].includes(k) || groups.per[k]).map((k) => row('per', k)).join('')}</div>`;
 }
 function viewAccounts() {
   const accs = Object.values(S.accounts).filter((a) => !a.hidden).sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || ((a.itemId || '') + a.name).localeCompare((b.itemId || '') + b.name));
@@ -1039,7 +1051,8 @@ function viewAccounts() {
   }
   return `<div class="page">
     ${netWorthCard(accs)}
-    <div><p class="h2">${accs.length} account${accs.length > 1 ? 's' : ''}</p><div class="meta">${lastSyncText()}</div></div>
+    <div class="row-between"><div><p class="h2">${accs.length} account${accs.length > 1 ? 's' : ''}</p><div class="meta">${lastSyncText()}</div></div>
+      ${accs.length > 1 ? `<button class="pill-btn small" data-act="acc-reorder">${icon('swap_vert')}Reorder</button>` : ''}</div>
     <div class="acc-grid">${tiles}<button class="tile add" data-act="link">${icon('add')}Add</button></div>
     ${banners}
   </div>`;
@@ -1685,6 +1698,27 @@ function renderCatReorder() {
     ${saveBar('cat-order-save', 'Save order')}`);
 }
 
+// ---- reorder the account tiles on the Accounts page ----
+function sheetAccReorder() {
+  S.accOrder = Object.values(S.accounts).filter((a) => !a.hidden).sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || ((a.itemId || '') + a.name).localeCompare((b.itemId || '') + b.name)).map((a) => a.id);
+  // Tiles without a chosen color get one by position; remember today's colors so moving a tile doesn't repaint the others
+  S.accColor = Object.fromEntries(S.accOrder.map((id, i) => [id, S.accounts[id].color || TILE_COLORS[i % TILE_COLORS.length]]));
+  renderAccReorder();
+}
+function renderAccReorder() {
+  const o = S.accOrder;
+  openSheet(`<h3>Reorder accounts</h3>
+    <div class="set-list">${o.map((id, i) => {
+      const a = S.accounts[id];
+      const inst = (S.items[a.itemId] || {}).institutionName || a.institution || '';
+      return `<div class="set-item reorder-row"><span class="acc-sw" style="background:${esc(S.accColor[id])}"></span>
+        <span class="n">${esc(accName(a))}<div class="meta">${esc([inst, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</div></span>
+        <button class="icon-btn" data-act="acc-move" data-i="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${esc(accName(a))} up">${icon('arrow_upward')}</button>
+        <button class="icon-btn" data-act="acc-move" data-i="${i}" data-dir="1" ${i === o.length - 1 ? 'disabled' : ''} aria-label="Move ${esc(accName(a))} down">${icon('arrow_downward')}</button></div>`;
+    }).join('')}</div>
+    ${saveBar('acc-order-save', 'Save order')}`);
+}
+
 // ---- reorder / show-hide dashboard cards ----
 function sheetReorder() {
   const o = cardOrder(); const hidden = cardHidden();
@@ -2090,7 +2124,8 @@ function sheetAccount(id) {
     <div class="meta">Bank name: ${esc(a.officialName || a.name)} ${a.mask ? '••' + esc(a.mask) : ''}</div>
     <div class="field"><label>Color</label><div class="swatches">${TILE_COLORS.map((col) => `<button data-act="pick-color" data-color="${col}" aria-pressed="${a.color === col}" style="background:${col}" aria-label="Color ${col}"></button>`).join('')}</div></div>
     <label class="check"><input type="checkbox" id="ah" ${a.hidden ? 'checked' : ''}>Hide on the Accounts page</label>
-    <div class="set-list"><label class="set-item">${glyph('trending_up', '#34C759')}<span class="n">Investment account<div class="meta">Only its balance counts, in Net Worth → Investments. Its records stay out of Records and charts.${a.type === 'investment' ? ' Detected as an investment account.' : ''}</div></span><input type="checkbox" class="switch" id="ainv" ${isInvest(a) ? 'checked' : ''}></label></div>
+    <div class="set-list"><label class="set-item">${glyph('business_center', '#8E5B2E')}<span class="n">Business account<div class="meta">Counted under Business in Net Worth.</div></span><input type="checkbox" class="switch" id="abiz" ${isBusiness(a) ? 'checked' : ''}></label>
+      <label class="set-item">${glyph('trending_up', '#34C759')}<span class="n">Investment account<div class="meta">Only its balance counts, in Net Worth → Investments. Its records stay out of Records and charts.${a.type === 'investment' ? ' Detected as an investment account.' : ''}</div></span><input type="checkbox" class="switch" id="ainv" ${isInvest(a) ? 'checked' : ''}></label></div>
     ${saveBar('save-acc', 'Save', ` data-id="${id}"`)}`);
   $('sheet').dataset.color = a.color || '';
 }
@@ -2454,6 +2489,17 @@ document.addEventListener('click', async (e) => {
       case 'msel-open': S.mselOpen.has(id) ? S.mselOpen.delete(id) : S.mselOpen.add(id); $('msel').innerHTML = mselBody(); break;
       case 'reorder': sheetReorder(); break;
       case 'cat-reorder': sheetCatReorder(id || null); break;
+      case 'acc-reorder': sheetAccReorder(); break;
+      case 'acc-move': {
+        const o = S.accOrder; const i = +el.dataset.i; const j = i + Number(el.dataset.dir);
+        if (j < 0 || j >= o.length) break;
+        [o[i], o[j]] = [o[j], o[i]];
+        const y = document.querySelector('.sheet')?.scrollTop; renderAccReorder(); if (y) document.querySelector('.sheet').scrollTop = y; break;
+      }
+      case 'acc-order-save': {
+        const b = writeBatch(db); S.accOrder.forEach((aid, i) => b.update(doc(db, 'accounts', aid), { order: i, ...(S.accounts[aid]?.color ? {} : { color: S.accColor[aid] }) }));
+        await b.commit(); closeSheet(); toast('Order saved'); break;
+      }
       case 'cat-move': {
         const o = S.catOrder.ids; const i = +el.dataset.i; const j = i + Number(el.dataset.dir);
         if (j < 0 || j >= o.length) break;
@@ -2557,7 +2603,8 @@ document.addEventListener('click', async (e) => {
         const name = $('an').value.trim();
         const inv = $('ainv').checked; const acc = S.accounts[id];
         await updateDoc(doc(db, 'accounts', id), { customName: name || deleteField(), color: sheet.dataset.color || deleteField(), hidden: $('ah').checked,
-          investment: inv === (acc?.type === 'investment') ? deleteField() : inv }); // store only when it differs from what the bank says
+          investment: inv === (acc?.type === 'investment') ? deleteField() : inv, // store only when it differs from what the bank says
+          business: $('abiz').checked === isBusiness({ ...acc, business: undefined }) ? deleteField() : $('abiz').checked });
         closeSheet(); toast('Saved'); break;
       }
       case 'edit-icon': sheetIcon(id); break;
