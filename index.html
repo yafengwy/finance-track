@@ -405,6 +405,9 @@ input.row-select { direction: ltr; }
 
 .acc-sw { width: 14px; height: 32px; border-radius: 4px; flex-shrink: 0; }
 
+.nw-ic { width: 34px; height: 34px; border-radius: 50%; background: #F0F0F3; display: inline-flex; align-items: center; justify-content: center; margin-right: 4px; flex-shrink: 0; }
+.nw-l .nw-ic .ms { font-size: 20px; color: #3A3A3C; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -538,7 +541,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '8.2';
+const APP_VERSION = '8.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1010,13 +1013,14 @@ function netWorthCard(accs) {
   const open = S.nwOpen ||= new Set();
   const col = (v) => `color:var(${v < 0 ? '--exp' : '--text'})`;
   const LABELS = { cash: 'Cash', credit: 'Credit cards', loan: 'Loans', invest: 'Investments' };
+  const ICONS = { cash: 'account_balance', credit: 'credit_card', loan: 'request_quote', invest: 'bar_chart' }; // same icon in Personal and Business
   const row = (gk, k) => {
     const x = groups[gk][k] || { sum: 0, list: [] }; const id = `${gk}-${k}`; const on = open.has(id);
     const items = x.list.sort((p, q) => Math.abs(q.b) - Math.abs(p.b)).map(({ a, b }) => {
       const inst = (S.items[a.itemId] || {}).institutionName || a.institution || '';
       return `<button class="nw-acc" data-act="acc" data-id="${a.id}"><span class="n">${esc(accName(a))}<span class="meta"> ${esc([inst, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</span></span><span class="num" style="${col(b)}">${money(b)}</span></button>`;
     }).join('');
-    return `<button class="nw-row" data-act="nw-fold" data-id="${id}" aria-expanded="${on}"><span class="nw-l">${LABELS[k]}<span class="meta">${x.list.length}</span>${icon(on ? 'expand_less' : 'expand_more')}</span><span class="num" style="${col(x.sum)}">${money(x.sum)}</span></button>
+    return `<button class="nw-row" data-act="nw-fold" data-id="${id}" aria-expanded="${on}"><span class="nw-l"><span class="nw-ic">${icon(ICONS[k])}</span>${LABELS[k]}<span class="meta">${x.list.length}</span>${icon(on ? 'expand_less' : 'expand_more')}</span><span class="num" style="${col(x.sum)}">${money(x.sum)}</span></button>
       ${on ? `<div class="nw-list">${items || '<div class="meta">No accounts</div>'}</div>` : ''}`;
   };
   const section = (gk, title, keys) => `<div class="nw-sec"><span>${title}</span><span class="num" style="${col(tot(groups[gk]))}">${money(tot(groups[gk]))}</span></div>
