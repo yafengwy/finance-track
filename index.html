@@ -564,7 +564,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '9.8';
+const APP_VERSION = '9.9';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1667,10 +1667,13 @@ function viewFilters() {
     ${list.length ? `<div class="set-list">${list.map((f) => `<button class="set-item" data-act="edit-filter" data-id="${f.id}">${icon('filter_alt')}<span class="n">${esc(f.name)}<div class="meta">${esc(specName(f) || 'Nothing selected')}</div></span>${icon('chevron_right')}</button>`).join('')}</div>` : '<div class="empty">No filters yet</div>'}
     <button class="pill-btn primary wide" data-act="add-filter">${icon('add')}New filter</button></div>`;
 }
-function ruleText(r) {
+// short = list view: show the first few keywords and "+N more" (the editor shows them all)
+function ruleText(r, short = false) {
   const only = r.accountIds?.length ? r.accountIds : r.accountId ? [r.accountId] : [];
   const onlyTxt = only.map((id) => accName(S.accounts[id]) || '(removed account)').join(', ');
-  const cond = r.field === 'account' ? `Account is ${accName(S.accounts[r.accountId]) || '(removed account)'}` : `Description contains “${(r.keywords || []).join('”, “')}”${only.length ? ` · only in ${onlyTxt}` : ''}`;
+  const kws = r.keywords || []; const SHOW = 4;
+  const kwTxt = `“${(short && kws.length > SHOW ? kws.slice(0, SHOW) : kws).join('”, “')}”${short && kws.length > SHOW ? ` +${kws.length - SHOW} more` : ''}`;
+  const cond = r.field === 'account' ? `Account is ${accName(S.accounts[r.accountId]) || '(removed account)'}` : `Description contains ${kwTxt}${only.length ? ` · only in ${onlyTxt}` : ''}`;
   const at = amtText(r); const cond2 = at ? `${cond} · ${at}` : cond;
   const acts = [r.categoryId && `Category → ${S.cats[r.categoryId]?.name || '(deleted)'}`, r.labelId && `Label → ${S.labels[r.labelId]?.name || '(deleted)'}`, r.transfer && 'Mark as transfer'].filter(Boolean);
   return { cond: cond2, acts: acts.join(' · ') };
@@ -1693,7 +1696,7 @@ function ruleGroupsHtml(list) {
     const name = g.cat ? g.cat.name : g.key === '_transfer' ? 'Transfers' : 'Labels only';
     const gIcon = g.cat ? catIcon(g.cat) : glyph(g.key === '_transfer' ? 'swap_horiz' : 'sell', '#8E8E93');
     const rows = g.rules.sort((a, b) => rank(S.cats[a.categoryId]).localeCompare(rank(S.cats[b.categoryId])) || ruleText(a).cond.localeCompare(ruleText(b).cond)).map((r) => {
-      const t = ruleText(r); const c = S.cats[r.categoryId];
+      const t = ruleText(r, true); const c = S.cats[r.categoryId];
       const ic = c ? catIcon(c) : glyph(r.transfer ? 'swap_horiz' : 'sell', '#8E8E93');
       return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${ic}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`;
     }).join('');
@@ -2333,7 +2336,7 @@ function renderRule() {
   const src = d.fromTx && !d.id ? S.txById[d.fromTx] : null;
   const hits = src ? ruleList().filter((r) => ruleMatches(r, src)) : [];
   const hitHtml = hits.length ? `<div class="rule-hits"><div class="meta">This record already matches ${hits.length === 1 ? 'a rule' : `${hits.length} rules`}. Tap to view, or create a new one below.</div>
-    <div class="set-list">${hits.map((r) => { const t = ruleText(r); const c = S.cats[r.categoryId]; return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${c ? catIcon(c) : glyph(r.transfer ? 'swap_horiz' : 'sell', '#8E8E93')}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`; }).join('')}</div></div>` : '';
+    <div class="set-list">${hits.map((r) => { const t = ruleText(r, true); const c = S.cats[r.categoryId]; return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${c ? catIcon(c) : glyph(r.transfer ? 'swap_horiz' : 'sell', '#8E8E93')}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`; }).join('')}</div></div>` : '';
   openSheet(`<h3>${d.id ? 'Edit rule' : 'New rule'}</h3>
     ${hitHtml}
     <div class="sec-head">When</div>
