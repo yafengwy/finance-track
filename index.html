@@ -571,7 +571,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '10.3';
+const APP_VERSION = '10.4';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1249,9 +1249,9 @@ function barChart(bs, values, color, opts = {}) {
   }).join('');
   return `<svg viewBox="0 0 ${W} ${H}" class="trend" role="img" aria-label="${opts.aria || 'Spending over time'}">${parts}</svg>`;
 }
-function txRowHtml(t, cls = 'top-row') {
+function txRowHtml(t, cls = 'top-row', back = '') {
   const c = S.cats[t.categoryId];
-  return `<button class="${cls}" data-act="tx" data-id="${t.id}">${catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
+  return `<button class="${cls}" data-act="tx" data-id="${t.id}"${back ? ` data-back="${back}"` : ''}>${catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
 }
 function cardStructure() {
   const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
@@ -1548,6 +1548,29 @@ function recMatcher() {
     && (!fm || fm(t));
 }
 function signed(t) { return t.isTransfer ? 0 : -t.amount; }
+// Search in a sheet over the current page, so the list behind keeps its place
+function searchRows() {
+  const q = (S.sq || '').trim().toLowerCase();
+  if (!q) return '<div class="meta" style="padding:8px 4px">Type to search all your records.</div>';
+  const hits = S.txs.filter((t) => matchSearch(t, q)).sort((a, b) => b.date.localeCompare(a.date));
+  if (!hits.length) return '<div class="empty">No records</div>';
+  const total = hits.reduce((n, t) => n + t.amount, 0);
+  return `<div class="row-between rec-sum"><span class="meta">${hits.length} record${hits.length === 1 ? '' : 's'}</span><span class="num">Σ ${money(total, true)}</span></div>
+    ${hits.slice(0, 200).map((t) => txRowHtml(t, 'top-row', 'search')).join('')}
+    ${hits.length > 200 ? '<div class="meta">Showing the first 200. Type more to narrow it down.</div>' : ''}`;
+}
+function sheetSearch() {
+  openSheet(`<h3>Search</h3>
+    <div class="searchbar">${icon('search')}<input id="sq" type="search" value="${esc(S.sq || '')}" placeholder="Search merchant, note, category, amount" autocomplete="off" aria-label="Search records">
+      <span id="sq-clear">${S.sq ? `<button class="search-clear" data-act="sq-clear" aria-label="Clear search">${icon('cancel')}</button>` : ''}</span></div>
+    <div id="sq-results">${searchRows()}</div>`, { short: true });
+  focusNow('sq');
+}
+function refreshSearchSheet() {
+  const box = $('sq-results'); if (!box) return;
+  box.innerHTML = searchRows();
+  const c = $('sq-clear'); if (c) c.innerHTML = S.sq ? `<button class="search-clear" data-act="sq-clear" aria-label="Clear search">${icon('cancel')}</button>` : '';
+}
 function searchClearBtn() { return S.search ? `<button class="search-clear" data-act="search-clear" aria-label="Clear search">${icon('cancel')}</button>` : ''; }
 // While typing, only the results below the search box are redrawn; the box itself is never replaced,
 // so the keyboard (and Chinese/predictive input) is not interrupted
@@ -2118,7 +2141,8 @@ function renderEdit() {
     ${t && !e.part && e.manual ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
     ${saveBar('save-edit', 'Save')}`, { short: true }); // same height as the records list it often opens from
 
-  if (S.back === 'rec' && S.recPop) S.sheetBack = backToPopup;
+  if (S.back === 'search') S.sheetBack = sheetSearch;
+  else if (S.back === 'rec' && S.recPop) S.sheetBack = backToPopup;
 }
 async function saveEdit() {
   captureEdit();
@@ -2716,6 +2740,7 @@ document.addEventListener('click', async (e) => {
       case 'edit-cat': captureEdit(); openPicker({ mode: 'edit', txId: S.edit.txId }); break;
       case 'edit-type': captureEdit(); S.edit.type = el.dataset.type; renderEdit(); break;
       case 'save-edit': await saveEdit(); break;
+      case 'sq-clear': S.sq = ''; const sq = $('sq'); if (sq) sq.value = ''; refreshSearchSheet(); focusNow('sq'); break;
       case 'search-clear': S.search = ''; clearTimeout(searchTimer); render(); break;
       case 'ed-split': { captureEdit(); const et = S.txById[S.edit.txId]; if (et?.parentId) openSplit(et.parentId); else openSplit(S.edit.txId, S.edit); if (S.split) { S.split.fromEdit = true; S.sheetBack = renderEdit; } break; }
       case 'sp-mode': spCapture(); S.split.mode = el.dataset.mode; renderSplit(); break;
@@ -2749,7 +2774,7 @@ document.addEventListener('click', async (e) => {
         break;
       case 'card-scope': { const c = el.dataset.card; if (el.dataset.v === 'all') localStorage.removeItem('scope:' + c); else localStorage.setItem('scope:' + c, el.dataset.v); S.barSel = c === 'structure' ? null : S.barSel; render(); break; }
       case 'fab-toggle': S.fabOpen = !S.fabOpen; render(); break;
-      case 'fab-search': S.fabOpen = false; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); focusNow('txsearch'); break;
+      case 'fab-search': S.fabOpen = false; render(); sheetSearch(); break;
       case 'nw-zero': { const z = S.nwZero ||= new Set(); z.has(id) ? z.delete(id) : z.add(id); render(); break; }
       case 'nw-fold': { const o = S.nwOpen ||= new Set(); o.has(id) ? o.delete(id) : o.add(id); render(); break; }
       case 'save-acc': {
@@ -2833,12 +2858,19 @@ document.addEventListener('input', (e) => {
   if ((e.target.id === 'ru-amt-a' || e.target.id === 'ru-amt-b') && S.ruleDraft) { captureRule(); refreshRuleCounts(); return; }
   if (e.target.id === 'ru-kw' && S.ruleDraft) { S.ruleDraft.kwInput = e.target.value; refreshRuleCounts(); return; }
   if (e.target.id === 'catq') { $('catpick').innerHTML = pickerBody(e.target.value.trim().toLowerCase()); return; }
+  if (e.target.id === 'sq') {
+    S.sq = e.target.value;
+    if (e.isComposing) return;
+    clearTimeout(searchTimer); searchTimer = setTimeout(refreshSearchSheet, 200);
+    return;
+  }
   if (e.target.id !== 'txsearch') return;
   S.search = e.target.value;
   if (e.isComposing) return; // still composing a word on the keyboard: wait until it's committed
   clearTimeout(searchTimer); searchTimer = setTimeout(refreshRecResults, 200);
 });
 document.addEventListener('compositionend', (e) => {
+  if (e.target.id === 'sq') { S.sq = e.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refreshSearchSheet, 200); return; }
   if (e.target.id !== 'txsearch') return;
   S.search = e.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refreshRecResults, 200);
 });
