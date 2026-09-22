@@ -425,6 +425,11 @@ input.row-select { direction: ltr; }
 .ci.bank-logo { background: #fff; box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
 .ci.bank-logo img { width: 70%; height: 70%; object-fit: contain; }
 
+/* All / Personal / Business switch under each card title */
+.scope-seg { display: inline-flex; gap: 2px; margin-top: 8px; padding: 2px; background: #EDEDF0; border-radius: 9px; }
+.scope-seg button { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; color: var(--sub); padding: 4px 10px; border-radius: 7px; }
+.scope-seg button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -558,7 +563,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '8.9';
+const APP_VERSION = '9.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -645,11 +650,15 @@ function periodLabel(p) { return p.key === 'custom' ? `${shortDate(p.from)} – 
 
 // A filter spec is { cats: [ids], labels: [ids] }. Picking a top category includes all of its subcategories.
 function savedFilterId(card) { return localStorage.getItem('filter:' + card) || ''; }
+// Each card can show All / Personal / Business (by the account's Business switch). Investments never count.
+function cardScope(card) { return localStorage.getItem('scope:' + card) || 'all'; }
 function cardSpec(card) {
-  if (S.instant[card]) return { spec: S.instant[card], label: 'Instant: ' + specName(S.instant[card]) };
+  const sc = cardScope(card); const withScope = (spec) => (sc === 'all' ? spec : { ...(spec || {}), scope: sc });
+  if (S.instant[card]) return { spec: withScope(S.instant[card]), label: 'Instant: ' + specName(S.instant[card]) };
   const f = S.filters[savedFilterId(card)];
-  return f ? { spec: f, label: 'Filter: ' + f.name } : { spec: null, label: '' };
+  return f ? { spec: withScope(f), label: 'Filter: ' + f.name } : { spec: withScope(null), label: '' };
 }
+function hasBusiness() { return Object.values(S.accounts).some((a) => isBusiness(a) && !isInvest(a)); }
 function specName(spec) {
   const names = [...(spec.accounts || []).map((id) => (S.accounts[id] ? accName(S.accounts[id]) + (S.accounts[id].mask ? ' ••' + S.accounts[id].mask : '') : null)),
     ...(spec.cats || []).map((id) => (id.startsWith('=') ? (S.cats[id.slice(1)] ? `General – ${S.cats[id.slice(1)].name}` : null) : S.cats[id]?.name)), ...(spec.labels || []).map((id) => '#' + (S.labels[id]?.name || ''))].filter(Boolean);
@@ -672,11 +681,13 @@ function catSet(ids) {
 function specMatcher(spec) {
   const accs = spec?.accounts?.length ? new Set(spec.accounts) : null;
   const hasCL = !!(spec?.cats?.length || spec?.labels?.length);
-  if (!accs && !hasCL) return () => true;
+  const sc = spec?.scope && spec.scope !== 'all' ? spec.scope : null;
+  if (!accs && !hasCL && !sc) return () => true;
   const cats = catSet(spec.cats || []);
   const labels = new Set(spec.labels || []);
   // Accounts narrow the result; within them a record shows if it is in a picked category OR has a picked label
-  return (t) => (!accs || accs.has(t.accountId)) && (!hasCL || cats.has(t.categoryId) || (t.labels || []).some((l) => labels.has(l)));
+  return (t) => (!sc || isBusiness(S.accounts[t.accountId]) === (sc === 'biz'))
+    && (!accs || accs.has(t.accountId)) && (!hasCL || cats.has(t.categoryId) || (t.labels || []).some((l) => labels.has(l)));
 }
 function specEmpty(spec) { return !spec?.cats?.length && !spec?.labels?.length && !spec?.accounts?.length; }
 
@@ -1116,7 +1127,9 @@ function viewAccounts() {
 // ---------- dashboard ----------
 function cardHead(title, card) {
   const { label } = cardSpec(card);
-  return `<div class="card-head"><div><p class="h2">${title}</p><div class="meta">${esc(periodLabel(getPeriod(card)))}${label ? ` · ${esc(label)}` : ''}</div></div>
+  const sc = cardScope(card);
+  const seg = hasBusiness() ? `<div class="scope-seg">${[['all', 'All'], ['per', 'Personal'], ['biz', 'Business']].map(([v, l]) => `<button data-act="card-scope" data-card="${card}" data-v="${v}" aria-pressed="${sc === v}">${l}</button>`).join('')}</div>` : '';
+  return `<div class="card-head"><div><p class="h2">${title}</p><div class="meta">${esc(periodLabel(getPeriod(card)))}${label ? ` · ${esc(label)}` : ''}</div>${seg}</div>
     <button class="icon-btn" data-act="card-settings" data-card="${card}" aria-label="${title} settings">${icon('more_horiz')}</button></div>`;
 }
 const CARDS = { cashflow: 'Cash Flow', detail: 'Income & Expenses', structure: 'Spending by Category', trend: 'Cash Flow Trend' };
@@ -2660,6 +2673,7 @@ document.addEventListener('click', async (e) => {
         sheet.dataset.icon = el.dataset.icon;
         sheet.querySelectorAll('[data-act="pick-icon"]').forEach((b) => b.setAttribute('aria-pressed', b === el));
         break;
+      case 'card-scope': { const c = el.dataset.card; if (el.dataset.v === 'all') localStorage.removeItem('scope:' + c); else localStorage.setItem('scope:' + c, el.dataset.v); S.barSel = c === 'structure' ? null : S.barSel; render(); break; }
       case 'nw-zero': { const z = S.nwZero ||= new Set(); z.has(id) ? z.delete(id) : z.add(id); render(); break; }
       case 'nw-fold': { const o = S.nwOpen ||= new Set(); o.has(id) ? o.delete(id) : o.add(id); render(); break; }
       case 'save-acc': {
