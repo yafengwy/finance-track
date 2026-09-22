@@ -571,7 +571,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '10.5';
+const APP_VERSION = '10.6';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -962,6 +962,7 @@ function render() {
       <button class="fab" data-act="fab-toggle" aria-expanded="${!!S.fabOpen}" aria-label="More">${icon(S.fabOpen ? 'close' : 'add')}</button></div>` : '');
   window.scrollTo(0, y);
   if (focusId && $(focusId)) { const f = $(focusId); f.focus(); if (caret != null && f.setSelectionRange) f.setSelectionRange(caret, caret); }
+  if ($('sq-results')) refreshSearchSheet(); // keep the search sheet in step with edits
 }
 function headerMain(active) {
   const cur = MAIN.includes(active) ? active : 'accounts';
