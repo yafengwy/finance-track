@@ -564,7 +564,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '9.7';
+const APP_VERSION = '9.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -951,7 +951,10 @@ function headerMain(active) {
   </div><nav class="tabs">${tab('accounts', 'Accounts')}${tab('dash', 'Dashboard')}${tab('tx', 'Records')}</nav></header>`;
 }
 function headerSub(r) {
-  let title = SUB_TITLES[r.name] || ''; let back = '#/accounts';
+  // Menu pages go back to the main tab you opened the menu from (e.g. Records), not always to Accounts
+  const mainOf = (h) => h.replace('#/', '').split(/[/?]/)[0];
+  const prevMain = NAV.slice(0, -1).reverse().find((h) => MAIN.includes(mainOf(h)));
+  let title = SUB_TITLES[r.name] || ''; let back = prevMain || '#/accounts';
   if (r.name === 'cat') {
     const c = S.cats[r.id];
     title = c?.parentId ? 'Edit subcategory' : 'Edit category';
