@@ -413,6 +413,15 @@ input.row-select { direction: ltr; }
 .nw-bank + .nw-acc, .nw-acc { border-top: 0; }
 .nw-zero { border: 0; background: none; font: inherit; font-size: 13px; color: var(--accent); text-align: left; padding: 8px 0 2px; }
 
+/* sync status dots (same size everywhere) + account color stripe */
+.sdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: 4px; vertical-align: super; }
+.sdot.ok { background: #22A06B; } .sdot.bad { background: #D93025; } .sdot.paused { background: #AEAEB2; }
+.nw-ic { position: relative; }
+.nw-ic .sdot { position: absolute; top: 0; right: 0; margin: 0; vertical-align: baseline; box-shadow: 0 0 0 1.5px var(--card); }
+.sdot-btn { border: 0; background: none; padding: 0 2px; display: inline; }
+.nw-st { width: 4px; height: 24px; border-radius: 2px; flex-shrink: 0; }
+.nw-acc .n { flex: 1; }
+
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
@@ -546,7 +555,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '8.4';
+const APP_VERSION = '8.6';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -556,7 +565,9 @@ const S = {
   msel: new Set(), mselOpen: new Set(), instant: {}, cardEdit: null,
   donutSel: null, donutDrill: null, trendMode: 'trend',
 };
-const TILE_COLORS = ['#1E3A8A', '#2563EB', '#6D28D9', '#B91C1C', '#475569', '#C2410C', '#B45309', '#0F766E', '#9D174D', '#1F6F54'];
+const TILE_COLORS = ['#1E3A8A', '#2563EB', '#6D28D9', '#B91C1C', '#475569', '#C2410C', '#B45309', '#0F766E', '#9D174D', '#1F6F54',
+  '#A1A1AA', '#EAB308', '#65A30D']; // + light grey, soft yellow, grass green
+const TILE_DEFAULTS = 10; // accounts without a chosen color cycle through the first 10 only, so adding colors never repaints them
 const PERIOD_LABEL = { this_month: 'This month', last_month: 'Last month', this_year: 'This year', last_year: 'Last year', custom: 'Custom' };
 const DEFAULT_PERIOD = { trend: 'this_year' };
 
@@ -1003,6 +1014,20 @@ function accountBalance(a) {
   const cur = a.balanceCurrent ?? 0;
   return ['credit', 'loan'].includes(a.type) ? -cur : cur;
 }
+// Sync status of an account's bank login: 'ok', 'bad' (needs reconnect / error), 'paused', or '' (manual, no sync)
+function accStatus(a) {
+  const i = S.items[a.itemId]; if (!i) return '';
+  if (i.status === 'login_required' || i.status === 'error') return 'bad';
+  return i.paused ? 'paused' : 'ok';
+}
+function worst(list) { return list.includes('bad') ? 'bad' : list.includes('ok') ? 'ok' : list.includes('paused') ? 'paused' : ''; }
+function sDot(st) { return st ? `<span class="sdot ${st}" aria-label="${st === 'bad' ? 'Sync problem' : st === 'paused' ? 'Paused' : 'Synced'}"></span>` : ''; }
+// Stripe color = the account's color (or its default by position among visible accounts)
+function accColor(a) {
+  if (a.color) return a.color;
+  const vis = Object.values(S.accounts).filter((x) => !x.hidden).sort((x, y) => (x.order ?? 99) - (y.order ?? 99) || ((x.itemId || '') + x.name).localeCompare((y.itemId || '') + y.name));
+  return TILE_COLORS[Math.max(0, vis.indexOf(a)) % TILE_DEFAULTS];
+}
 // Business accounts: names containing "Business" unless you switch it off (or on) in the account settings
 function isBusiness(a) { return !!a && (a.business ?? /\bbusiness\b/i.test(`${a.name || ''} ${a.officialName || ''} ${a.customName || ''}`)); }
 // Net Worth = Personal + Business. Each: Cash (checking, savings, manual cash) − credit cards − loans (+ investments).
@@ -1029,16 +1054,21 @@ function netWorthCard(accs) {
     (showZero ? x.list : nonzero).forEach((y) => { const k = instOf(y.a); if (!byBank.has(k)) byBank.set(k, []); byBank.get(k).push(y); });
     const banks = [...byBank.entries()].map(([bank, ys]) => ({ bank, ys, sum: ys.reduce((n, y) => n + y.b, 0), all: x.list.filter((y) => instOf(y.a) === bank).length }))
       .sort((p, q) => Math.abs(q.sum) - Math.abs(p.sum) || p.bank.localeCompare(q.bank));
-    const items = banks.map((g) => `<div class="nw-bank"><span>${esc(g.bank)} <span class="meta">· ${g.all}</span></span><span class="num" style="${col(g.sum)}">${money(g.sum)}</span></div>
-      ${g.ys.sort((p, q) => Math.abs(q.b) - Math.abs(p.b)).map(({ a, b }) => `<button class="nw-acc" data-act="acc" data-id="${a.id}"><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}</span><span class="num" style="${col(b)}">${money(b)}</span></button>`).join('')}`).join('')
+    const items = banks.map((g) => {
+      const gAll = x.list.filter((y) => instOf(y.a) === g.bank); const st = worst(gAll.map((y) => accStatus(y.a)));
+      const badItem = st === 'bad' ? gAll.map((y) => y.a.itemId).find((iid) => accStatus({ itemId: iid }) === 'bad') : null;
+      const dot = badItem ? `<button class="sdot-btn" data-act="reconnect" data-id="${badItem}" aria-label="Reconnect ${esc(g.bank)}">${sDot('bad')}</button>` : sDot(st);
+      return `<div class="nw-bank"><span>${esc(g.bank)}${dot} <span class="meta">· ${g.all}</span></span><span class="num" style="${col(g.sum)}">${money(g.sum)}</span></div>
+      ${g.ys.sort((p, q) => Math.abs(q.b) - Math.abs(p.b)).map(({ a, b }) => `<button class="nw-acc" data-act="acc" data-id="${a.id}"><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}${sDot(accStatus(a))}</span><span class="num" style="${col(b)}">${money(b)}</span></button>`).join('')}`;
+    }).join('')
       + (zero ? `<button class="nw-zero" data-act="nw-zero" data-id="${id}">${showZero ? 'Hide' : `+ ${zero}`} account${zero === 1 ? '' : 's'} with $0 balance</button>` : '');
-    return `<button class="nw-row" data-act="nw-fold" data-id="${id}" aria-expanded="${on}"><span class="nw-l"><span class="nw-ic">${icon(ICONS[k])}</span>${LABELS[k]}<span class="meta">${x.list.length}</span>${icon(on ? 'expand_less' : 'expand_more')}</span><span class="num" style="${col(x.sum)}">${money(x.sum)}</span></button>
+    return `<button class="nw-row" data-act="nw-fold" data-id="${id}" aria-expanded="${on}"><span class="nw-l"><span class="nw-ic">${icon(ICONS[k])}${sDot(worst(x.list.map((y) => accStatus(y.a))))}</span>${LABELS[k]}<span class="meta">${x.list.length}</span>${icon(on ? 'expand_less' : 'expand_more')}</span><span class="num" style="${col(x.sum)}">${money(x.sum)}</span></button>
       ${on ? `<div class="nw-list">${items || '<div class="meta">No accounts</div>'}</div>` : ''}`;
   };
   const section = (gk, title, keys) => `<div class="nw-sec"><span>${title}</span><span class="num" style="${col(tot(groups[gk]))}">${money(tot(groups[gk]))}</span></div>
     ${keys.filter((k) => ['cash', 'credit'].includes(k) || groups[gk][k]).map((k) => row(gk, k)).join('')}`;
   const hasBiz = Object.keys(groups.biz).length > 0;
-  return `<div class="card nw-card"><div class="meta">Net Worth</div><div class="nw-total num">${money(tot(groups.per) + tot(groups.biz))}</div>
+  return `<div class="card nw-card"><div class="meta">Net Worth</div><div class="nw-total num">${money(tot(groups.per) + tot(groups.biz))}</div><div class="meta" style="margin-top:-6px">${lastSyncText()}</div>
     ${hasBiz ? section('per', 'Personal', ['cash', 'credit', 'loan', 'invest']) + section('biz', 'Business', ['cash', 'credit', 'loan', 'invest'])
       : ['cash', 'credit', 'loan', 'invest'].filter((k) => ['cash', 'credit', 'invest'].includes(k) || groups.per[k]).map((k) => row('per', k)).join('')}</div>`;
 }
@@ -1048,7 +1078,7 @@ function viewAccounts() {
     const item = S.items[a.itemId] || {};
     const dot = item.status === 'login_required' ? '#D93025' : item.status === 'error' ? '#E0A100' : '#22A06B';
     const sub = [item.institutionName || a.institution, a.mask && `••${a.mask}`].filter(Boolean).join(' ');
-    return `<button class="tile" data-act="acc" data-id="${a.id}" style="background:${esc(a.color || TILE_COLORS[i % TILE_COLORS.length])}">
+    return `<button class="tile" data-act="acc" data-id="${a.id}" style="background:${esc(a.color || TILE_COLORS[i % TILE_DEFAULTS])}">
       <span class="dot" style="background:${dot}"></span>
       <span><div class="nm">${esc(accName(a))}</div><div class="sb">${esc(sub)}</div></span>
       <span class="amt num">${money(accountBalance(a))}</span></button>`;
@@ -1067,9 +1097,6 @@ function viewAccounts() {
   }
   return `<div class="page">
     ${netWorthCard(accs)}
-    <div class="row-between"><div><p class="h2">${accs.length} account${accs.length > 1 ? 's' : ''}</p><div class="meta">${lastSyncText()}</div></div>
-      ${accs.length > 1 ? `<button class="pill-btn small" data-act="acc-reorder">${icon('swap_vert')}Reorder</button>` : ''}</div>
-    <div class="acc-grid">${tiles}<button class="tile add" data-act="link">${icon('add')}Add</button></div>
     ${banners}
   </div>`;
 }
@@ -1545,7 +1572,7 @@ function sheetRecAccounts() {
   const accs = Object.values(S.accounts).filter((a) => !a.hidden || sel.has(a.id));
   openSheet(`<h3>Accounts</h3>
     <div class="set-list"><label class="msel-row"><input type="checkbox" id="acc-all" ${r.accounts ? '' : 'checked'}>${glyph('account_balance', '#8E8E93')}<span class="n">All accounts</span></label></div>
-    <div class="set-list">${accs.map((a, i) => `<label class="msel-row"><input type="checkbox" data-accsel="${a.id}" ${sel.has(a.id) ? 'checked' : ''}><span class="ci sq" style="background:${esc(a.color || TILE_COLORS[i % TILE_COLORS.length])}">${icon(a.type === 'depository' ? 'account_balance' : 'credit_card')}</span><span class="n">${esc(accName(a))}<div class="meta">${esc([S.items[a.itemId]?.institutionName || a.institution, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</div></span></label>`).join('')}</div>
+    <div class="set-list">${accs.map((a, i) => `<label class="msel-row"><input type="checkbox" data-accsel="${a.id}" ${sel.has(a.id) ? 'checked' : ''}><span class="ci sq" style="background:${esc(a.color || TILE_COLORS[i % TILE_DEFAULTS])}">${icon(a.type === 'depository' ? 'account_balance' : 'credit_card')}</span><span class="n">${esc(accName(a))}<div class="meta">${esc([S.items[a.itemId]?.institutionName || a.institution, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</div></span></label>`).join('')}</div>
     ${saveBar('rf-acc-save', 'Done')}`);
 }
 function sheetRecCats() {
@@ -1718,7 +1745,7 @@ function renderCatReorder() {
 function sheetAccReorder() {
   S.accOrder = Object.values(S.accounts).filter((a) => !a.hidden).sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || ((a.itemId || '') + a.name).localeCompare((b.itemId || '') + b.name)).map((a) => a.id);
   // Tiles without a chosen color get one by position; remember today's colors so moving a tile doesn't repaint the others
-  S.accColor = Object.fromEntries(S.accOrder.map((id, i) => [id, S.accounts[id].color || TILE_COLORS[i % TILE_COLORS.length]]));
+  S.accColor = Object.fromEntries(S.accOrder.map((id, i) => [id, S.accounts[id].color || TILE_COLORS[i % TILE_DEFAULTS]]));
   renderAccReorder();
 }
 function renderAccReorder() {
@@ -1757,7 +1784,7 @@ const glyph = (name, bg) => `<span class="ci" style="background:${bg}">${icon(na
 function accountOptionList() {
   const accs = Object.values(S.accounts).filter((a) => a.id !== 'cash' && !a.hidden);
   return [{ value: 'cash', label: 'Cash', iconHtml: glyph('payments', '#4DBE9F') },
-    ...accs.map((a, i) => ({ value: a.id, label: accName(a), sub: a.mask ? '••' + a.mask : '', iconHtml: `<span class="ci sq" style="background:${esc(a.color || TILE_COLORS[i % TILE_COLORS.length])}">${icon('credit_card')}</span>` }))];
+    ...accs.map((a, i) => ({ value: a.id, label: accName(a), sub: a.mask ? '••' + a.mask : '', iconHtml: `<span class="ci sq" style="background:${esc(a.color || TILE_COLORS[i % TILE_DEFAULTS])}">${icon('credit_card')}</span>` }))];
 }
 function labelOptionList(noneLabel) {
   return [{ value: '', label: noneLabel, iconHtml: glyph('block', '#C7C7CC') },
@@ -1987,7 +2014,7 @@ function renderEdit() {
   const sign = e.type === 'income' ? '+' : e.type === 'expense' ? '-' : '';
   const c = S.cats[e.categoryId]; const acc = S.accounts[e.accountId];
   const accIdx = Object.values(S.accounts).indexOf(acc);
-  const accIcon = e.accountId === 'cash' ? glyph('payments', '#4DBE9F') : `<span class="ci sq" style="background:${esc(acc?.color || TILE_COLORS[Math.max(accIdx, 0) % TILE_COLORS.length])}">${icon('credit_card')}</span>`;
+  const accIcon = e.accountId === 'cash' ? glyph('payments', '#4DBE9F') : `<span class="ci sq" style="background:${esc(acc?.color || TILE_COLORS[Math.max(accIdx, 0) % TILE_DEFAULTS])}">${icon('credit_card')}</span>`;
   openSheet(`<h3>${t ? 'Edit record' : 'New record'}</h3>
     <div class="seg" style="align-self:stretch">${types.map(([k, l]) => `<button style="flex:1" data-act="edit-type" data-type="${k}" aria-pressed="${e.type === k}">${l}</button>`).join('')}</div>
     ${e.manual
