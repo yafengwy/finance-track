@@ -576,7 +576,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '11.4';
+const APP_VERSION = '11.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1491,7 +1491,23 @@ function rowHtml(row, prev) {
 }
 
 // ---------- transactions ----------
+// Amount search: "=500" exactly, "500-800" a range, ">500" / "<20" a limit. Anything else is a text search.
+function amountQuery(q) {
+  const n = (v) => { const x = parseFloat(String(v).replace(/[$,\s]/g, '')); return Number.isFinite(x) ? Math.round(Math.abs(x) * 100) : null; };
+  let m = q.match(/^=\s*\$?\s*([\d.,]+)$/);
+  if (m && n(m[1]) != null) { const v = n(m[1]); return (c) => c === v; }
+  m = q.match(/^\$?\s*([\d.,]+)\s*(?:-|~|–|to)\s*\$?\s*([\d.,]+)$/);
+  if (m && n(m[1]) != null && n(m[2]) != null) { const a = Math.min(n(m[1]), n(m[2])); const b = Math.max(n(m[1]), n(m[2])); return (c) => c >= a && c <= b; }
+  m = q.match(/^(>=|<=|>|<)\s*\$?\s*([\d.,]+)$/);
+  if (m && n(m[2]) != null) {
+    const v = n(m[2]); const op = m[1];
+    return (c) => (op === '>' ? c > v : op === '<' ? c < v : op === '>=' ? c >= v : c <= v);
+  }
+  return null;
+}
 function matchSearch(t, q) {
+  const amt = amountQuery(q.trim());
+  if (amt) return amt(Math.round(Math.abs(t.amount) * 100));
   const c = S.cats[t.categoryId];
   const hay = [t.merchant, t.name, t.originalDescription, t.note, c?.name, topOf(c)?.name, ...(t.labels || []).map((l) => S.labels[l]?.name),
     fmt.format(Math.abs(t.amount)), String(Math.abs(t.amount))].join(' ').toLowerCase();
@@ -1578,7 +1594,7 @@ function searchRows() {
 }
 function sheetSearch() {
   openSheet(`<h3>Search</h3>
-    <div class="searchbar">${icon('search')}<input id="sq" type="search" value="${esc(S.sq || '')}" placeholder="Search merchant, note, category, amount" autocomplete="off" aria-label="Search records">
+    <div class="searchbar">${icon('search')}<input id="sq" type="search" value="${esc(S.sq || '')}" placeholder="Search, or =500 · 500-800 · >500" autocomplete="off" aria-label="Search records">
       <span id="sq-clear">${S.sq ? `<button class="search-clear" data-act="sq-clear" aria-label="Clear search">${icon('cancel')}</button>` : ''}</span></div>
     <div id="sq-results">${searchRows()}</div>`, { short: true });
   focusNow('sq');
