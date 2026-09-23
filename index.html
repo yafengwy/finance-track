@@ -439,7 +439,9 @@ input.row-select { direction: ltr; }
 .acc-bank-h { font-size: 13px; font-weight: 600; color: var(--sub); padding: 10px 4px 4px; }
 
 /* Records: the search box sits right under the tabs and stays there while the list scrolls */
-.rec-search { position: sticky; top: var(--hdr, 110px); z-index: 4; margin: -8px -16px 0; padding: 8px 16px 10px; background: var(--bg); }
+.rec-search { position: sticky; top: var(--hdr, 110px); z-index: 4; margin: -14px -16px 0; padding: 2px 16px 8px; background: var(--bg); }
+
+.ru-note-in { flex: 1; min-width: 0; text-align: right; }
 
 </style>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
@@ -574,7 +576,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '11.1';
+const APP_VERSION = '11.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -845,7 +847,7 @@ async function seedCategories() {
 function sameRuleTarget(a, b) {
   const accs = (r) => [...(r.accountIds?.length ? r.accountIds : r.accountId ? [r.accountId] : [])].sort().join(',');
   return a.field === 'description' && b.field === 'description' && accs(a) === accs(b)
-    && (a.categoryId || null) === (b.categoryId || null) && (a.labelId || null) === (b.labelId || null) && !!a.transfer === !!b.transfer
+    && (a.categoryId || null) === (b.categoryId || null) && (a.labelId || null) === (b.labelId || null) && (a.note || '') === (b.note || '') && !!a.transfer === !!b.transfer
     && (a.amtMode || 'any') === (b.amtMode || 'any') && (a.amtMax ?? null) === (b.amtMax ?? null)
     && [...(a.amtValues?.length ? a.amtValues : a.amtMin != null ? [a.amtMin] : [])].sort().join() === [...(b.amtValues?.length ? b.amtValues : b.amtMin != null ? [b.amtMin] : [])].sort().join();
 }
@@ -893,6 +895,7 @@ function ruleUpdates(t) {
     if (!ruleMatches(r, t)) continue;
     if (r.categoryId && !t.categoryId && !upd.categoryId && S.cats[r.categoryId]) upd.categoryId = r.categoryId;
     if (r.labelId && S.labels[r.labelId] && !(t.labels || []).includes(r.labelId)) (labels ||= new Set(t.labels || [])).add(r.labelId);
+    if (r.note && !(t.note || '').trim() && !upd.note) upd.note = r.note; // only fills an empty note
     if (r.transfer && !t.isTransfer) upd.isTransfer = true;
   }
   if (labels) upd.labels = [...labels];
@@ -1738,7 +1741,7 @@ function ruleText(r, short = false) {
   const kwTxt = `“${(short && kws.length > SHOW ? kws.slice(0, SHOW) : kws).join('”, “')}”${short && kws.length > SHOW ? ` +${kws.length - SHOW} more` : ''}`;
   const cond = r.field === 'account' ? `Account is ${accName(S.accounts[r.accountId]) || '(removed account)'}` : `Description contains ${kwTxt}${only.length ? ` · only in ${onlyTxt}` : ''}`;
   const at = amtText(r); const cond2 = at ? `${cond} · ${at}` : cond;
-  const acts = [r.categoryId && `Category → ${S.cats[r.categoryId]?.name || '(deleted)'}`, r.labelId && `Label → ${S.labels[r.labelId]?.name || '(deleted)'}`, r.transfer && 'Mark as transfer'].filter(Boolean);
+  const acts = [r.categoryId && `Category → ${S.cats[r.categoryId]?.name || '(deleted)'}`, r.labelId && `Label → ${S.labels[r.labelId]?.name || '(deleted)'}`, r.note && `Note → “${r.note}”`, r.transfer && 'Mark as transfer'].filter(Boolean);
   return { cond: cond2, acts: acts.join(' · ') };
 }
 // Rules grouped by the main category they sort into (in your category order); each row shows its category's icon.
@@ -2320,7 +2323,7 @@ function sheetRule(id) {
   const r = id ? S.rules[id] : {};
   const field = r.field || 'description';
   S.ruleDraft = { id: id || null, field, kw: [...(r.keywords || [])], kwInput: '', accountId: field === 'account' ? r.accountId || null : null, onlyAccs: field === 'description' ? (r.accountIds?.length ? [...r.accountIds] : r.accountId ? [r.accountId] : []) : [],
-    categoryId: r.categoryId || null, labelId: r.labelId || null, transfer: !!r.transfer, applyPast: !id, overwrite: false,
+    categoryId: r.categoryId || null, labelId: r.labelId || null, note: r.note || '', transfer: !!r.transfer, applyPast: !id, overwrite: false,
     amtMode: r.amtMode || 'any', amtList: r.amtValues?.length ? r.amtValues.map(String) : r.amtMin != null && (r.amtMode || 'any') === 'exact' ? [String(r.amtMin)] : [],
     amtA: (r.amtMode || 'any') === 'range' && r.amtMin != null ? String(r.amtMin) : '', amtB: r.amtMax != null ? String(r.amtMax) : '' };
   renderRule();
@@ -2345,13 +2348,14 @@ function sheetRuleFromTx(txId, e) {
   const t = S.txById[txId]; if (!t) return;
   const sug = kwSuggest(t);
   S.ruleDraft = { id: null, fromTx: txId, field: 'description', kw: sug[0] ? [sug[0]] : [], kwInput: '', accountId: null, onlyAccs: [], suggestions: sug, // Any account by default
-    categoryId: (e ? e.categoryId : t.categoryId) || null, labelId: (e ? e.labels : t.labels || [])[0] || null, transfer: e ? e.type === 'transfer' : !!t.isTransfer, applyPast: true, overwrite: false,
+    categoryId: (e ? e.categoryId : t.categoryId) || null, labelId: (e ? e.labels : t.labels || [])[0] || null, note: '', transfer: e ? e.type === 'transfer' : !!t.isTransfer, applyPast: true, overwrite: false,
     amtMode: 'any', amtList: [Math.abs(t.amount).toFixed(2)], amtA: Math.abs(t.amount).toFixed(2), amtB: '' };
   renderRule();
 }
 function captureRule() {
   const d = S.ruleDraft; if (!d) return;
   if ($('ru-amt-a')) d.amtA = $('ru-amt-a').value; if ($('ru-amt-b')) d.amtB = $('ru-amt-b').value;
+  if ($('ru-note')) d.note = $('ru-note').value;
   if ($('ru-kw')) d.kwInput = $('ru-kw').value; if ($('ru-tr')) d.transfer = $('ru-tr').checked; if ($('ru-past')) d.applyPast = $('ru-past').checked; if ($('ru-over')) d.overwrite = $('ru-over').checked;
 }
 // Keywords are chips; text still in the box (commas allowed) counts too
@@ -2370,7 +2374,7 @@ function sheetRuleAccounts() {
 }
 function draftRule(d) {
   return { field: d.field, keywords: d.field === 'description' ? allKw(d) : [],
-    accountId: d.field === 'account' ? d.accountId : null, accountIds: d.field === 'description' ? (d.onlyAccs || []) : [], categoryId: d.categoryId || null, labelId: d.labelId || null, transfer: !!d.transfer,
+    accountId: d.field === 'account' ? d.accountId : null, accountIds: d.field === 'description' ? (d.onlyAccs || []) : [], categoryId: d.categoryId || null, labelId: d.labelId || null, note: (d.note || '').trim(), transfer: !!d.transfer,
     amtMode: d.amtMode || 'any',
     amtValues: d.amtMode === 'exact' ? allAmts(d) : [],
     amtMin: d.amtMode === 'range' ? num(d.amtA) : d.amtMode === 'exact' ? allAmts(d)[0] ?? null : null,
@@ -2391,7 +2395,7 @@ function rulePastText(n) { return `Also apply to ${n} past uncategorized record$
 function rulePastCatMatches(d) {
   const r = draftRule(d); if (r.field === 'description' && !r.keywords.length) return [];
   if (r.field === 'account' && !r.accountId) return [];
-  const changes = (t) => (r.categoryId && (t.categoryId !== r.categoryId || t.isTransfer)) || (r.labelId && S.labels[r.labelId] && !(t.labels || []).includes(r.labelId)) || (r.transfer && !t.isTransfer);
+  const changes = (t) => (r.categoryId && (t.categoryId !== r.categoryId || t.isTransfer)) || (r.labelId && S.labels[r.labelId] && !(t.labels || []).includes(r.labelId)) || (r.transfer && !t.isTransfer) || (r.note && !(t.note || '').trim());
   return S.txs.filter((t) => !t.manual && !t.parentId && (t.categoryId || t.isTransfer) && ruleMatches(r, t) && changes(t));
 }
 function ruleOverText(n) { return `Also update ${n} past record${n === 1 ? '' : 's'} that ${n === 1 ? 'is' : 'are'} already sorted`; }
@@ -2430,6 +2434,7 @@ function renderRule() {
     <div class="set-list">
       ${valueRow('ru-cat', c ? catIcon(c) : glyph('category', '#C7C7CC'), 'Category', esc(c ? c.name : 'No change'))}
       ${valueRow('ru-lbl', l ? `<span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span>` : glyph('sell', '#C7C7CC'), 'Label', l ? labelPill(l) : 'No label')}
+      <label class="set-item">${glyph('edit_note', '#0A7AFF')}<span class="n">Note<div class="meta">Added to matching records that have no note yet</div></span><input class="bare-input ru-note-in" id="ru-note" value="${esc(d.note || '')}" placeholder="e.g. the real shop name" autocomplete="off" aria-label="Note"></label>
       <label class="set-item">${glyph('swap_horiz', '#8E8E93')}<span class="n">Mark as transfer</span><input type="checkbox" class="switch" id="ru-tr" ${d.transfer ? 'checked' : ''}></label>
     </div>
     <div class="set-list"><label class="set-item">${glyph('history', '#8E8E93')}<span class="n" id="ru-past-n">${rulePastText(rulePastMatches(d).length)}</span><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''}></label>
@@ -2444,7 +2449,7 @@ async function saveRule() {
   const data = draftRule(d);
   if (d.field === 'description' && !data.keywords.length) { toast('Enter at least one keyword'); return; }
   if (d.field === 'account' && !data.accountId) { toast('Choose an account'); return; }
-  if (!data.categoryId && !data.labelId && !data.transfer) { toast('Choose at least one action'); return; }
+  if (!data.categoryId && !data.labelId && !data.transfer && !data.note) { toast('Choose at least one action'); return; }
   if (data.amtMode === 'exact' && !data.amtValues.length) { toast('Enter at least one amount'); return; }
   if (data.amtMode === 'range' && (data.amtMin == null || data.amtMax == null || data.amtMin > data.amtMax)) { toast('Enter a valid amount range'); return; }
   const past = [...(d.applyPast ? rulePastMatches(d) : []), ...(d.overwrite ? rulePastCatMatches(d) : [])];
@@ -2464,6 +2469,7 @@ async function saveRule() {
       if (data.categoryId && S.cats[data.categoryId]) { u.categoryId = data.categoryId; if (!data.transfer) u.isTransfer = false; }
       if (data.labelId && S.labels[data.labelId] && !(t.labels || []).includes(data.labelId)) u.labels = [...(t.labels || []), data.labelId];
       if (data.transfer) u.isTransfer = true;
+      if (data.note && !(t.note || '').trim()) u.note = data.note;
       b.update(doc(db, 'transactions', t.id), u);
     });
     await b.commit();
