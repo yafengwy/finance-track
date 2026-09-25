@@ -568,7 +568,6 @@ const DEMO_TX = [
   ['Chase Card Autopay', null, null, 1500, 3000, 2, 'demo_acc_3', true],
 ];
 
-
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -576,7 +575,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '11.5';
+const APP_VERSION = '11.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -753,7 +752,9 @@ function listen() {
     S[key] = {}; snap.forEach((d) => { S[key][d.id] = { id: d.id, ...d.data() }; });
     if (after) after(snap); render();
   }, onErr));
-  watch('categories', 'cats', (snap) => { S.catsLoaded = true; if (snap.empty) seedCategories(); });
+  // Only create the default categories when the SERVER says there are none. When the app opens offline or on a weak
+  // connection, the first result can be an empty one from the local cache; seeding then would add a second copy.
+  watch('categories', 'cats', (snap) => { S.catsLoaded = true; if (snap.empty && !snap.metadata.fromCache) seedCategories(); });
   watch('accounts', 'accounts', () => rebuildTxs());
   watch('labels', 'labels');
   watch('filters', 'filters');
@@ -831,10 +832,10 @@ async function seedCategories() {
   if (S.seeding) return; S.seeding = true;
   const batch = writeBatch(db);
   SEED.forEach((c, i) => {
-    const ref = doc(collection(db, 'categories'));
+    const ref = doc(db, 'categories', `seed-${i}`); // fixed ids: a second device seeding at the same time overwrites instead of duplicating
     batch.set(ref, { name: c.name, icon: c.icon, color: c.color, type: c.type || 'expense', hidden: false, parentId: null, order: i });
     c.subs.forEach(([name, ic, hidden], j) => {
-      batch.set(doc(collection(db, 'categories')), { name, icon: ic, hidden: !!hidden, parentId: ref.id, order: j });
+      batch.set(doc(db, 'categories', `seed-${i}-${j}`), { name, icon: ic, hidden: !!hidden, parentId: ref.id, order: j });
     });
   });
   try { await batch.commit(); } catch (e) { toast('Could not create categories: ' + errMsg(e)); }
@@ -1734,6 +1735,7 @@ function viewCat(id) {
       <div class="set-list">${subs.map((s) => `<a class="set-item${s.hidden ? ' hidden-cat' : ''}" href="#/cat/${s.id}">${catIcon(s)}<span class="n">${esc(s.name)}</span><span class="v">${subsOf(s.id).length ? `(${subsOf(s.id).length})` : ''}</span>${icon('chevron_right')}</a>`).join('')}
       <button class="set-item" data-act="add-sub" data-id="${id}" style="color:var(--accent)">${icon('add')}<span class="n">Add subcategory</span></button></div>
       ${subs.length > 1 ? `<div class="center"><button class="pill-btn small" data-act="cat-reorder" data-id="${id}">${icon('swap_vert')}Reorder subcategories</button></div>` : ''}` : ''}
+    <button class="pill-btn wide" data-act="merge-cat" data-id="${id}">${icon('merge')}Merge into another category</button>
     <button class="pill-btn danger wide" data-act="del-cat" data-id="${id}">${icon('delete')}Delete ${isTop ? 'category' : 'subcategory'}</button>
   </div>`;
 }
@@ -2055,22 +2057,24 @@ function openPicker(opts) {
   S.picker = { ...opts };
   const cur = opts.mode === 'edit' ? S.edit.categoryId : opts.mode === 'rule' ? S.ruleDraft.categoryId : opts.mode === 'split' ? S.split.parts[opts.i].categoryId : t?.categoryId;
   const c = S.cats[cur]; const tp = topOf(c); if (tp && tp.id !== c.id) S.pickOpen.add(tp.id);
-  openSheet(`<h3>Category</h3>
+  openSheet(`<h3>${opts.mode === 'merge' ? 'Merge into' : 'Category'}</h3>
     <div class="searchbar">${icon('search')}<input id="catq" type="search" placeholder="Search categories" autocomplete="off" aria-label="Search categories"></div>
     ${opts.mode === 'direct' && t && !t.manual && !t.parentId ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply to other uncategorized records from this merchant</label>` : ''}
     <div id="catpick">${pickerBody('')}</div>
-    <button class="pill-btn wide" data-act="pick-cat" data-id="">${opts.mode === 'rule' ? 'No change' : 'Set as uncategorized'}</button>`);
+    ${opts.mode === 'merge' ? '' : `<button class="pill-btn wide" data-act="pick-cat" data-id="">${opts.mode === 'rule' ? 'No change' : 'Set as uncategorized'}</button>`}`);
 
   S.sheetBack = { edit: renderEdit, rule: renderRule, split: renderSplit }[opts.mode] || (opts.mode === 'direct' && S.back === 'rec' && S.recPop ? backToPopup : null);
 }
 function pickerBody(q) {
   const t = S.txById[S.picker.txId];
   const sel = S.picker.mode === 'edit' ? S.edit.categoryId : S.picker.mode === 'rule' ? S.ruleDraft.categoryId : S.picker.mode === 'split' ? S.split.parts[S.picker.i].categoryId : t?.categoryId;
-  const vt = visibleTops();
+  const skip = S.picker.exclude ? new Set([S.picker.exclude, ...descendants(S.picker.exclude)]) : null;
+  const keep = (c) => c && !skip?.has(c.id);
+  const vt = visibleTops().filter(keep);
   const pickBtn = (c, sub = false) => `<button class="pick${sub === 'sub2' ? ' sub sub2' : sub ? ' sub' : ''}" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)}</span></button>`;
   if (q) {
     const all = vt.flatMap((c) => [c, ...descendants(c.id).map((d) => S.cats[d]).filter((x) => x && !x.hidden)]);
-    const hits = all.filter((c) => c.name.toLowerCase().includes(q));
+    const hits = all.filter((c) => keep(c) && c.name.toLowerCase().includes(q));
     return hits.map((c) => `<button class="pick" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)}${c.parentId ? `<span class="meta"> · ${esc(S.cats[c.parentId]?.name || '')}</span>` : ''}</span></button>`).join('') || '<div class="meta">No matching categories</div>';
   }
   const ids = new Set(vt.flatMap((c) => [c.id, ...descendants(c.id).filter((d) => !S.cats[d]?.hidden)]));
@@ -2079,11 +2083,11 @@ function pickerBody(q) {
   const freq = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, 8).map((id) => S.cats[id]);
   const freqHtml = freq.length ? `<div class="sec-head">Most frequent</div><div class="freq">${freq.map((c) => `<button data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span>${esc(c.name)}</span></button>`).join('')}</div>` : '';
   const list = vt.map((c) => {
-    const subs = subsOf(c.id).filter((x) => !x.hidden);
+    const subs = subsOf(c.id).filter((x) => !x.hidden && keep(x));
     if (!subs.length) return pickBtn(c);
     const open = S.pickOpen.has(c.id);
     return `<button class="pick${open ? ' open' : ''}" data-act="pick-open" data-id="${c.id}" aria-expanded="${open}">${catIcon(c)}<span class="n">${esc(c.name)}</span><span class="ms chev" aria-hidden="true">expand_more</span></button>
-      ${open ? `<button class="pick sub" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)} <span class="meta">(general)</span></span></button>${subs.map((x) => pickBtn(x, true) + subsOf(x.id).filter((y) => !y.hidden).map((y) => pickBtn(y, 'sub2')).join('')).join('')}` : ''}`;
+      ${open ? `<button class="pick sub" data-act="pick-cat" data-id="${c.id}" aria-pressed="${sel === c.id}">${catIcon(c)}<span class="n">${esc(c.name)} <span class="meta">(general)</span></span></button>${subs.map((x) => pickBtn(x, true) + subsOf(x.id).filter((y) => !y.hidden && keep(y)).map((y) => pickBtn(y, 'sub2')).join('')).join('')}` : ''}`;
   }).join('');
   return `${freqHtml}<div class="sec-head">All categories</div>${list}`;
 }
@@ -2594,6 +2598,34 @@ async function setTxCategory(txId, catId, sameMerchant) {
   await batch.commit();
   toast(n ? `Saved. ${n} more record${n === 1 ? '' : 's'} from this merchant updated too.` : 'Saved');
 }
+// Merge a category into another one: its records move over, then it and its subcategories are deleted.
+// A subcategory whose name also exists under the target follows that twin, so merging a duplicate tree keeps the detail.
+async function mergeCategory(fromId, toId) {
+  const c = S.cats[fromId]; const to = S.cats[toId];
+  if (!c || !to) return;
+  const ids = [fromId, ...descendants(fromId)];
+  if (ids.includes(toId)) { toast('Pick a category outside this one'); return; }
+  const under = [toId, ...descendants(toId)].map((x) => S.cats[x]).filter(Boolean);
+  const key = (n) => String(n || '').trim().toLowerCase();
+  const map = {};
+  ids.forEach((cid) => {
+    const twin = cid === fromId ? to : under.find((x) => key(x.name) === key(S.cats[cid]?.name));
+    map[cid] = (twin || to).id;
+  });
+  const txs = S.txs.filter((t) => ids.includes(t.categoryId));
+  if (!confirm(`Move ${txs.length} record${txs.length === 1 ? '' : 's'} to “${to.name}” and delete “${c.name}”${ids.length > 1 ? ` and its ${ids.length - 1} subcategories` : ''}? This can’t be undone.`)) return;
+  const ops = partOps(txs, (t) => ({ categoryId: map[t.categoryId] || toId }));
+  ruleList().filter((r) => ids.includes(r.categoryId)).forEach((r) => ops.push((b) => b.update(doc(db, 'rules', r.id), { categoryId: map[r.categoryId] || toId })));
+  Object.values(S.filters).forEach((f) => {
+    const was = f.cats || [];
+    const now = [...new Set(was.map((x) => { const bare = x.replace(/^=/, ''); return map[bare] ? (x.startsWith('=') ? '=' : '') + map[bare] : x; }))];
+    if (now.join() !== was.join()) ops.push((b) => b.update(doc(db, 'filters', f.id), { cats: now }));
+  });
+  ids.forEach((cid) => ops.push((b) => b.delete(doc(db, 'categories', cid))));
+  for (let i = 0; i < ops.length; i += 450) { const b = writeBatch(db); ops.slice(i, i + 450).forEach((op) => op(b)); await b.commit(); }
+  goUp(c.parentId ? `#/cat/${c.parentId}` : '#/cats');
+  toast(`Merged into ${to.name}`);
+}
 async function deleteCategory(id) {
   const c = S.cats[id]; if (!c) return;
   const isTop = !c.parentId;
@@ -2783,6 +2815,7 @@ document.addEventListener('click', async (e) => {
         if (p?.mode === 'edit') { S.edit.categoryId = id || null; renderEdit(); break; }
         if (p?.mode === 'rule') { S.ruleDraft.categoryId = id || null; renderRule(); break; }
         if (p?.mode === 'split') { const pt = S.split.parts[p.i]; pt.categoryId = id || null; pt.isTransfer = false; renderSplit(); break; }
+        if (p?.mode === 'merge') { closeSheet(); await mergeCategory(S.mergeFrom, id); break; }
         if ($('same-merchant')) S.sameMerchant = $('same-merchant').checked;
         closeSheet(); await setTxCategory(p.txId, id, S.sameMerchant); backToPopup(); break;
       }
@@ -2846,6 +2879,7 @@ document.addEventListener('click', async (e) => {
       case 'save-sub': { const name = $('nm').value.trim(); if (!name) { toast('Name can’t be empty'); return; } await addCategory(name, id); closeSheet(); break; }
       case 'add-cat': sheetName('New category', '', 'save-top', ''); break;
       case 'save-top': { const name = $('nm').value.trim(); if (!name) { toast('Name can’t be empty'); return; } const nid = await addCategory(name, null); closeSheet(); location.hash = `#/cat/${nid}`; break; }
+      case 'merge-cat': S.mergeFrom = id; openPicker({ mode: 'merge', exclude: id }); break;
       case 'del-cat': await deleteCategory(id); break;
       case 'cat-type': await updateDoc(doc(db, 'categories', id), { type: el.dataset.type }); break;
       case 'add-tx': openNew(); break;
