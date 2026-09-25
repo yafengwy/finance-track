@@ -584,7 +584,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '12.3';
+const APP_VERSION = '12.4';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -703,7 +703,7 @@ function specName(spec) {
 function catSet(ids) {
   const list = new Set(ids); const cats = new Set();
   ids.forEach((id) => {
-    if (id === '__none') return;
+    if (id === '__none' || id === '__transfer') return;
     if (id.startsWith('=')) { cats.add(id.slice(1)); return; }
     const ds = descendants(id);
     if (list.has('=' + id) || ds.some((d) => list.has(d) || list.has('=' + d))) return;
@@ -903,6 +903,17 @@ function allRuleConflicts() {
   const rules = ruleList(); const m = new Map();
   rules.forEach((r) => { const c = ruleConflictsOf(r, rules); if (c.length) m.set(r.id, c); });
   return m;
+}
+// Bank records that match two or more rules giving different categories
+function conflictTxIds() {
+  const rules = ruleList().filter((r) => r.categoryId && S.cats[r.categoryId]); const out = new Set();
+  if (rules.length < 2) return out;
+  S.txs.forEach((t) => {
+    if (t.manual || t.parentId) return;
+    let first = null;
+    for (const r of rules) { if (!ruleMatches(r, t)) continue; if (first === null) first = r.categoryId; else if (r.categoryId !== first) { out.add(t.id); break; } }
+  });
+  return out;
 }
 function warnIcon(ic) { return `<span class="ci-warn">${ic}<b aria-label="Conflict">!</b></span>`; }
 function ruleUpdates(t) {
@@ -1588,10 +1599,11 @@ function recMatcher() {
   const accs = r.accounts ? new Set(r.accounts) : null;
   let cats = null; let none = false;
   // "=id" means only records put directly on that category (its "General" row), not its subcategories
-  if (r.cats) { cats = catSet(r.cats); none = r.cats.includes('__none'); }
+  let tr = false;
+  if (r.cats) { cats = catSet(r.cats); none = r.cats.includes('__none'); tr = r.cats.includes('__transfer'); }
   const lbls = r.labels ? new Set(r.labels) : null;
   // Categories and labels combine as "either": a record shows if it is in a picked category OR has a picked label
-  const catOk = (t) => (!cats && !lbls) || (cats && (t.categoryId ? cats.has(t.categoryId) : none)) || (lbls && (t.labels || []).some((l) => lbls.has(l)));
+  const catOk = (t) => (!cats && !lbls) || (cats && (t.isTransfer ? tr : t.categoryId ? cats.has(t.categoryId) : none)) || (lbls && (t.labels || []).some((l) => lbls.has(l)));
   const fm = r.filter && S.filters[r.filter] ? specMatcher(S.filters[r.filter]) : null;
   return (t) => (p.unit === 'all' || (t.date >= p.from && t.date <= p.to))
     && (!accs || accs.has(t.accountId))
@@ -1632,7 +1644,7 @@ function refreshRecResults() {
   const slot = $('search-clear-slot'); if (slot) slot.innerHTML = searchClearBtn();
 }
 function viewTx(params) {
-  const f = params.get('f') || S.txFilter;
+  let f = params.get('f') || S.txFilter; if (f === 'transfer') f = 'all';
   const catKey = params.get('cat');
   let list = S.txs.filter(recMatcher()); let title = '';
   const q = S.search.trim().toLowerCase();
@@ -1642,7 +1654,8 @@ function viewTx(params) {
     list = list.filter((t) => ids.has(t.categoryId));
     title = `<div class="row-between"><p class="h2">${esc(S.cats[catKey]?.name || '')}</p><a class="pill-btn" href="#/tx" data-act="tab">Show all</a></div>`;
   } else if (f === 'unknown') list = list.filter((t) => !t.categoryId && !t.isTransfer);
-  else if (f === 'transfer') list = list.filter((t) => t.isTransfer);
+  const conf = conflictTxIds();
+  if (!catKey && f === 'conflict') list = list.filter((t) => conf.has(t.id));
   const chip = (k, label) => `<button class="chip" data-act="txf" data-f="${k}" aria-pressed="${!catKey && f === k}">${label}</button>`;
   const unknownCount = S.txs.filter((t) => !t.categoryId && !t.isTransfer).length;
   const byDay = {}; list.forEach((t) => { byDay[t.date] = (byDay[t.date] || 0) + signed(t); });
@@ -1658,13 +1671,13 @@ function viewTx(params) {
     const inflow = t.amount < 0;
     const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
     html += `<div class="tx${t.isTransfer ? ' transfer' : ''}">
-      <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c)}</button>
+      <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${((ic) => conf.has(t.id) ? warnIcon(ic) : ic)(t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c))}</button>
       <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(txTitle(t))}</span>
       <span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
       <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
-  if (!shown.length) html = `<div class="empty">${f === 'unknown' && !q ? 'Everything is categorized' : 'No records'}</div>`;
+  if (!shown.length) html = `<div class="empty">${f === 'unknown' && !q ? 'Everything is categorized' : f === 'conflict' && !q ? 'No conflicts' : 'No records'}</div>`;
   const total = list.reduce((n, t) => n + signed(t), 0);
   const searchBar = `<div class="rec-search"><div class="searchbar">${icon('search')}<input id="txsearch" type="search" placeholder="Search merchant, note, category, amount" value="${esc(S.search)}" autocomplete="off" aria-label="Search records"><span id="search-clear-slot">${searchClearBtn()}</span></div></div>`;
   const nf = recFilterCount(); const p = recPeriod();
@@ -1676,7 +1689,7 @@ function viewTx(params) {
       <button class="pp-arrow" data-act="rec-shift" data-dir="1" aria-label="Next period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_right')}</button>
     </div></div>`;
   return `<div class="page rec-page">${title}${searchBar}<div id="rec-results" class="page" style="padding:0">
-    ${catKey ? '' : `<div class="chips">${chip('all', 'All')}${chip('unknown', `Uncategorized ${unknownCount}`)}${chip('transfer', 'Transfers')}</div>`}
+    ${catKey ? '' : `<div class="chips">${chip('all', 'All')}${chip('unknown', `Uncategorized ${unknownCount}`)}${chip('conflict', `Conflicts ${conf.size}`)}</div>`}
     <div class="row-between rec-sum"><span class="meta">${esc(recLabel())} · ${list.length} record${list.length === 1 ? '' : 's'}</span><span class="num">Σ ${money(total, true)}</span></div>
     <div>${html}</div>${list.length > 500 ? '<div class="meta">Showing the latest 500. Narrow the period or search.</div>' : ''}</div></div>${dock}`;
 }
@@ -1693,7 +1706,7 @@ function sheetRecCustom() {
 function sheetRecPanel() {
   const r = recFilterState();
   const accTxt = !r.accounts ? 'All' : r.accounts.length === 1 ? accName(S.accounts[r.accounts[0]]) : `${r.accounts.length} accounts`;
-  const catName = (id) => (id === '__none' ? 'Uncategorized' : id.startsWith('=') ? `General – ${S.cats[id.slice(1)]?.name || ''}` : S.cats[id]?.name);
+  const catName = (id) => (id === '__none' ? 'Uncategorized' : id === '__transfer' ? 'Transfer' : id.startsWith('=') ? `General – ${S.cats[id.slice(1)]?.name || ''}` : S.cats[id]?.name);
   const picked = [...(r.cats || []).map(catName), ...(r.labels || []).map((id) => S.labels[id] ? '#' + S.labels[id].name : null)].filter(Boolean);
   const catTxt = !picked.length ? 'All' : picked.length <= 2 ? picked.join(', ') : `${picked.length} selected`;
   const fTxt = S.filters[r.filter]?.name || 'None';
@@ -1991,7 +2004,8 @@ function mselBody(opts = S.mselOpts || {}) {
     return `<div class="msel-top">${row(c, false)}${subs.length ? `<button class="icon-btn" data-act="msel-open" data-id="${c.id}" aria-expanded="${open}" aria-label="Show subcategories of ${esc(c.name)}"><span class="ms chev${open ? ' up' : ''}" aria-hidden="true">expand_more</span></button>` : ''}</div>
       ${open ? gen(c, 'sub') + subs.map((x) => row(x, true) + gen(x, 'sub sub2') + subsOf(x.id).filter((y) => !y.hidden).map((y) => row(y, 'sub2')).join('')).join('') : ''}`;
   }).join('');
-  const noneRow = opts.none ? `<label class="msel-row"><input type="checkbox" data-msel="c:__none" ${sel.has('c:__none') ? 'checked' : ''}><span class="ci unknown">${icon('help')}</span><span class="n">Uncategorized</span></label>` : '';
+  const noneRow = opts.none ? `<label class="msel-row"><input type="checkbox" data-msel="c:__none" ${sel.has('c:__none') ? 'checked' : ''}><span class="ci unknown">${icon('help')}</span><span class="n">Uncategorized</span></label>
+    <label class="msel-row"><input type="checkbox" data-msel="c:__transfer" ${sel.has('c:__transfer') ? 'checked' : ''}><span class="ci unknown">${icon('swap_horiz')}</span><span class="n">Transfer</span></label>` : '';
   const labels = opts.labels === false ? '' : sortedLabels().map((l) => `<label class="msel-row"><input type="checkbox" data-msel="l:${l.id}" ${sel.has('l:' + l.id) ? 'checked' : ''}><span class="ci" style="background:${esc(labelColor(l))}">${icon('sell')}</span><span class="n">${esc(l.name)}</span></label>`).join('');
   const accList = opts.accounts ? Object.values(S.accounts).filter((a) => !a.hidden && !isInvest(a)) : [];
   const accs = bankGroups(accList, (a) => `<label class="msel-row"><input type="checkbox" data-msel="a:${a.id}" ${sel.has('a:' + a.id) ? 'checked' : ''}><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}</span></label>`);
@@ -2014,14 +2028,14 @@ function mselBranch(set, id, on) {
 }
 function mselToggle(key, on) {
   const id = key.slice(2);
-  if (id.startsWith('=') || id === '__none' || !S.cats[id]) { on ? S.msel.add(key) : S.msel.delete(key); } else mselBranch(S.msel, id, on);
+  if (id.startsWith('=') || id === '__none' || id === '__transfer' || !S.cats[id]) { on ? S.msel.add(key) : S.msel.delete(key); } else mselBranch(S.msel, id, on);
   mselFix(S.msel);
 }
 // Opening a saved selection: a whole parent ticks all its children; a partial one keeps only the listed parts
 function mselLoad(ids) {
   const set = new Set(); const list = new Set(ids);
   ids.forEach((id) => {
-    if (id.startsWith('=') || id === '__none' || !S.cats[id]) { set.add('c:' + id); return; }
+    if (id.startsWith('=') || id === '__none' || id === '__transfer' || !S.cats[id]) { set.add('c:' + id); return; }
     const partial = list.has('=' + id) || descendants(id).some((d) => list.has(d) || list.has('=' + d));
     if (!partial) mselBranch(set, id, true);
   });
@@ -2032,14 +2046,14 @@ function mselIds() {
   const has = (id) => S.msel.has('c:' + id);
   const covered = (id) => { let c = S.cats[id]; while (c?.parentId) { if (has(c.parentId)) return true; c = S.cats[c.parentId]; } return false; };
   return [...S.msel].filter((k) => k.startsWith('c:')).map((k) => k.slice(2)).filter((id) => {
-    if (id === '__none') return true;
+    if (id === '__none' || id === '__transfer') return true;
     const base = id.replace(/^=/, ''); if (!S.cats[base]) return false;
     return id.startsWith('=') ? !has(base) && !covered(base) : !covered(id);
   });
 }
 function mselSpec() {
   const cats = []; const labels = []; const accounts = [];
-  mselIds().forEach((id) => { if (id !== '__none') cats.push(id); });
+  mselIds().forEach((id) => { if (id !== '__none' && id !== '__transfer') cats.push(id); });
   S.msel.forEach((k) => { const id = k.slice(2); if (k.startsWith('l:') && S.labels[id]) labels.push(id); if (k.startsWith('a:') && S.accounts[id]) accounts.push(id); });
   return { cats, labels, accounts };
 }
