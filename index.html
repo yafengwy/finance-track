@@ -128,6 +128,13 @@ button { cursor: pointer; }
 .set-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 14px; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; text-decoration: none; color: var(--text); }
 .set-item:first-child { border-top: 0; }
 .set-item .n { flex: 1; font-weight: 400; }
+.ci-warn { position: relative; display: inline-flex; flex-shrink: 0; }
+.ci-warn > b, .warn-dot { position: absolute; top: -4px; right: -5px; min-width: 16px; height: 16px; border-radius: 8px; background: #FF3B30; color: #fff; font-size: 11px; font-weight: 800; line-height: 16px; text-align: center; box-shadow: 0 0 0 2px var(--card); }
+.warn-dot { position: static; display: inline-block; vertical-align: 1px; box-shadow: none; }
+.warn-txt { color: #FF3B30 !important; display: flex; align-items: center; gap: 4px; }
+.warn-txt .ms { font-size: 16px; }
+.warn-box { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; border-radius: 14px; background: rgba(255,59,48,.1); color: var(--text); font-size: 14px; line-height: 1.4; }
+.warn-box > .ms { color: #FF3B30; font-size: 20px; }
 .ru-list-btn { min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .ru-list-btn .ru-view { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; color: var(--accent); }
 .set-item .v { color: var(--sub); }
@@ -577,7 +584,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '12.2';
+const APP_VERSION = '12.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -877,6 +884,27 @@ function ruleMatches(r, t) {
   const hay = `${t.name || ''} ${t.merchant || ''} ${t.originalDescription || ''}`.toLowerCase(); // name, merchant and the full bank description
   return (r.keywords || []).some((k) => k && hay.includes(k));
 }
+// Two rules conflict when the same bank record matches both and they give it different categories
+// (e.g. "Food and Drink (all) in the business card → Business Dining" vs "Chipotle, any account → Food and Drink").
+// Only the older rule's category is applied to such a record.
+function ruleConflictsOf(r, rules = ruleList()) {
+  const out = [];
+  if (!r.categoryId || !S.cats[r.categoryId]) return out;
+  const txs = S.txs.filter((t) => !t.manual && !t.parentId && ruleMatches(r, t));
+  if (!txs.length) return out;
+  rules.forEach((o) => {
+    if (o.id === r.id || !o.categoryId || !S.cats[o.categoryId] || o.categoryId === r.categoryId) return;
+    const both = txs.filter((t) => ruleMatches(o, t));
+    if (both.length) out.push({ rule: o, ids: both.map((t) => t.id) });
+  });
+  return out;
+}
+function allRuleConflicts() {
+  const rules = ruleList(); const m = new Map();
+  rules.forEach((r) => { const c = ruleConflictsOf(r, rules); if (c.length) m.set(r.id, c); });
+  return m;
+}
+function warnIcon(ic) { return `<span class="ci-warn">${ic}<b aria-label="Conflict">!</b></span>`; }
 function ruleUpdates(t) {
   // Rules only fill in records that are still uncategorized; a categorized (or transfer) record is never touched
   if (t.categoryId || t.isTransfer) return {};
@@ -1758,7 +1786,7 @@ function ruleText(r, short = false) {
 }
 // Rules grouped by the main category they sort into (in your category order); each row shows its category's icon.
 // Tap a group header to fold it.
-function ruleGroupsHtml(list) {
+function ruleGroupsHtml(list, conf = new Map()) {
   const top = (c) => (c?.parentId ? top(S.cats[c.parentId]) : c);
   const rank = (c) => { const chain = []; for (let x = c; x; x = S.cats[x.parentId]) chain.unshift(String(x.order ?? 999).padStart(4, '0')); return chain.join('.'); };
   const groups = new Map();
@@ -1772,11 +1800,14 @@ function ruleGroupsHtml(list) {
   const fold = S.ruleFold ||= new Set();
   return gs.map((g) => {
     const name = g.cat ? g.cat.name : g.key === '_transfer' ? 'Transfers' : 'Labels only';
-    const gIcon = g.cat ? catIcon(g.cat) : glyph(g.key === '_transfer' ? 'swap_horiz' : 'sell', '#8E8E93');
+    const gIcon0 = g.cat ? catIcon(g.cat) : glyph(g.key === '_transfer' ? 'swap_horiz' : 'sell', '#8E8E93');
+    const gIcon = g.rules.some((r) => conf.has(r.id)) ? warnIcon(gIcon0) : gIcon0;
     const rows = g.rules.sort((a, b) => rank(S.cats[a.categoryId]).localeCompare(rank(S.cats[b.categoryId])) || ruleText(a).cond.localeCompare(ruleText(b).cond)).map((r) => {
       const t = ruleText(r, true); const c = S.cats[r.categoryId];
-      const ic = c ? catIcon(c) : glyph(r.transfer ? 'swap_horiz' : 'sell', '#8E8E93');
-      return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${ic}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`;
+      const ic0 = c ? catIcon(c) : glyph(r.transfer ? 'swap_horiz' : 'sell', '#8E8E93');
+      const cf = conf.get(r.id); const ic = cf ? warnIcon(ic0) : ic0;
+      const cfTxt = cf ? `<div class="meta warn-txt">Conflicts with ${cf.length === 1 ? `“${ruleText(cf[0].rule).cond}”` : `${cf.length} rules`} · ${new Set(cf.flatMap((x) => x.ids)).size} records</div>` : '';
+      return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${ic}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div>${cfTxt}</span>${icon('chevron_right')}</button>`;
     }).join('');
     const open = !fold.has(g.key);
     return `<button class="rule-group" data-act="rule-fold" data-id="${g.key}" aria-expanded="${open}">${gIcon}<span class="n">${esc(name)}</span><span class="meta">${g.rules.length}</span><span class="fold-ic">${icon(open ? 'expand_less' : 'expand_more')}</span></button>
@@ -1787,7 +1818,7 @@ function viewRules() {
   const list = ruleList();
   return `<div class="page">
     <div class="meta" style="padding:0 4px">Rules run on new records when the app opens. They only touch records that have no category yet (and aren’t transfers); records you’ve already sorted are never changed.</div>
-    ${list.length ? ruleGroupsHtml(list) : '<div class="empty">No rules yet</div>'}
+    ${(() => { const conf = allRuleConflicts(); return (conf.size ? `<div class="warn-box">${icon('warning')}<span>${conf.size} rules conflict: some records match two rules that give different categories. Only the older rule’s category is used. Rules marked <b class="warn-dot">!</b> need a look.</span></div>` : '') + (list.length ? ruleGroupsHtml(list, conf) : '<div class="empty">No rules yet</div>'); })()}
     <button class="pill-btn primary wide" data-act="add-rule">${icon('add')}New rule</button>
     ${list.length ? '<button class="pill-btn wide" data-act="run-rules">Apply rules to existing records</button>' : ''}</div>`;
 }
@@ -2435,7 +2466,7 @@ function refreshRuleCounts() {
 // Tapping a past-records line in a rule: see exactly which records it covers, newest first, grouped by month, with a search box
 function ruListRows() {
   const L = S.ruList; const d = S.ruleDraft; if (!L || !d) return '';
-  let txs = (L.k === 'over' ? rulePastCatMatches(d) : rulePastMatches(d)).slice().sort((a, b) => b.date.localeCompare(a.date));
+  let txs = (L.k === 'conflict' ? L.ids.map((id) => S.txById[id]).filter(Boolean) : L.k === 'over' ? rulePastCatMatches(d) : rulePastMatches(d)).slice().sort((a, b) => b.date.localeCompare(a.date));
   const all = txs.length; const q = (L.q || '').trim().toLowerCase();
   if (q) txs = txs.filter((t) => matchSearch(t, q));
   if (!txs.length) return `<div class="empty">${all ? 'No matching records' : 'No records'}</div>`;
@@ -2451,7 +2482,8 @@ function ruListRows() {
 }
 function sheetRuleList() {
   const L = S.ruList;
-  openSheet(`<h3>${L.k === 'over' ? 'Already sorted records' : 'Uncategorized records'}</h3>
+  openSheet(`<h3>${L.k === 'conflict' ? 'Records matching both rules' : L.k === 'over' ? 'Already sorted records' : 'Uncategorized records'}</h3>
+    ${L.k === 'conflict' ? `<div class="meta" style="padding:0 4px 8px">${esc(L.sub || '')}</div>` : ''}
     <div class="searchbar">${icon('search')}<input id="rq" type="search" value="${esc(L.q || '')}" placeholder="Search, or =500 · 500-800 · >500" autocomplete="off" aria-label="Search these records">
       <span id="rq-clear">${L.q ? `<button class="search-clear" data-act="rq-clear" aria-label="Clear search">${icon('cancel')}</button>` : ''}</span></div>
     <div id="rq-results">${ruListRows()}</div>`, { short: true });
@@ -2461,6 +2493,25 @@ function refreshRuleList() {
   const box = $('rq-results'); if (!box || !S.ruList) return;
   box.innerHTML = ruListRows();
   const c = $('rq-clear'); if (c) c.innerHTML = S.ruList.q ? `<button class="search-clear" data-act="rq-clear" aria-label="Clear search">${icon('cancel')}</button>` : '';
+}
+// In the rule editor: other rules that give some of the same records a different category
+function ruleConflictList(d) {
+  const r = { ...draftRule(d), id: d.id || '_draft' };
+  if (r.field === 'description' && !r.keywords.length) return [];
+  if (r.field === 'account' && !r.accountId) return [];
+  if (r.field === 'bankcat' && !r.bankCat) return [];
+  const mine = d.id ? S.rules[d.id]?.order ?? Infinity : Infinity;
+  return ruleConflictsOf(r).map((x) => ({ ...x, wins: (x.rule.order ?? 0) > mine }));
+}
+function ruleConflictHtml(d) {
+  const cf = ruleConflictList(d); if (!cf.length) return '';
+  S.ruConf = cf;
+  return `<div class="sec-head warn-txt">${icon('warning')} Conflicts</div>
+    <div class="meta" style="padding:0 4px 6px">These records also match another rule with a different category. Only the older rule’s category is used.</div>
+    <div class="set-list">${cf.map((x, i) => { const t = ruleText(x.rule, true); const c = S.cats[x.rule.categoryId];
+      return `<div class="set-item">${warnIcon(c ? catIcon(c) : glyph('category', '#8E8E93'))}<button class="n ru-list-btn" data-act="edit-rule" data-id="${x.rule.id}">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div>
+        <div class="meta">${x.ids.length} record${x.ids.length === 1 ? '' : 's'} match both · ${x.wins ? 'this rule is used' : 'that rule is used'}</div></button>
+        <button class="pill-btn small" data-act="ru-conf" data-i="${i}">View</button></div>`; }).join('')}</div>`;
 }
 function renderRule() {
   const d = S.ruleDraft; const c = S.cats[d.categoryId]; const l = S.labels[d.labelId]; const a = S.accounts[d.accountId];
@@ -2499,6 +2550,7 @@ function renderRule() {
     </div>
     <div class="set-list"><div class="set-item">${glyph('history', '#8E8E93')}<button class="n ru-list-btn" data-act="ru-list" data-k="past"><span id="ru-past-n">${rulePastText(rulePastMatches(d).length)}</span><span class="ru-view">View records ›</span></button><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''} aria-label="Apply to past uncategorized records"></div>
       <div class="set-item">${glyph('published_with_changes', '#FF9500')}<button class="n ru-list-btn" data-act="ru-list" data-k="over"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length)}</span><div class="meta">Off by default. Records with a category, and transfers. Gives them this rule’s category and label; a record given a category stops being a transfer.</div><span class="ru-view">View records ›</span></button><input type="checkbox" class="switch" id="ru-over" aria-label="Update already sorted records" ${d.overwrite ? 'checked' : ''}></div></div>
+    ${ruleConflictHtml(d)}
     ${d.id ? `<button class="pill-btn danger wide" data-act="del-rule" data-id="${d.id}">${icon('delete')}Delete rule</button>` : ''}
     ${saveBar('save-rule', 'Save')}`);
 
@@ -2829,6 +2881,7 @@ document.addEventListener('click', async (e) => {
       case 'edit-cat': captureEdit(); openPicker({ mode: 'edit', txId: S.edit.txId }); break;
       case 'edit-type': captureEdit(); S.edit.type = el.dataset.type; renderEdit(); break;
       case 'save-edit': await saveEdit(); break;
+      case 'ru-conf': { captureRule(); const x = S.ruConf?.[+el.dataset.i]; if (!x) break; S.ruList = { k: 'conflict', ids: x.ids, q: '', sub: `Also matched by “${ruleText(x.rule).cond}” → ${S.cats[x.rule.categoryId]?.name || ''}. ${x.wins ? 'This rule' : 'That rule'} is used.` }; sheetRuleList(); break; }
       case 'ru-list': captureRule(); S.ruList = { k: el.dataset.k, q: '' }; sheetRuleList(); break;
       case 'rq-clear': if (S.ruList) S.ruList.q = ''; { const rq = $('rq'); if (rq) rq.value = ''; } refreshRuleList(); focusNow('rq'); break;
       case 'sq-clear': S.sq = ''; const sq = $('sq'); if (sq) sq.value = ''; refreshSearchSheet(); focusNow('sq'); break;
