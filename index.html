@@ -584,7 +584,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '12.6';
+const APP_VERSION = '12.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -875,12 +875,13 @@ function amtText(r) {
   const vals = r.amtValues?.length ? r.amtValues : r.amtMin != null ? [r.amtMin] : [];
   return `amount is ${vals.map((x) => '$' + fmt.format(x)).join(' or ')}`;
 }
+function ruleBankCats(r) { return r.bankCats?.length ? r.bankCats : r.bankCat ? [r.bankCat] : []; } // older rules: one bankCat
 function ruleMatches(r, t) {
   if (!amountOk(r, t)) return false;
   if (r.field === 'account') return t.accountId === r.accountId;
   const only = r.accountIds?.length ? r.accountIds : r.accountId ? [r.accountId] : null; // "Only in accounts" (older rules: one account)
   if (only && (r.accountsNot ? only.includes(t.accountId) : !only.includes(t.accountId))) return false; // "Only in" or "Not in" these accounts
-  if (r.field === 'bankcat') return !!r.bankCat && (t.pfcDetailed === r.bankCat || t.pfcPrimary === r.bankCat); // the bank's own category
+  if (r.field === 'bankcat') return ruleBankCats(r).some((v) => t.pfcDetailed === v || t.pfcPrimary === v); // the bank's own category (any of the picked ones)
   const hay = `${t.name || ''} ${t.merchant || ''} ${t.originalDescription || ''}`.toLowerCase(); // name, merchant and the full bank description
   return (r.keywords || []).some((k) => k && hay.includes(k));
 }
@@ -1810,7 +1811,7 @@ function ruleText(r, short = false) {
   const onlyTxt = only.map((id) => accName(S.accounts[id]) || '(removed account)').join(', ');
   const kws = r.keywords || []; const SHOW = 4;
   const kwTxt = `“${(short && kws.length > SHOW ? kws.slice(0, SHOW) : kws).join('”, “')}”${short && kws.length > SHOW ? ` +${kws.length - SHOW} more` : ''}`;
-  const cond = r.field === 'bankcat' ? `Bank category is ${bankCatLabel(r.bankCat) || '(not set)'}${only.length ? ` · ${r.accountsNot ? 'not' : 'only'} in ${onlyTxt}` : ''}`
+  const cond = r.field === 'bankcat' ? `Bank category is ${ruleBankCats(r).map(bankCatLabel).join(' or ') || '(not set)'}${only.length ? ` · ${r.accountsNot ? 'not' : 'only'} in ${onlyTxt}` : ''}`
     : r.field === 'account' ? `Account is ${accName(S.accounts[r.accountId]) || '(removed account)'}` : `Description contains ${kwTxt}${only.length ? ` · ${r.accountsNot ? 'not' : 'only'} in ${onlyTxt}` : ''}`;
   const at = amtText(r); const cond2 = at ? `${cond} · ${at}` : cond;
   const acts = [r.categoryId && `Category → ${S.cats[r.categoryId]?.name || '(deleted)'}`, r.labelId && `Label → ${S.labels[r.labelId]?.name || '(deleted)'}`, r.note && `Note → “${r.note}”`, r.transfer && 'Mark as transfer'].filter(Boolean);
@@ -2188,6 +2189,24 @@ function bankCatLabel(v) {
   if (t && t.pfcDetailed === v && t.pfcPrimary && v.startsWith(t.pfcPrimary + '_')) return `${titleCase(t.pfcPrimary)} · ${titleCase(v.slice(t.pfcPrimary.length + 1))}`;
   return `${titleCase(v)}${t && t.pfcPrimary === v ? ' (all)' : ''}`;
 }
+// Bank categories as a multi-select, grouped: each main category "(all)" first, then its detailed ones. Any ticked one matches.
+function sheetRuleBankCats() {
+  const d = S.ruleDraft; const sel = new Set(d.bankCats || []); const tx = S.txById[d.fromTx];
+  const n = {}; const prim = {};
+  S.txs.forEach((t) => { if (t.pfcPrimary) n[t.pfcPrimary] = (n[t.pfcPrimary] || 0) + 1; if (t.pfcDetailed) { n[t.pfcDetailed] = (n[t.pfcDetailed] || 0) + 1; if (t.pfcPrimary) prim[t.pfcDetailed] = t.pfcPrimary; } });
+  sel.forEach((v) => { if (!(v in n)) n[v] = 0; });
+  const mine = new Set(tx ? [tx.pfcPrimary, tx.pfcDetailed].filter(Boolean) : []);
+  const tops = Object.keys(n).filter((k) => !prim[k] || prim[k] === k).sort((a, b) => titleCase(a).localeCompare(titleCase(b)));
+  const row = (v, sub) => `<label class="msel-row${sub ? ' sub' : ''}" data-bcl="${esc(bankCatLabel(v).toLowerCase())}"><input type="checkbox" data-rubc="${esc(v)}" ${sel.has(v) ? 'checked' : ''}>${glyph('account_balance', mine.has(v) ? '#3478F6' : '#8E8E93')}<span class="n">${esc(bankCatLabel(v))}<div class="meta">${n[v]} record${n[v] === 1 ? '' : 's'}${mine.has(v) ? ' · this record' : ''}</div></span></label>`;
+  const body = tops.map((p) => row(p, false) + Object.keys(n).filter((k) => prim[k] === p && k !== p).sort((a, b) => bankCatLabel(a).localeCompare(bankCatLabel(b))).map((k) => row(k, true)).join('')).join('');
+  openSheet(`<h3>Bank category</h3>
+    <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search bank categories" autocomplete="off" aria-label="Search bank categories"></div>
+    <div class="meta">Tick one or more. A record matches if it has any of them. “(all)” covers every category under it.</div>
+    <div class="set-list" id="rbc-list">${body || '<div class="empty">No bank categories yet</div>'}</div>
+    ${sel.size ? `<button class="pill-btn wide" data-act="ru-bc-clear">${icon('clear_all')}Clear all</button>` : ''}
+    ${saveBar('ru-accs-done', 'Done')}`);
+  S.sheetBack = renderRule;
+}
 // Bank categories to choose from: the ones your records actually have; the current record's two come first
 function bankCatOptions(tx) {
   const n = {};
@@ -2440,7 +2459,7 @@ function sheetLabel(id) {
 function sheetRule(id) {
   const r = id ? S.rules[id] : {};
   const field = r.field || 'description';
-  S.ruleDraft = { accNot: !!r.accountsNot, preferred: !!r.preferred, id: id || null, field, kw: [...(r.keywords || [])], kwInput: '', accountId: field === 'account' ? r.accountId || null : null, bankCat: r.bankCat || '', onlyAccs: field !== 'account' ? (r.accountIds?.length ? [...r.accountIds] : r.accountId ? [r.accountId] : []) : [],
+  S.ruleDraft = { accNot: !!r.accountsNot, preferred: !!r.preferred, id: id || null, field, kw: [...(r.keywords || [])], kwInput: '', accountId: field === 'account' ? r.accountId || null : null, bankCats: [...ruleBankCats(r)], onlyAccs: field !== 'account' ? (r.accountIds?.length ? [...r.accountIds] : r.accountId ? [r.accountId] : []) : [],
     categoryId: r.categoryId || null, labelId: r.labelId || null, note: r.note || '', transfer: !!r.transfer, applyPast: !id, overwrite: false,
     amtMode: r.amtMode || 'any', amtList: r.amtValues?.length ? r.amtValues.map(String) : r.amtMin != null && (r.amtMode || 'any') === 'exact' ? [String(r.amtMin)] : [],
     amtA: (r.amtMode || 'any') === 'range' && r.amtMin != null ? String(r.amtMin) : '', amtB: r.amtMax != null ? String(r.amtMax) : '' };
@@ -2494,7 +2513,7 @@ function sheetRuleAccounts() {
   S.sheetBack = renderRule;
 }
 function draftRule(d) {
-  return { field: d.field, keywords: d.field === 'description' ? allKw(d) : [], bankCat: d.field === 'bankcat' ? d.bankCat || '' : '',
+  return { field: d.field, keywords: d.field === 'description' ? allKw(d) : [], bankCats: d.field === 'bankcat' ? [...(d.bankCats || [])] : [], bankCat: d.field === 'bankcat' ? (d.bankCats || [])[0] || '' : '',
     accountId: d.field === 'account' ? d.accountId : null, accountIds: d.field !== 'account' ? (d.onlyAccs || []) : [], accountsNot: d.field !== 'account' && !!d.accNot && !!(d.onlyAccs || []).length, preferred: !!d.preferred, categoryId: d.categoryId || null, labelId: d.labelId || null, note: (d.note || '').trim(), transfer: !!d.transfer,
     amtMode: d.amtMode || 'any',
     amtValues: d.amtMode === 'exact' ? allAmts(d) : [],
@@ -2509,7 +2528,7 @@ function num(v) { const n = parseFloat(String(v || '').replace(/[$,]/g, '')); re
 function rulePastMatches(d) {
   const r = draftRule(d); if (r.field === 'description' && !r.keywords.length) return [];
   if (r.field === 'account' && !r.accountId) return [];
-  if (r.field === 'bankcat' && !r.bankCat) return [];
+  if (r.field === 'bankcat' && !ruleBankCats(r).length) return [];
   return S.txs.filter((t) => !t.manual && !t.parentId && !t.categoryId && !t.isTransfer && ruleMatches(r, t));
 }
 function rulePastText(n) { return `Also apply to ${n} past uncategorized record${n === 1 ? '' : 's'}`; }
@@ -2517,7 +2536,7 @@ function rulePastText(n) { return `Also apply to ${n} past uncategorized record$
 function rulePastCatMatches(d) {
   const r = draftRule(d); if (r.field === 'description' && !r.keywords.length) return [];
   if (r.field === 'account' && !r.accountId) return [];
-  if (r.field === 'bankcat' && !r.bankCat) return [];
+  if (r.field === 'bankcat' && !ruleBankCats(r).length) return [];
   const changes = (t) => (r.categoryId && (t.categoryId !== r.categoryId || t.isTransfer)) || (r.labelId && S.labels[r.labelId] && !(t.labels || []).includes(r.labelId)) || (r.transfer && !t.isTransfer) || (r.note && !(t.note || '').trim());
   return S.txs.filter((t) => !t.manual && !t.parentId && (t.categoryId || t.isTransfer) && ruleMatches(r, t) && changes(t));
 }
@@ -2563,7 +2582,7 @@ function ruleConflictList(d) {
   const r = { ...draftRule(d), id: d.id || '_draft' };
   if (r.field === 'description' && !r.keywords.length) return [];
   if (r.field === 'account' && !r.accountId) return [];
-  if (r.field === 'bankcat' && !r.bankCat) return [];
+  if (r.field === 'bankcat' && !ruleBankCats(r).length) return [];
   const mine = d.id ? S.rules[d.id]?.order ?? Infinity : Infinity;
   return ruleConflictsOf(r).map((x) => ({ ...x, wins: (x.rule.order ?? 0) > mine }));
   // (a preferred rule on either side settles these; see ruleVerdict)
@@ -2590,7 +2609,7 @@ function renderRule() {
     <div class="sec-head">When</div>
     <div class="set-list">
       ${valueRow('ru-field', glyph(d.field === 'account' ? 'credit_card' : d.field === 'bankcat' ? 'account_balance' : 'text_fields', '#3478F6'), 'Match by', d.field === 'account' ? 'Account' : d.field === 'bankcat' ? 'Bank category' : 'Description')}
-      ${d.field === 'bankcat' ? `${valueRow('ru-bankcat', glyph('account_balance', '#8E8E93'), 'Bank category', esc(bankCatLabel(d.bankCat) || 'Choose'))}
+      ${d.field === 'bankcat' ? `${valueRow('ru-bankcat', glyph('account_balance', '#8E8E93'), 'Bank category', esc(!(d.bankCats || []).length ? 'Choose' : d.bankCats.length === 1 ? bankCatLabel(d.bankCats[0]) : `${d.bankCats.length} categories`))}
           ${valueRow('ru-only', glyph('credit_card', '#5856D6'), d.accNot && d.onlyAccs?.length ? 'Not in accounts' : 'Only in accounts', esc(!d.onlyAccs?.length ? 'Any account' : d.onlyAccs.length === 1 ? accName(S.accounts[d.onlyAccs[0]]) || '(removed account)' : `${d.onlyAccs.length} accounts`))}`
       : d.field === 'account'
         ? valueRow('ru-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(a ? accName(a) : 'Choose'))
@@ -2627,7 +2646,7 @@ async function saveRule() {
   const data = draftRule(d);
   if (d.field === 'description' && !data.keywords.length) { toast('Enter at least one keyword'); return; }
   if (d.field === 'account' && !data.accountId) { toast('Choose an account'); return; }
-  if (d.field === 'bankcat' && !data.bankCat) { toast('Choose a bank category'); return; }
+  if (d.field === 'bankcat' && !data.bankCats.length) { toast('Choose a bank category'); return; }
   if (!data.categoryId && !data.labelId && !data.transfer && !data.note) { toast('Choose at least one action'); return; }
   if (data.amtMode === 'exact' && !data.amtValues.length) { toast('Enter at least one amount'); return; }
   if (data.amtMode === 'range' && (data.amtMin == null || data.amtMax == null || data.amtMin > data.amtMax)) { toast('Enter a valid amount range'); return; }
@@ -2976,7 +2995,8 @@ document.addEventListener('click', async (e) => {
       case 'ru-cat': captureRule(); openPicker({ mode: 'rule' }); break;
       case 'rule-fold': { const f = S.ruleFold ||= new Set(); f.has(id) ? f.delete(id) : f.add(id); render(); break; }
       case 'ru-amt': captureRule(); openOptions('Amount', [{ value: 'any', label: 'Any amount' }, { value: 'exact', label: 'Exactly' }, { value: 'range', label: 'Between' }].map((o) => ({ ...o, iconHtml: glyph('attach_money', '#34C759') })), S.ruleDraft.amtMode || 'any', (v) => { S.ruleDraft.amtMode = v; renderRule(); }); break;
-      case 'ru-bankcat': captureRule(); openOptions('Bank category', bankCatOptions(S.txById[S.ruleDraft.fromTx]), S.ruleDraft.bankCat, (v) => { S.ruleDraft.bankCat = v; renderRule(); }); S.sheetBack = renderRule; break;
+      case 'ru-bankcat': captureRule(); sheetRuleBankCats(); break;
+      case 'ru-bc-clear': S.ruleDraft.bankCats = []; sheetRuleBankCats(); break;
       case 'ru-only': captureRule(); sheetRuleAccounts(); break;
       case 'ru-accs-done': renderRule(); break;
       case 'ru-accs-mode': S.ruleDraft.accNot = el.dataset.v === 'not'; sheetRuleAccounts(); break;
@@ -3075,6 +3095,7 @@ document.addEventListener('click', async (e) => {
 
 let searchTimer;
 document.addEventListener('input', (e) => {
+  if (e.target.id === 'rbq') { const q = e.target.value.trim().toLowerCase(); document.querySelectorAll('#rbc-list [data-bcl]').forEach((r) => { r.style.display = !q || r.dataset.bcl.includes(q) ? '' : 'none'; }); return; }
   if (e.target.id === 'nm' && $('lbl-prev')) { $('lbl-prev').innerHTML = labelPill({ name: e.target.value || 'Label', color: $('sheet').dataset.color }); return; }
   if (e.target.id === 'ed-amt') { e.target.style.width = `${Math.max(4, e.target.value.length) + 0.5}ch`; return; }
   if (e.target.classList.contains('sp-in')) { spCapture(); spRefresh(); return; }
@@ -3105,6 +3126,7 @@ document.addEventListener('compositionend', (e) => {
   S.search = e.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refreshRecResults, 200);
 });
 document.addEventListener('change', async (e) => {
+  if (e.target.dataset.rubc && S.ruleDraft) { const v = e.target.dataset.rubc; const a = new Set(S.ruleDraft.bankCats || []); e.target.checked ? a.add(v) : a.delete(v); S.ruleDraft.bankCats = [...a]; return; }
   if (e.target.dataset.ruacc && S.ruleDraft) { const id = e.target.dataset.ruacc; const a = new Set(S.ruleDraft.onlyAccs || []); e.target.checked ? a.add(id) : a.delete(id); S.ruleDraft.onlyAccs = [...a]; return; }
   if (e.target.dataset.connPause) { const on = e.target.checked; await updateDoc(doc(db, 'items', e.target.dataset.connPause), { paused: on }); toast(on ? 'Syncing paused' : 'Syncing resumed'); return; }
   if (e.target.dataset.spTransfer != null) { spCapture(); S.split.parts[+e.target.dataset.spTransfer].isTransfer = e.target.checked; renderSplit(); return; }
