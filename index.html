@@ -128,6 +128,8 @@ button { cursor: pointer; }
 .set-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 14px; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; text-decoration: none; color: var(--text); }
 .set-item:first-child { border-top: 0; }
 .set-item .n { flex: 1; font-weight: 400; }
+.ru-list-btn { min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ru-list-btn .ru-view { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; color: var(--accent); }
 .set-item .v { color: var(--sub); }
 .set-item.hidden-cat { opacity: .45; }
 .center { display: flex; justify-content: center; padding: 8px 0; }
@@ -575,7 +577,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '12.1';
+const APP_VERSION = '12.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2430,6 +2432,36 @@ function refreshRuleCounts() {
   const a = $('ru-past-n'); if (a) a.textContent = rulePastText(rulePastMatches(d).length);
   const b = $('ru-over-n'); if (b) b.textContent = ruleOverText(rulePastCatMatches(d).length);
 }
+// Tapping a past-records line in a rule: see exactly which records it covers, newest first, grouped by month, with a search box
+function ruListRows() {
+  const L = S.ruList; const d = S.ruleDraft; if (!L || !d) return '';
+  let txs = (L.k === 'over' ? rulePastCatMatches(d) : rulePastMatches(d)).slice().sort((a, b) => b.date.localeCompare(a.date));
+  const all = txs.length; const q = (L.q || '').trim().toLowerCase();
+  if (q) txs = txs.filter((t) => matchSearch(t, q));
+  if (!txs.length) return `<div class="empty">${all ? 'No matching records' : 'No records'}</div>`;
+  const total = txs.reduce((n, t) => n + t.amount, 0);
+  let out = `<div class="row-between rec-sum"><span class="meta">${q ? `${txs.length} of ${all}` : all} record${all === 1 ? '' : 's'}</span><span class="num">Σ ${money(total, true)}</span></div>`;
+  let mon = '';
+  txs.forEach((t) => {
+    const m = t.date.slice(0, 7);
+    if (m !== mon) { mon = m; out += `<div class="sec-head">${new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })}</div>`; }
+    out += txRowHtml(t, 'top-row').replace(/^<button/, '<div').replace(' data-act="tx"', '').replace(/<\/button>$/, '</div>');
+  });
+  return out;
+}
+function sheetRuleList() {
+  const L = S.ruList;
+  openSheet(`<h3>${L.k === 'over' ? 'Already sorted records' : 'Uncategorized records'}</h3>
+    <div class="searchbar">${icon('search')}<input id="rq" type="search" value="${esc(L.q || '')}" placeholder="Search, or =500 · 500-800 · >500" autocomplete="off" aria-label="Search these records">
+      <span id="rq-clear">${L.q ? `<button class="search-clear" data-act="rq-clear" aria-label="Clear search">${icon('cancel')}</button>` : ''}</span></div>
+    <div id="rq-results">${ruListRows()}</div>`, { short: true });
+  S.sheetBack = renderRule;
+}
+function refreshRuleList() {
+  const box = $('rq-results'); if (!box || !S.ruList) return;
+  box.innerHTML = ruListRows();
+  const c = $('rq-clear'); if (c) c.innerHTML = S.ruList.q ? `<button class="search-clear" data-act="rq-clear" aria-label="Clear search">${icon('cancel')}</button>` : '';
+}
 function renderRule() {
   const d = S.ruleDraft; const c = S.cats[d.categoryId]; const l = S.labels[d.labelId]; const a = S.accounts[d.accountId];
   // Opened from a record: say which existing rules already match it (tap one to open it)
@@ -2465,8 +2497,8 @@ function renderRule() {
       <label class="set-item">${glyph('edit_note', '#0A7AFF')}<span class="n">Note<div class="meta">Added to matching records that have no note yet</div></span><input class="bare-input ru-note-in" id="ru-note" value="${esc(d.note || '')}" placeholder="e.g. the real shop name" autocomplete="off" aria-label="Note"></label>
       <label class="set-item">${glyph('swap_horiz', '#8E8E93')}<span class="n">Mark as transfer</span><input type="checkbox" class="switch" id="ru-tr" ${d.transfer ? 'checked' : ''}></label>
     </div>
-    <div class="set-list"><label class="set-item">${glyph('history', '#8E8E93')}<span class="n" id="ru-past-n">${rulePastText(rulePastMatches(d).length)}</span><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''}></label>
-      <label class="set-item">${glyph('published_with_changes', '#FF9500')}<span class="n"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length)}</span><div class="meta">Off by default. Records with a category, and transfers. Gives them this rule’s category and label; a record given a category stops being a transfer.</div></span><input type="checkbox" class="switch" id="ru-over" ${d.overwrite ? 'checked' : ''}></label></div>
+    <div class="set-list"><div class="set-item">${glyph('history', '#8E8E93')}<button class="n ru-list-btn" data-act="ru-list" data-k="past"><span id="ru-past-n">${rulePastText(rulePastMatches(d).length)}</span><span class="ru-view">View records ›</span></button><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''} aria-label="Apply to past uncategorized records"></div>
+      <div class="set-item">${glyph('published_with_changes', '#FF9500')}<button class="n ru-list-btn" data-act="ru-list" data-k="over"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length)}</span><div class="meta">Off by default. Records with a category, and transfers. Gives them this rule’s category and label; a record given a category stops being a transfer.</div><span class="ru-view">View records ›</span></button><input type="checkbox" class="switch" id="ru-over" aria-label="Update already sorted records" ${d.overwrite ? 'checked' : ''}></div></div>
     ${d.id ? `<button class="pill-btn danger wide" data-act="del-rule" data-id="${d.id}">${icon('delete')}Delete rule</button>` : ''}
     ${saveBar('save-rule', 'Save')}`);
 
@@ -2797,6 +2829,8 @@ document.addEventListener('click', async (e) => {
       case 'edit-cat': captureEdit(); openPicker({ mode: 'edit', txId: S.edit.txId }); break;
       case 'edit-type': captureEdit(); S.edit.type = el.dataset.type; renderEdit(); break;
       case 'save-edit': await saveEdit(); break;
+      case 'ru-list': captureRule(); S.ruList = { k: el.dataset.k, q: '' }; sheetRuleList(); break;
+      case 'rq-clear': if (S.ruList) S.ruList.q = ''; { const rq = $('rq'); if (rq) rq.value = ''; } refreshRuleList(); focusNow('rq'); break;
       case 'sq-clear': S.sq = ''; const sq = $('sq'); if (sq) sq.value = ''; refreshSearchSheet(); focusNow('sq'); break;
       case 'search-clear': S.search = ''; clearTimeout(searchTimer); render(); break;
       case 'ed-split': { captureEdit(); const et = S.txById[S.edit.txId]; if (et?.parentId) openSplit(et.parentId); else openSplit(S.edit.txId, S.edit); if (S.split) { S.split.fromEdit = true; S.sheetBack = renderEdit; } break; }
@@ -2916,6 +2950,12 @@ document.addEventListener('input', (e) => {
   if ((e.target.id === 'ru-amt-a' || e.target.id === 'ru-amt-b') && S.ruleDraft) { captureRule(); refreshRuleCounts(); return; }
   if (e.target.id === 'ru-kw' && S.ruleDraft) { S.ruleDraft.kwInput = e.target.value; refreshRuleCounts(); return; }
   if (e.target.id === 'catq') { $('catpick').innerHTML = pickerBody(e.target.value.trim().toLowerCase()); return; }
+  if (e.target.id === 'rq' && S.ruList) {
+    S.ruList.q = e.target.value;
+    if (e.isComposing) return;
+    clearTimeout(searchTimer); searchTimer = setTimeout(refreshRuleList, 200);
+    return;
+  }
   if (e.target.id === 'sq') {
     S.sq = e.target.value;
     if (e.isComposing) return;
@@ -2928,6 +2968,7 @@ document.addEventListener('input', (e) => {
   clearTimeout(searchTimer); searchTimer = setTimeout(refreshRecResults, 200);
 });
 document.addEventListener('compositionend', (e) => {
+  if (e.target.id === 'rq' && S.ruList) { S.ruList.q = e.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refreshRuleList, 200); return; }
   if (e.target.id === 'sq') { S.sq = e.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refreshSearchSheet, 200); return; }
   if (e.target.id !== 'txsearch') return;
   S.search = e.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refreshRecResults, 200);
