@@ -110,6 +110,7 @@ button { cursor: pointer; }
 .chips { display: flex; gap: 8px; overflow-x: auto; }
 .chip { height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); font-size: 14px; font-weight: 600; white-space: nowrap; }
 .chip[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.yr-head { position: sticky; top: calc(var(--hdr, 110px) + var(--rsh, 60px) - 2px); z-index: 3; margin: 0 -16px; padding: 6px 16px; background: var(--bg); font-size: 15px; font-weight: 700; color: var(--text); }
 .day { font-size: 13px; font-weight: 600; color: var(--sub); padding: 8px 4px 4px; }
 .list { background: var(--card); border: 0; border-radius: 14px; overflow: hidden; }
 .tx { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 60px; padding: 0 14px 0 6px; border-top: 1px solid var(--line); }
@@ -584,7 +585,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '13.0';
+const APP_VERSION = '13.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1016,6 +1017,7 @@ function render() {
   $('app').innerHTML = (main ? headerMain(r.name) : headerSub(r)) + body
     + (r.name === 'tx' ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
   const hdr = document.querySelector('.top'); if (hdr) document.documentElement.style.setProperty('--hdr', hdr.offsetHeight + 'px');
+  const rs = document.querySelector('.rec-search'); if (rs) document.documentElement.style.setProperty('--rsh', rs.offsetHeight + 'px');
   window.scrollTo(0, y);
   if (focusId && $(focusId)) { const f = $(focusId); f.focus(); if (caret != null && f.setSelectionRange) f.setSelectionRange(caret, caret); }
   if ($('sq-results')) refreshSearchSheet(); // keep the search sheet in step with edits
@@ -1310,9 +1312,11 @@ function barChart(bs, values, color, opts = {}) {
   }).join('');
   return `<svg viewBox="0 0 ${W} ${H}" class="trend" role="img" aria-label="${opts.aria || 'Spending over time'}">${parts}</svg>`;
 }
+// A record's date: "Mar 5" this year, "Mar 5, 2025" otherwise
+function rowDate(d) { return String(d).slice(0, 4) === String(new Date().getFullYear()) ? shortDate(d).replace(/, \d{4}$/, '') : shortDate(d); }
 function txRowHtml(t, cls = 'top-row', back = '') {
   const c = S.cats[t.categoryId];
-  return `<button class="${cls}" data-act="tx" data-id="${t.id}"${back ? ` data-back="${back}"` : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span></button>`;
+  return `<button class="${cls}" data-act="tx" data-id="${t.id}"${back ? ` data-back="${back}"` : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${rowDate(t.date)}</span></span></button>`;
 }
 function cardStructure() {
   const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
@@ -1376,7 +1380,7 @@ function sheetRecords(pop) {
     const desc = t.manual ? (t.name && t.name !== t.note ? t.name : '') : [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i && v !== t.note).join(' - ');
     return `<div class="more-row"><button class="tx-ico" data-act="tx-cat" data-id="${t.id}" data-back="rec" aria-label="Choose category">${ic}</button>
       <button class="more-main" data-act="tx" data-id="${t.id}" data-back="rec"><span class="mid"><span class="row-between"><span class="n">${esc(nm)}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
-      <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}</span><span class="meta">${shortDate(t.date).replace(/, \d{4}$/, '')}</span></span>
+      <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}</span><span class="meta">${rowDate(t.date)}</span></span>
       ${t.note ? `<span class="desc">${esc(t.note)}</span>` : ''}${desc ? `<span class="desc">“${esc(desc)}”</span>` : ''}
       ${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span></button></div>`;
   }).join('');
@@ -1680,9 +1684,15 @@ function viewTx(params) {
   const chip = (k, label) => `<button class="chip" data-act="txf" data-f="${k}" aria-pressed="${!catKey && f === k}">${label}</button>`;
   const unknownCount = S.txs.filter((t) => !t.categoryId && !t.isTransfer).length;
   const byDay = {}; list.forEach((t) => { byDay[t.date] = (byDay[t.date] || 0) + signed(t); });
-  let html = ''; let day = '';
+  let html = ''; let day = ''; let yr = ''; const thisYr = String(new Date().getFullYear());
   const shown = list.slice(0, 500);
   for (const t of shown) {
+    const y = t.date.slice(0, 4);
+    if (y !== yr) { // each year other than this one gets a header that stays at the top while you scroll through it
+      if (day) html += '</div>'; day = '';
+      if (yr) html += '</section>';
+      yr = y; html += `<section class="yr-sec">${y !== thisYr ? `<div class="yr-head">${y}</div>` : ''}`;
+    }
     if (t.date !== day) {
       if (day) html += '</div>';
       day = t.date; const sum = byDay[day];
@@ -1698,6 +1708,7 @@ function viewTx(params) {
       <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
+  if (yr) html += '</section>';
   if (!shown.length) html = `<div class="empty">${f === 'unknown' && !q ? 'Everything is categorized' : f === 'conflict' && !q ? 'No conflicts' : 'No records'}</div>`;
   const total = list.reduce((n, t) => n + signed(t), 0);
   const searchBar = `<div class="rec-search"><div class="searchbar">${icon('search')}<input id="txsearch" type="search" placeholder="Search merchant, note, category, amount" value="${esc(S.search)}" autocomplete="off" aria-label="Search records"><span id="search-clear-slot">${searchClearBtn()}</span></div></div>`;
