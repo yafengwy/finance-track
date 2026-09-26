@@ -585,7 +585,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '13.1';
+const APP_VERSION = '13.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1281,18 +1281,20 @@ function spendingModel(spec, r) {
   const groupKey = (t) => {
     const c = S.cats[t.categoryId]; const top = topOf(c);
     if (!drill) return top ? top.id : 'unknown';
-    if (!top || top.id !== drill.id) return null;
-    return lvl2Of(c)?.id || '_self';
+    // drilled into any level: group by the child of the drilled category that the record sits under
+    let x = c;
+    while (x) { if (x.id === drill.id) return '_self'; if (x.parentId === drill.id) return x.id; x = S.cats[x.parentId]; }
+    return null;
   };
   const groups = {};
   all.forEach((t) => { const k = groupKey(t); if (k === null) return; (groups[k] ||= []).push(t); });
   const segs = Object.entries(groups).map(([k, txs]) => {
     const c = drill ? (k === '_self' ? drill : S.cats[k]) : (k === 'unknown' ? null : S.cats[k]);
     const name = drill ? (k === '_self' ? `General – ${drill.name}` : (c?.name || 'Deleted')) : (c ? c.name : 'Uncategorized');
-    const hasSubs = !drill && !!c && txs.some((t) => S.cats[t.categoryId]?.parentId);
+    const hasSubs = !!c && k !== '_self' && k !== 'unknown' && txs.some((t) => t.categoryId !== c.id); // records sit in its subcategories: can go deeper
     return { id: k, name, value: txs.reduce((a, t) => a + t.amount, 0), color: c ? catColor(c) : '#C7C7CC', cat: c, txs, hasSubs };
   }).filter((g) => g.value > 0.004).sort((a, b) => b.value - a.value);
-  if (drill) segs.forEach((g, i) => { g.color = shade(drill.color || '#8E8E93', i, segs.length); });
+  if (drill) segs.forEach((g, i) => { g.color = shade(drill.color || catColor(drill) || '#8E8E93', i, segs.length); });
   const sel = segs.find((g) => g.id === S.donutSel) || null;
   const focus = sel ? sel.txs : segs.flatMap((g) => g.txs);
   const focusColor = sel ? sel.color : drill ? (drill.color || '#3478F6') : '#3478F6';
@@ -1335,8 +1337,9 @@ function cardStructure() {
     : `<div class="dn-name">${drill ? esc(drill.name) : 'All expenses'}</div><div class="dn-val num">${money(total)}</div>`;
   const ch = drill ? null : pctChange(total, prevTotal);
   const legend = segs.map((g) => `<button class="legend" data-act="donut-sel" data-id="${g.id}" aria-pressed="${sel?.id === g.id}"><span class="sw" style="background:${g.color}"></span><span class="n">${esc(g.name)}</span></button>`).join('');
-  const deeper = !drill && sel?.hasSubs ? `<button class="pill-btn" data-act="donut-drill" data-id="${sel.id}">${icon('zoom_in')}Go deeper</button>` : '';
-  const back = drill ? `<button class="pill-btn" data-act="donut-back">${icon('chevron_left')}All categories</button>` : '';
+  const deeper = sel?.hasSubs ? `<button class="pill-btn" data-act="donut-drill" data-id="${sel.id}">${icon('zoom_in')}Go deeper</button>` : '';
+  const up = drill && S.cats[drill.parentId];
+  const back = drill ? `<button class="pill-btn" data-act="donut-back">${icon('chevron_left')}${up ? esc(up.name) : 'All categories'}</button>` : '';
   const bs = buckets(r); const vals = bs.map(() => 0);
   m.focus.forEach((t) => { const i = bs.findIndex((b) => t.date >= b.from && t.date <= b.to); if (i >= 0) vals[i] += t.amount; });
   const bi = bs.findIndex((b) => b.from === S.barSel); const bsel = bi >= 0 ? bs[bi] : null;
@@ -2962,7 +2965,7 @@ document.addEventListener('click', async (e) => {
       case 'donut-sel': S.donutSel = S.donutSel === id ? null : id; render(); break;
       case 'bar-sel': S.barSel = S.barSel === id ? null : id; render(); break;
       case 'donut-drill': S.donutDrill = id; S.donutSel = null; render(); break;
-      case 'donut-back': S.donutDrill = null; S.donutSel = null; render(); break;
+      case 'donut-back': { const dc = S.cats[S.donutDrill]; S.donutSel = dc && S.cats[dc.parentId] ? dc.id : null; S.donutDrill = dc && S.cats[dc.parentId] ? dc.parentId : null; render(); break; } // up one level, keeping the slice you came from selected
       case 'trend-mode': S.trendMode = el.dataset.mode; render(); break;
       case 'toggle': { const k = el.dataset.key; S.expanded.has(k) ? S.expanded.delete(k) : S.expanded.add(k); render(); break; }
       case 'go-unknown': location.hash = '#/tx?f=unknown'; break;
