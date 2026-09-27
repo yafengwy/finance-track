@@ -140,7 +140,9 @@ button { cursor: pointer; }
 .tb-list .tb-line:has(.nw-st) { padding-left: 0; }
 .tb-tools { display: inline-flex; align-items: center; gap: 6px; }
 .tb-sum { padding: 8px 4px 0; }
-.tb-bal { padding: 0 0 4px 12px; }
+.tb-bal { padding: 0 0 0 12px; margin: -2px 0 0; line-height: 1.25; }
+.tb-gh:has(+ .tb-bal) { padding-bottom: 0; }
+.tb-bal + .tb-line { padding-top: 4px; }
 .tb-bal + .tb-line { border-top: 0; }
 .tb-gh .nw-st { height: 20px; }
 .tb-gh .n { flex: 1; font-size: 16px; font-weight: 700; }
@@ -637,7 +639,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '14.4';
+const APP_VERSION = '14.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
