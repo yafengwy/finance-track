@@ -159,6 +159,7 @@ button { cursor: pointer; }
 .tb-form .tb-wide { grid-column: 1 / -1; }
 .link-plain { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; }
 .nw-acc .n .nw-next { display: block; white-space: normal; font-size: 12px; margin-top: 1px; }
+.nw-acc .n .nw-next b { color: var(--text); font-weight: 700; }
 .day { font-size: 13px; font-weight: 600; color: var(--sub); padding: 8px 4px 4px; }
 .list { background: var(--card); border: 0; border-radius: 14px; overflow: hidden; }
 .tx { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 60px; padding: 0 14px 0 6px; border-top: 1px solid var(--line); }
@@ -633,7 +634,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '13.8';
+const APP_VERSION = '14.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1595,7 +1596,7 @@ function tbNextLine(a) {
   if (!isInvest(a)) return '';
   const n = tbOpen().filter((t) => t.accountId === a.id);
   if (!n.length) return '';
-  return `<span class="meta nw-next" data-act="go-tbills">Next: ${money(n[0].amount)} on ${mdy(n[0].maturity)}${n.length > 1 ? ` · ${n.length} open` : ''}</span>`;
+  return `<span class="meta nw-next" data-act="go-tbills">Next: <b>${mdy(n[0].maturity)}</b> · ${money(n[0].amount)}${n.length > 1 ? ` · +${n.length - 1}` : ''}</span>`;
 }
 // ---- detail ----
 function sheetTbView() {
