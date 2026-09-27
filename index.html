@@ -121,6 +121,25 @@ button { cursor: pointer; }
 .inv-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .inv-grid.v { stroke-dasharray: 2 3; }
 .inv-ax { font-size: 10px; fill: var(--sub); }
+.tb-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; color: var(--text); text-align: left; }
+.tb-list > .tb-row:first-child, .day + .tb-row { border-top: 0; }
+.tb-row .nw-st { align-self: stretch; height: auto; }
+.tb-row .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.tb-row .n { font-size: 16px; font-weight: 700; }
+.tb-row .tb-amt { font-size: 15px; }
+.tb-row .tb-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-row .r { text-align: right; flex-shrink: 0; }
+.tb-pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #FFF1D6; color: #9A6200; }
+.tb-pill.late { background: #FFE2E0; color: #B42318; }
+.tb-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 6px; }
+.tb-stats > div { background: var(--bg); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; }
+.tb-stats b { font-size: 20px; }
+.tb-hero { display: flex; align-items: baseline; gap: 8px; padding: 0 4px 10px; }
+.tb-hero b { font-size: 30px; }
+.tb-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+.tb-form .tb-wide { grid-column: 1 / -1; }
+.link-plain { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; }
+.nw-acc .n .nw-next { display: block; white-space: normal; font-size: 12px; margin-top: 1px; }
 .day { font-size: 13px; font-weight: 600; color: var(--sub); padding: 8px 4px 4px; }
 .list { background: var(--card); border: 0; border-radius: 14px; overflow: hidden; }
 .tx { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 60px; padding: 0 14px 0 6px; border-top: 1px solid var(--line); }
@@ -595,7 +614,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '13.3';
+const APP_VERSION = '13.4';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -776,6 +795,7 @@ function listen() {
   watch('categories', 'cats', () => { S.catsLoaded = true; });
   watch('accounts', 'accounts', () => { rebuildTxs(); saveBalanceSnapshot(); });
   watch('labels', 'labels');
+  watch('tbills', 'tbills', () => { S.tbLoaded = true; });
   watch('filters', 'filters');
   watch('rules', 'rules', () => { S.rulesLoaded = true; mergeDupRules(); scheduleRules(); });
   watch('items', 'items');
@@ -1013,7 +1033,7 @@ window.addEventListener('hashchange', () => {
   if (left && left === drawerOrigin && MAIN.includes(route().name)) { drawerOrigin = null; openDrawer(); }
 });
 const MAIN = ['accounts', 'dash', 'tx'];
-const SUB_TITLES = { cats: 'Categories', labels: 'Labels', filters: 'Filters', rules: 'Automatic Rules', conns: 'Accounts' };
+const SUB_TITLES = { cats: 'Categories', labels: 'Labels', filters: 'Filters', rules: 'Automatic Rules', conns: 'Accounts', tbills: 'T-Bills & CDs' };
 
 // ---------- render ----------
 function render() {
@@ -1021,7 +1041,7 @@ function render() {
   const r = route();
   const y = window.scrollY;
   const focusId = document.activeElement?.id; const caret = document.activeElement?.selectionStart;
-  const views = { dash: viewDash, tx: () => viewTx(r.params), cats: viewCats, cat: () => viewCat(r.id), labels: viewLabels, filters: viewFilters, rules: viewRules, conns: viewConns, conn: () => viewConn(r.id) };
+  const views = { dash: viewDash, tx: () => viewTx(r.params), cats: viewCats, cat: () => viewCat(r.id), labels: viewLabels, filters: viewFilters, rules: viewRules, tbills: viewTbills, conns: viewConns, conn: () => viewConn(r.id) };
   const main = !views[r.name] || MAIN.includes(r.name);
   const body = (views[r.name] || viewAccounts)();
   $('app').innerHTML = (main ? headerMain(r.name) : headerSub(r)) + body
@@ -1187,7 +1207,7 @@ function netWorthCard(accs) {
       const badItem = st === 'bad' ? gAll.map((y) => y.a.itemId).find((iid) => accStatus({ itemId: iid }) === 'bad') : null;
       const dot = badItem ? `<button class="sdot-btn" data-act="reconnect" data-id="${badItem}" aria-label="Reconnect ${esc(g.bank)}">${sDot('bad')}</button>` : sDot(st);
       return `<div class="nw-bank"><span>${esc(g.bank)}${dot} <span class="meta">· ${g.all}</span></span><span class="num" style="${col(g.sum)}">${money(g.sum)}</span></div>
-      ${g.ys.sort((p, q) => Math.abs(q.b) - Math.abs(p.b)).map(({ a, b }) => `<button class="nw-acc" data-act="acc" data-id="${a.id}"><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}${sDot(accStatus(a))}</span><span class="num" style="${col(b)}">${money(b)}</span></button>`).join('')}`;
+      ${g.ys.sort((p, q) => Math.abs(q.b) - Math.abs(p.b)).map(({ a, b }) => `<button class="nw-acc" data-act="acc" data-id="${a.id}"><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}${sDot(accStatus(a))}${tbNextLine(a)}</span><span class="num" style="${col(b)}">${money(b)}</span></button>`).join('')}`;
     }).join('')
       + (zero ? `<button class="nw-zero" data-act="nw-zero" data-id="${id}">${showZero ? 'Hide' : `+ ${zero}`} account${zero === 1 ? '' : 's'} with $0 balance</button>` : '');
     return `<button class="nw-row" data-act="nw-fold" data-id="${id}" aria-expanded="${on}"><span class="nw-l"><span class="nw-ic">${icon(ICONS[k])}${sDot(worst(x.list.map((y) => accStatus(y.a))))}</span>${LABELS[k]}<span class="meta">${x.list.length}</span>${icon(on ? 'expand_less' : 'expand_more')}</span><span class="num" style="${col(x.sum)}">${money(x.sum)}</span></button>
@@ -1237,7 +1257,7 @@ function cardHead(title, card) {
   return `<div class="card-head"><div><p class="h2">${title}</p><div class="meta">${esc(periodLabel(getPeriod(card)))}${label ? ` · ${esc(label)}` : ''}</div>${seg}</div>
     <button class="icon-btn" data-act="card-settings" data-card="${card}" aria-label="${title} settings">${icon('more_horiz')}</button></div>`;
 }
-const CARDS = { cashflow: 'Cash Flow', detail: 'Income & Expenses', structure: 'Spending by Category', trend: 'Cash Flow Trend', invest: 'Investments' };
+const CARDS = { cashflow: 'Cash Flow', detail: 'Income & Expenses', structure: 'Spending by Category', trend: 'Cash Flow Trend', invest: 'Investments', tbills: 'T-Bills & CDs' };
 function cardOrder() {
   let o = []; try { o = JSON.parse(localStorage.getItem('cardOrder')) || []; } catch { /* default */ }
   o = o.filter((k) => CARDS[k]); Object.keys(CARDS).forEach((k) => { if (!o.includes(k)) o.push(k); });
@@ -1245,7 +1265,7 @@ function cardOrder() {
 }
 function cardHidden() { try { return new Set(JSON.parse(localStorage.getItem('cardHidden')) || []); } catch { return new Set(); } }
 function viewDash() {
-  const fns = { cashflow: cardCash, detail: cardDetail, structure: cardStructure, trend: cardTrend, invest: cardInvest };
+  const fns = { cashflow: cardCash, detail: cardDetail, structure: cardStructure, trend: cardTrend, invest: cardInvest, tbills: cardTbills };
   const hidden = cardHidden();
   const cards = cardOrder().filter((k) => !hidden.has(k)).map((k) => fns[k]()).join('');
   return `<div class="page">${cards || '<div class="empty">All cards are hidden</div>'}
@@ -1464,6 +1484,208 @@ function smoothPath(pts) {
   }
   return d;
 }
+// ============ T-Bills & CDs ============
+// tbills/{id}: { accountId, buyDate, amount, maturity, expApy (percent), gotBack (null while open), notes, incomeTxId }
+const TB_SEED = [["","2023-07-13",97452.78,"2024-01-04",null,100000,""],["","2023-09-07",49684.43,"2024-02-29",null,51000,""],["","2024-01-11",100652.18,"2024-04-11",null,102000,""],["","2024-03-21",100371.25,"2024-05-02",null,101000,""],["","2024-04-16",150752.16,"2024-06-11",5.39,152000,""],["","2024-05-03",100662.65,"2024-08-01",5.4,102000,""],["","2024-07-08",19889.17,"2024-08-15",5.41,20000,""],["BOA","2024-07-01",99592.88,"2024-08-27",null,101000,"分3次买入"],["","2024-08-05",101358.85,"2024-09-17",5.346,102000,""],["Joint","2024-08-05",65585.14,"2024-09-17",5.346,66000,""],["BOA","2024-08-28",101703.18,"2024-09-17",5.326,102000,""],["","2024-06-12",152342.87,"2024-10-08",5.4,155000,""],["Joint","2024-10-01",20925.19,"2024-10-29",4.813,21000,""],["","2024-09-17",102400.85,"2024-10-31",5.4,103000,""],["Joint","2024-09-25",66691.83,"2024-10-31",4.939,67000,""],["BOA","2024-09-18",101410.44,"2024-10-31",4.948,102000,""],["BOA","2024-09-25",2979,"2024-11-19",4.936,3000,""],["BOA","2024-11-13",1998.52,"2024-11-19",4.44,2000,""],["","2024-10-09",154888.77,"2024-12-03",4.743,156000,""],["Joint","2024-11-05",40782.6,"2024-12-17",4.612,41000,""],["BOA","2024-11-01",102284.15,"2024-12-26",4.657,103000,""],["Joint","2024-12-04",48841.99,"2024-12-31",4.516,49000,""],["BOA","2024-12-17",16971.1,"2024-12-31",4.44,17000,""],["","2024-12-04",96675.72,"2024-12-31",4.517,97000,""],["Joint","2024-12-17",40733,"2025-02-11",4.377,41000,""],["Joint","2025-01-03",49666.11,"2025-03-04",4.285,50000,""],["Chase","2025-01-06",97345.78,"2025-03-04",4.282,98000,""],["BOA","2024-11-20",4932.55,"2025-03-11",4.497,5000,""],["BOA","2025-01-06",16874.03,"2025-03-11",4.258,17000,""],["BOA","2024-12-30",102636.56,"2025-04-22",4.291,104000,""],["Chase","2025-03-06",78911.9,"2025-07-01",4.302,80000,""],["Joint","2025-03-06",101599.07,"2025-07-01",4.302,103000,""],["BOA","2025-03-13",22529.05,"2025-09-11",4.192,23000,""],["BOA","2025-04-24",92706.6,"2025-08-19",4.32,94000,""],["Chase","2025-07-02",79475.67,"2025-08-26",4.378,80000,""],["Joint","2025-07-02",103294.32,"2025-08-28",4.375,104000,""],["BOA","2025-08-20",93399.34,"2025-10-14",4.268,94000,""],["Chase","2025-08-27",79682.49,"2025-09-30",4.278,80000,""],["Joint","2025-09-12",104514.73,"2025-10-23",4.133,105000,"如果下次Maturity超过12月就拿出来付地税"],["BOA","2025-09-12",22893.97,"2025-10-23",4.123,23000,""],["BOA","2025-10-21",94604.91,"2025-11-28",4.001,95000,""],["Chase","2025-10-21",79633.09,"2025-12-02",4.004,80000,"先用这钱交地税！！"],["Joint","2025-10-27",105143.98,"2026-01-13",3.81,106000,"把地税钱还给个人账号"],["BOA","2025-10-28",22855.63,"2025-12-26",3.908,23000,""],["BOA","2025-12-02",94897.92,"2026-03-24",3.785,96000,"5/1 MM保险？"],["Chase","2025-12-03",63400.08,"2026-03-06",3.754,64000,"2万去joint还保险"],["Chase","2026-01-14",16803.81,"2026-05-12",3.642,17000,""],["Joint","2026-01-14",89318.55,"2026-04-02",3.617,90000,"付地税！！！；2274三个月车贷"],["BOA","2026-01-14",22877.41,"2026-03-10",3.622,23000,""],["Chase","2026-03-09",43778.65,"2026-04-28",3.691,44000,""],["BOA","2026-03-11",15812.32,"2026-07-07",3.671,16000,""],["BOA","2026-03-24",96466.5,"2026-05-19",3.67,97000,"5/20 $11,995 MM保险！！"],["Joint","2026-04-06",73429.21,"2026-06-23",3.638,74000,"38000给hua"],["Chase","2026-04-29",44179.7,"2026-10-29",3.703,null,""],["Chase","2026-05-13",16699.64,"2026-11-05",3.73,null,""],["BOA","2026-05-21",84439.05,"2026-11-19",3.707,null,""],["Joint","2026-06-24",35740.64,"2026-09-03",3.731,36000,""],["BOA","2026-07-07",15817.12,"2026-10-27",3.837,null,""],["Joint","2026-09-04",36539.99,"2026-12-31",3.894,null,""]]; // from T-bills.xlsx: [BOA|Chase|Joint, bought, amount, matures, expected APY %, got back, notes]
+const TB_MASK = { BOA: '6478', Chase: '0829', Joint: '7497' };
+const mdy = (d) => { if (!d) return ''; const [y, m, dd] = d.split('-'); return `${+m}/${+dd}/${y}`; };
+function tbList() { return Object.values(S.tbills || {}); }
+function tbOpen() { return tbList().filter((t) => t.gotBack == null).sort((a, b) => a.maturity.localeCompare(b.maturity)); }
+function tbDone() { return tbList().filter((t) => t.gotBack != null).sort((a, b) => b.maturity.localeCompare(a.maturity)); }
+function tbDays(t) { return Math.max(1, Math.round((parseYmd(t.maturity) - parseYmd(t.buyDate)) / 864e5)); }
+function tbApy(t, back = t.gotBack) { if (!(back > 0) || !(t.amount > 0)) return null; return ((back / t.amount) ** (365 / tbDays(t)) - 1) * 100; }
+function tbAccName(t) { const a = S.accounts[t.accountId]; return a ? accName(a) : 'No account'; }
+function tbColor(t) { const a = S.accounts[t.accountId]; return a ? accColor(a) : '#C7C7CC'; }
+function tbDue(t) { return Math.round((parseYmd(t.maturity) - parseYmd(ymd(new Date()))) / 864e5); } // days until maturity (negative = past)
+function tbWhen(t) {
+  const n = tbDue(t);
+  if (n === 0) return '<span class="tb-pill">Today</span>';
+  if (n < 0) return `<span class="tb-pill late">${-n} day${n === -1 ? '' : 's'} ago</span>`;
+  return `<span class="meta">in ${n} day${n === 1 ? '' : 's'}</span>`;
+}
+// actual APY: green if at or above what you expected, red if below
+function tbApyColor(t) { const a = tbApy(t); if (a == null || t.expApy == null) return 'inherit'; return a + 0.005 >= t.expApy ? 'var(--good)' : 'var(--bad)'; }
+function tbRow(t) {
+  const open = t.gotBack == null;
+  const right = open ? `<div class="num">${mdy(t.maturity)}</div>${tbWhen(t)}`
+    : `<div class="num" style="color:var(--good)">+${money(t.gotBack - t.amount)}</div><div class="meta">${mdy(t.maturity)} · <span style="color:${tbApyColor(t)}">${tbApy(t)?.toFixed(2) ?? '—'}%</span></div>`;
+  return `<button class="tb-row" data-act="tb-open" data-id="${t.id}"><span class="nw-st" style="background:${esc(tbColor(t))}"></span>
+    <span class="mid"><span class="n">${esc(tbAccName(t))}</span><span class="tb-amt num">${money(t.amount)}</span>${t.notes ? `<span class="meta tb-note">Notes: ${esc(t.notes)}</span>` : ''}</span>
+    <span class="r">${right}</span></button>`;
+}
+function tbYearStats() {
+  const y = String(new Date().getFullYear()); const done = tbDone().filter((t) => t.maturity.startsWith(y));
+  const interest = done.reduce((n, t) => n + (t.gotBack - t.amount), 0);
+  const apys = done.map((t) => tbApy(t)).filter((v) => v != null);
+  return { interest, apy: apys.length ? apys.reduce((a, b) => a + b, 0) / apys.length : null };
+}
+function cardTbills() {
+  const open = tbOpen(); const st = tbYearStats();
+  const head = `<div class="card-head"><div><button class="link-plain" data-act="go-tbills"><p class="h2">T-Bills & CDs</p></button><div class="meta">${open.length} open · ${money(open.reduce((n, t) => n + t.amount, 0))} invested</div></div>
+    <button class="icon-btn" data-act="tb-menu" aria-label="T-Bills options">${icon('more_horiz')}</button></div>`;
+  if (!tbList().length) return `<section class="card">${head}<div class="meta" style="margin:6px 0 10px">Track each T-bill or CD: when it matures, what came back, the real APY.</div><button class="pill-btn" data-act="go-tbills">${icon('savings')}Get started</button></section>`;
+  return `<section class="card">${head}
+    <div class="tb-stats"><div><span class="meta">Interest this year</span><b class="num" style="color:var(--good)">+${money(st.interest)}</b></div><div><span class="meta">Avg actual APY</span><b class="num">${st.apy == null ? '—' : st.apy.toFixed(2) + '%'}</b></div></div>
+    <div class="tb-list">${open.map((t) => tbRow(t)).join('') || '<div class="meta">Nothing open right now</div>'}</div></section>`;
+}
+function viewTbills() {
+  const open = tbOpen(); const done = tbDone(); const tab = S.tbTab === 'done' ? 'done' : 'open';
+  const importBox = !tbList().length && S.tbLoaded ? `<div class="card"><p class="h2">Import from your Excel</p><div class="meta" style="margin:4px 0 10px">${TB_SEED.length} T-bills from T-bills.xlsx (${TB_SEED.filter((r) => r[5] == null).length} still open). No income records are created for them; you already entered that interest.</div><button class="pill-btn primary" data-act="tb-import">${icon('download')}Import ${TB_SEED.length}</button></div>` : '';
+  let list = '';
+  if (tab === 'open') list = open.map((t) => tbRow(t)).join('') || '<div class="empty">Nothing open</div>';
+  else {
+    let y = '';
+    done.forEach((t) => {
+      const ty = t.maturity.slice(0, 4);
+      if (ty !== y) { y = ty; const sum = done.filter((x) => x.maturity.startsWith(ty)).reduce((n, x) => n + x.gotBack - x.amount, 0); list += `<div class="day row-between"><span>${ty}</span><span class="num" style="color:var(--good)">+${money(sum)}</span></div>`; }
+      list += tbRow(t);
+    });
+    if (!list) list = '<div class="empty">Nothing matured yet</div>';
+  }
+  return `<div class="page">${importBox}
+    <div class="row-between"><div class="chips"><button class="chip" data-act="tb-tab" data-v="open" aria-pressed="${tab === 'open'}">Open ${open.length}</button><button class="chip" data-act="tb-tab" data-v="done" aria-pressed="${tab === 'done'}">Matured ${done.length}</button></div>
+      <button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></div>
+    <div class="card tb-list">${list}</div></div>`;
+}
+// Accounts page: one line under an investment account about its next maturity
+function tbNextLine(a) {
+  if (!isInvest(a)) return '';
+  const n = tbOpen().filter((t) => t.accountId === a.id);
+  if (!n.length) return '';
+  return `<span class="meta nw-next" data-act="go-tbills">Next: ${money(n[0].amount)} on ${mdy(n[0].maturity)}${n.length > 1 ? ` · ${n.length} open` : ''}</span>`;
+}
+// ---- detail ----
+function sheetTbill(id) {
+  const t = S.tbills[id]; if (!t) return;
+  const open = t.gotBack == null; const apy = tbApy(t);
+  const kv = (ic, bg, k, v) => `<div class="set-item">${glyph(ic, bg)}<span class="n">${k}</span><span class="v">${v}</span></div>`;
+  openSheet(`<h3>${esc(tbAccName(t))}</h3>
+    ${open ? `<div class="tb-hero"><span class="meta">Matures ${mdy(t.maturity)}</span> ${tbWhen(t)}</div>` : `<div class="tb-hero"><b class="num" style="color:var(--good)">+${money(t.gotBack - t.amount)}</b><span class="meta">interest</span></div>`}
+    <div class="set-list">
+      ${kv('event', '#3478F6', 'Bought', mdy(t.buyDate))}
+      ${kv('attach_money', '#8E8E93', 'Amount', money(t.amount))}
+      ${kv('flag', '#FF9500', open ? 'Matures' : 'Matured', `${mdy(t.maturity)} <span class="meta">· ${tbDays(t)} days</span>`)}
+      ${open ? '' : kv('payments', '#34C759', 'Got back', money(t.gotBack))}
+      ${kv('percent', '#8E8E93', 'Expected APY', t.expApy != null ? `${t.expApy}%` : '—')}
+      ${open ? '' : kv('trending_up', apy != null && t.expApy != null && apy + 0.005 < t.expApy ? '#FF3B30' : '#34C759', 'Actual APY', `<b style="color:${tbApyColor(t)}">${apy != null ? apy.toFixed(2) + '%' : '—'}</b>`)}
+      ${t.notes ? kv('edit_note', '#AF52DE', 'Notes', esc(t.notes)) : ''}
+    </div>
+    ${open ? `<button class="pill-btn wide" data-act="tb-cal" data-id="${id}">${icon('event_available')}Add to calendar</button>` : ''}
+    <button class="pill-btn wide" data-act="tb-edit" data-id="${id}">${icon('edit')}Edit</button>
+    ${open ? saveBar('tb-mature', 'Enter amount back', ` data-id="${id}"`) : ''}`, { short: true });
+}
+// ---- maturity: enter what came back ----
+function tbDefaultCat() {
+  const saved = localStorage.getItem('tbCat'); if (saved && S.cats[saved]) return saved;
+  const all = Object.values(S.cats); const fin = all.find((c) => !c.parentId && /financ/i.test(c.name));
+  return (all.find((c) => /^investments?$/i.test(c.name) && (!fin || c.parentId === fin.id)) || all.find((c) => /^investments?$/i.test(c.name)))?.id || null;
+}
+function tbCatLabel(id) { const c = S.cats[id]; if (!c) return 'Choose'; const p = S.cats[c.parentId]; return p ? `${p.name} › ${c.name}` : c.name; }
+function sheetTbMature(id) {
+  const t = S.tbills[id]; if (!t) return;
+  const m = S.tbMat && S.tbMat.id === id ? S.tbMat : (S.tbMat = { id, back: '', record: true, cat: tbDefaultCat(), acc: localStorage.getItem('tbAcc') || 'cash' });
+  const n = tbDue(t); const when = n === 0 ? 'Matures today' : n < 0 ? `Matured ${mdy(t.maturity)}` : `Matures ${mdy(t.maturity)}`;
+  openSheet(`<h3>${esc(tbAccName(t))}</h3>
+    <div class="meta" style="padding:0 4px 8px">${when} · bought ${money(t.amount)} on ${mdy(t.buyDate)}${t.expApy != null ? ` · expected ${t.expApy}%` : ''}</div>
+    <div class="field"><label for="tb-back">Got back</label><input class="input num" id="tb-back" inputmode="decimal" placeholder="97000" value="${esc(m.back)}" autocomplete="off"></div>
+    <div class="set-list">
+      <div class="set-item">${glyph('add_card', '#34C759')}<span class="n">Interest</span><span class="v num" id="tb-int">—</span></div>
+      <div class="set-item">${glyph('trending_up', '#34C759')}<span class="n">Actual APY</span><span class="v num" id="tb-apy">—</span></div>
+    </div>
+    <div class="set-list">
+      <label class="set-item">${glyph('receipt_long', '#3478F6')}<span class="n">Record the interest as income</span><input type="checkbox" class="switch" id="tb-rec" ${m.record ? 'checked' : ''}></label>
+      ${valueRow('tb-cat', glyph('category', '#FF9500'), 'Category', esc(tbCatLabel(m.cat)))}
+      ${valueRow('tb-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(m.acc === 'cash' ? 'Cash' : accName(S.accounts[m.acc]) || 'Cash'))}
+    </div>
+    ${saveBar('tb-mature-save', 'Save', ` data-id="${id}"`)}`, { short: true });
+  S.sheetBack = () => sheetTbill(id);
+  tbMatureCalc();
+}
+function tbCaptureMat() { const m = S.tbMat; if (!m) return; if ($('tb-back')) m.back = $('tb-back').value; if ($('tb-rec')) m.record = $('tb-rec').checked; }
+function tbMatureCalc() {
+  const m = S.tbMat; const t = m && S.tbills[m.id]; if (!t || !$('tb-int')) return;
+  const back = num($('tb-back').value);
+  if (!back) { $('tb-int').textContent = '—'; $('tb-apy').textContent = '—'; return; }
+  const i = back - t.amount; const a = tbApy(t, back);
+  $('tb-int').innerHTML = `<b style="color:${i >= 0 ? 'var(--good)' : 'var(--bad)'}">${money(i, true)}</b>`;
+  $('tb-apy').innerHTML = `<b style="color:${t.expApy != null && a + 0.005 < t.expApy ? 'var(--bad)' : 'var(--good)'}">${a.toFixed(2)}%</b>`;
+}
+async function tbMatureSave(id) {
+  tbCaptureMat(); const m = S.tbMat; const t = S.tbills[id]; if (!t || !m) return;
+  const back = num(m.back); if (!back) { toast('Enter the amount that came back'); return; }
+  const interest = Math.round((back - t.amount) * 100) / 100;
+  const upd = { gotBack: back };
+  if (m.record && interest > 0) {
+    if (!S.cats[m.cat]) { toast('Choose a category for the income'); return; }
+    localStorage.setItem('tbCat', m.cat); localStorage.setItem('tbAcc', m.acc);
+    await ensureCash(m.acc);
+    const ref = doc(collection(db, 'transactions'));
+    await setDoc(ref, { amount: -interest, date: t.maturity <= ymd(new Date()) ? t.maturity : ymd(new Date()), accountId: m.acc, categoryId: m.cat, isTransfer: false, labels: [], note: '', name: `${tbAccName(t)} T-bill interest`,
+      itemId: null, merchant: '', currency: 'USD', pending: false, manual: true, ruled: true, createdAt: serverTimestamp() });
+    upd.incomeTxId = ref.id;
+  }
+  await updateDoc(doc(db, 'tbills', id), upd);
+  S.tbMat = null; closeSheet();
+  toast(`Saved · ${money(interest, true)} interest${upd.incomeTxId ? ', recorded as income' : ''}`, 4000);
+}
+// ---- add / edit ----
+function invAccountsAll() { return Object.values(S.accounts).filter((a) => isInvest(a) && !a.hidden); }
+function sheetTbEdit(id) {
+  const t = id ? S.tbills[id] : null;
+  const d = S.tbDraft && S.tbDraft.id === (id || null) ? S.tbDraft : (S.tbDraft = t ? { ...t } : { id: null, accountId: localStorage.getItem('tbLastAcc') || '', buyDate: ymd(new Date()), amount: '', maturity: '', expApy: '', gotBack: null, notes: '' });
+  const accs = invAccountsAll(); const a = S.accounts[d.accountId];
+  openSheet(`<h3>${t ? 'Edit' : 'New T-bill / CD'}</h3>
+    <div class="set-list">${valueRow('tb-e-acc', glyph('account_balance', '#5856D6'), 'Account', esc(a ? accName(a) : accs.length ? 'Choose' : 'No investment accounts'))}</div>
+    <div class="tb-form">
+      <div class="field"><label for="tbe-buy">Bought</label><input class="input" type="date" id="tbe-buy" value="${esc(d.buyDate || '')}"></div>
+      <div class="field"><label for="tbe-amt">Amount</label><input class="input num" id="tbe-amt" inputmode="decimal" value="${d.amount === '' ? '' : esc(d.amount)}" placeholder="96466.50"></div>
+      <div class="field"><label for="tbe-mat">Matures</label><input class="input" type="date" id="tbe-mat" value="${esc(d.maturity || '')}"></div>
+      <div class="field"><label for="tbe-apy">Expected APY %</label><input class="input num" id="tbe-apy" inputmode="decimal" value="${d.expApy == null ? '' : esc(d.expApy)}" placeholder="3.67"></div>
+      ${t && t.gotBack != null ? `<div class="field"><label for="tbe-back">Got back</label><input class="input num" id="tbe-back" inputmode="decimal" value="${esc(d.gotBack)}"></div>` : ''}
+      <div class="field tb-wide"><label for="tbe-notes">Notes</label><input class="input" id="tbe-notes" value="${esc(d.notes || '')}" placeholder="Optional"></div>
+    </div>
+    ${t ? `<button class="pill-btn danger wide" data-act="tb-del" data-id="${t.id}">${icon('delete')}Delete</button>` : ''}
+    ${saveBar('tb-e-save', 'Save')}`, { short: true });
+  if (t) S.sheetBack = () => { S.tbDraft = null; sheetTbill(t.id); };
+}
+function tbCaptureEdit() {
+  const d = S.tbDraft; if (!d || !$('tbe-buy')) return;
+  d.buyDate = $('tbe-buy').value; d.amount = $('tbe-amt').value; d.maturity = $('tbe-mat').value; d.expApy = $('tbe-apy').value; d.notes = $('tbe-notes').value;
+  if ($('tbe-back')) d.gotBack = $('tbe-back').value;
+}
+async function tbEditSave() {
+  tbCaptureEdit(); const d = S.tbDraft;
+  const amount = num(d.amount); const expApy = String(d.expApy ?? '').trim() === '' ? null : num(d.expApy);
+  if (!amount) { toast('Enter the amount'); return; }
+  if (!d.buyDate || !d.maturity || d.maturity <= d.buyDate) { toast('Enter the bought and maturity dates'); return; }
+  const data = { accountId: d.accountId || null, buyDate: d.buyDate, amount, maturity: d.maturity, expApy, notes: (d.notes || '').trim() };
+  if (d.id && S.tbills[d.id]?.gotBack != null) { const b = num(d.gotBack); if (!b) { toast('Enter the amount back'); return; } data.gotBack = b; }
+  if (d.accountId) localStorage.setItem('tbLastAcc', d.accountId);
+  if (d.id) await updateDoc(doc(db, 'tbills', d.id), data);
+  else await setDoc(doc(collection(db, 'tbills')), { ...data, gotBack: null, createdAt: serverTimestamp() });
+  const back = d.id; S.tbDraft = null; closeSheet(); toast('Saved');
+  if (back) setTimeout(() => sheetTbill(back), 300);
+}
+// ---- calendar reminder (.ics): all-day event on the maturity date, alert at 9 AM that day ----
+function tbCalendar(id) {
+  const t = S.tbills[id]; if (!t) return;
+  const d = t.maturity.replace(/-/g, ''); const next = ymd(addDays(parseYmd(t.maturity), 1)).replace(/-/g, '');
+  const title = `T-bill matures: ${tbAccName(t)} ${money(t.amount)}`;
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Finance Track//EN', 'BEGIN:VEVENT', `UID:tbill-${t.id}@finance-track`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+    `DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${next}`, `SUMMARY:${title}`, `DESCRIPTION:Bought ${mdy(t.buyDate)}${t.expApy != null ? ` at ${t.expApy}%` : ''}.${t.notes ? ' Notes: ' + t.notes.replace(/[,;\n]/g, ' ') : ''}`,
+    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${title}`, 'TRIGGER;RELATED=START:PT9H', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const blob = new Blob([ics], { type: 'text/calendar' }); const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `tbill-${t.maturity}.ics`; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+async function tbImport() {
+  if (tbList().length) { toast('Already imported'); return; }
+  const byMask = (m) => Object.values(S.accounts).find((a) => a.mask === m)?.id || null;
+  const refs = TB_SEED.map(([acc, buy, amt, mat, exp, back, notes]) => ({ accountId: acc ? byMask(TB_MASK[acc]) : null, buyDate: buy, amount: amt, maturity: mat, expApy: exp, gotBack: back, notes: notes || '', imported: true }));
+  for (let i = 0; i < refs.length; i += 400) { const b = writeBatch(db); refs.slice(i, i + 400).forEach((x) => b.set(doc(collection(db, 'tbills')), x)); await b.commit(); }
+  toast(`${refs.length} imported`);
+}
+
 // ---- Investments: balance history of the investment accounts ----
 // One doc per day in balanceHistory ({ date, balances: { accountId: balance } }), written by the daily sync and whenever balances change here
 let snapTimer;
@@ -1996,6 +2218,7 @@ function openDrawer() {
     <a href="#/labels" data-act="drawer-link">${icon('sell')}Labels</a>
     <a href="#/filters" data-act="drawer-link">${icon('filter_alt')}Filters</a>
     <a href="#/rules" data-act="drawer-link">${icon('bolt')}Automatic Rules</a>
+    <a href="#/tbills" data-act="drawer-link">${icon('savings')}T-Bills & CDs</a>
     <div class="drawer-sep"></div>
     <button data-act="logout">${icon('logout')}Sign out</button>
     <button data-act="check-update">${icon('system_update')}Check for updates</button>
@@ -3023,6 +3246,22 @@ document.addEventListener('click', async (e) => {
       }
       case 'acc': sheetAccount(id); break;
       case 'card-settings': sheetCard(el.dataset.card); break;
+      case 'go-tbills': closeSheet(); go('#/tbills'); break;
+      case 'tb-tab': S.tbTab = el.dataset.v; render(); break;
+      case 'tb-open': { const t = S.tbills[id]; if (t && t.gotBack == null && tbDue(t) <= 0) { S.tbMat = null; sheetTbMature(id); } else sheetTbill(id); break; }
+      case 'tb-menu': openOptions('T-Bills & CDs', [{ value: 'new', label: 'Add T-bill / CD', iconHtml: glyph('add', '#3478F6') }, { value: 'all', label: 'See all', iconHtml: glyph('list', '#8E8E93') }], null, (v) => { closeSheet(); if (v === 'new') { S.tbDraft = null; sheetTbEdit(null); } else go('#/tbills'); }); break;
+      case 'tb-new': S.tbDraft = null; sheetTbEdit(null); break;
+      case 'tb-edit': S.tbDraft = null; sheetTbEdit(id); break;
+      case 'tb-e-acc': tbCaptureEdit(); openOptions('Account', [...invAccountsAll().map((a) => ({ value: a.id, label: accName(a), sub: a.mask ? '••' + a.mask : '', iconHtml: `<span class="nw-st" style="background:${esc(accColor(a))}"></span>` })), { value: '', label: 'No account', iconHtml: glyph('block', '#C7C7CC') }], S.tbDraft.accountId || '', (v) => { S.tbDraft.accountId = v; sheetTbEdit(S.tbDraft.id); }); break;
+      case 'tb-e-save': await tbEditSave(); break;
+      case 'tb-del': if (confirm('Delete this T-bill? Its income record (if any) stays.')) { await deleteDoc(doc(db, 'tbills', id)); S.tbDraft = null; closeSheet(); toast('Deleted'); } break;
+      case 'tb-cal': tbCalendar(id); break;
+      case 'tb-mature': S.tbMat = null; sheetTbMature(id); break;
+      case 'tb-mature-save': await tbMatureSave(id); break;
+      case 'tb-cat': { tbCaptureMat(); const mid = S.tbMat.id; const cats = Object.values(S.cats).filter((c) => !c.hidden).sort((a, b) => tbCatLabel(a.id).localeCompare(tbCatLabel(b.id)));
+        openOptions('Income category', cats.map((c) => ({ value: c.id, label: tbCatLabel(c.id), iconHtml: catIcon(c) })), S.tbMat.cat, (v) => { S.tbMat.cat = v; sheetTbMature(mid); }); S.sheetBack = () => sheetTbMature(mid); break; }
+      case 'tb-acc': { tbCaptureMat(); const mid = S.tbMat.id; openOptions('Record in account', accountOptionList(), S.tbMat.acc, (v) => { S.tbMat.acc = v; sheetTbMature(mid); }); S.sheetBack = () => sheetTbMature(mid); break; }
+      case 'tb-import': await tbImport(); break;
       case 'inv-settings': openOptions('Investments period', Object.entries(INV_PERIODS).map(([v, l]) => ({ value: v, label: l, iconHtml: glyph('date_range', '#3478F6') })), invPeriod(), (v) => { localStorage.setItem('invPeriod', v); closeSheet(); render(); }); break;
       case 'inv-acc': {
         const ids = invAccounts().map((a) => a.id); let sel = invSelected(); const all = sel.length === ids.length;
@@ -3263,6 +3502,7 @@ document.addEventListener('click', async (e) => {
 
 let searchTimer;
 document.addEventListener('input', (e) => {
+  if (e.target.id === 'tb-back') { tbCaptureMat(); tbMatureCalc(); return; }
   if (e.target.id === 'rbq') { const q = e.target.value.trim().toLowerCase(); document.querySelectorAll('#rbc-list [data-bcl]').forEach((r) => { r.style.display = !q || r.dataset.bcl.includes(q) ? '' : 'none'; }); return; }
   if (e.target.id === 'nm' && $('lbl-prev')) { $('lbl-prev').innerHTML = labelPill({ name: e.target.value || 'Label', color: $('sheet').dataset.color }); return; }
   if (e.target.id === 'ed-amt') { e.target.style.width = `${Math.max(4, e.target.value.length) + 0.5}ch`; return; }
