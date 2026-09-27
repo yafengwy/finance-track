@@ -124,7 +124,7 @@ button { cursor: pointer; }
 .tb-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; color: var(--text); text-align: left; }
 .tb-list > .tb-row:first-child, .day + .tb-row, .tb-gh + .tb-row { border-top: 0; }
 .tb-gh { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; }
-.tb-list .tb-gh:not(:first-child) { margin-top: 6px; border-top: 1px solid var(--line); }
+.tb-list .tb-gh:not(:first-child) { margin-top: 0; border-top: 1px solid var(--line); }
 .tb-line { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 0; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; font-size: 15px; color: var(--text); text-align: left; }
 .tb-gh + .tb-line { border-top: 0; }
 .tb-line .nw-st { height: 18px; }
@@ -136,7 +136,7 @@ button { cursor: pointer; }
 .tb-line .tb-r .meta { font-size: 12px; }
 .tb-line .tb-amt2 { font-size: 15px; font-weight: 400; }
 .card.tb-list { gap: 0; } /* the card's 12px gap was the extra space under each row */
-.tb-list .tb-line { padding-top: 9px; padding-bottom: 4px; line-height: 1.25; } /* text glyphs sit high in their line box: more room on top looks even */
+.tb-list .tb-line { padding-top: 6.5px; padding-bottom: 6.5px; line-height: 1.25; } /* measured: equal ink gap above and below each row */
 .tb-line .tb-due { font-weight: 700; }
 .tb-list .tb-line { padding-left: 12px; }
 .tb-list .tb-line:has(.nw-st) { padding-left: 0; }
@@ -145,8 +145,6 @@ button { cursor: pointer; }
 .tb-bal { padding: 0 0 0 12px; margin: -2px 0 0; line-height: 1.25; }
 .tb-ghr { text-align: right; line-height: 1.35; }
 .tb-gh:has(.tb-ghr > div + div) { padding-bottom: 0; }
-.tb-gh:has(.tb-ghr > div + div) { margin-bottom: 3px; }
-.tb-gh:has(.tb-ghr > div + div) + .tb-line { padding-top: 2px; }
 .tb-bal + .tb-line { padding-top: 4px; }
 .tb-bal + .tb-line { border-top: 0; }
 .tb-gh .nw-st { height: 20px; }
@@ -644,7 +642,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '15.0';
+const APP_VERSION = '15.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
