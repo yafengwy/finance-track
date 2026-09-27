@@ -135,6 +135,7 @@ button { cursor: pointer; }
 .tb-line .tb-r { text-align: right; flex-shrink: 0; font-size: 15px; }
 .tb-line .tb-r .meta { font-size: 12px; }
 .tb-line .tb-amt2 { font-size: 15px; font-weight: 400; }
+.tb-list .tb-line { padding-top: 5px; padding-bottom: 3px; line-height: 1.25; }
 .tb-line .tb-due { font-weight: 700; }
 .tb-list .tb-line { padding-left: 12px; }
 .tb-list .tb-line:has(.nw-st) { padding-left: 0; }
@@ -143,7 +144,8 @@ button { cursor: pointer; }
 .tb-bal { padding: 0 0 0 12px; margin: -2px 0 0; line-height: 1.25; }
 .tb-ghr { text-align: right; line-height: 1.35; }
 .tb-gh:has(.tb-ghr > div + div) { padding-bottom: 0; }
-.tb-gh:has(.tb-ghr > div + div) + .tb-line { padding-top: 2px; }
+.tb-gh:has(.tb-ghr > div + div) { margin-bottom: -4px; }
+.tb-gh:has(.tb-ghr > div + div) + .tb-line { padding-top: 0; }
 .tb-bal + .tb-line { padding-top: 4px; }
 .tb-bal + .tb-line { border-top: 0; }
 .tb-gh .nw-st { height: 20px; }
@@ -641,7 +643,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '14.7';
+const APP_VERSION = '14.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
