@@ -137,6 +137,8 @@ button { cursor: pointer; }
 .tb-line .tb-main b { font-size: 15px; }
 .tb-tools { display: inline-flex; align-items: center; gap: 6px; }
 .tb-sum { padding: 8px 4px 0; }
+.tb-bal { padding: 0 0 4px 14px; }
+.tb-bal + .tb-line { border-top: 0; }
 .tb-gh .nw-st { height: 20px; }
 .tb-gh .n { flex: 1; font-size: 16px; font-weight: 700; }
 .tb-list { padding-top: 0; padding-bottom: 6px; }
@@ -631,7 +633,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '13.7';
+const APP_VERSION = '13.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1514,6 +1516,12 @@ function tbApy(t, back = t.gotBack) { if (!(back > 0) || !(t.amount > 0)) return
 function tbAccName(t) { const a = S.accounts[t.accountId]; return a ? accName(a) : 'No account'; }
 function tbColor(t) { const a = S.accounts[t.accountId]; return a ? accColor(a) : '#C7C7CC'; }
 function tbDue(t) { return Math.round((parseYmd(t.maturity) - parseYmd(ymd(new Date()))) / 864e5); } // days until maturity (negative = past)
+// Value today of an open one, from the expected APY (T-bills gain value every day toward what they pay at maturity)
+function tbValueNow(t) {
+  if (t.gotBack != null) return t.gotBack;
+  const d = Math.max(0, Math.min(tbDays(t), Math.round((parseYmd(ymd(new Date())) - parseYmd(t.buyDate)) / 864e5)));
+  return t.expApy != null ? t.amount * (1 + t.expApy / 100) ** (d / 365) : t.amount;
+}
 function tbWhen(t) {
   const n = tbDue(t);
   if (n === 0) return '<span class="tb-pill">Today</span>';
@@ -1568,7 +1576,11 @@ function viewTbills() {
   const body = gs.map(([k, ts]) => {
     if (by === 'date') return `<div class="tb-gh"><span class="n">${parseYmd(k + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span><span class="meta">${sumTxt(ts)}</span></div>${ts.map((t) => tbRow(t, 'date')).join('')}`;
     const a = S.accounts[k];
-    return `<div class="tb-gh"><span class="nw-st" style="background:${esc(a ? accColor(a) : '#C7C7CC')}"></span><span class="n">${esc(a ? accName(a) : 'No account')}${a?.mask ? ` <span class="meta">··${esc(a.mask)}</span>` : ''}</span><span class="meta">${sumTxt(ts)}</span></div>${ts.map((t) => tbRow(t, 'account')).join('')}`;
+    // Open: bank balance, and the cash not in T-bills = balance − today's estimated value of the open ones
+    const bal = a && typeof a.balanceCurrent === 'number' ? a.balanceCurrent : null;
+    const cash = bal != null ? bal - ts.reduce((n, t) => n + tbValueNow(t), 0) : null;
+    const balLine = tab === 'open' && bal != null ? `<div class="meta tb-bal">Bank balance <span class="num">${money(bal)}</span> · cash ≈ <span class="num">${money(Math.round(cash))}</span></div>` : '';
+    return `<div class="tb-gh"><span class="nw-st" style="background:${esc(a ? accColor(a) : '#C7C7CC')}"></span><span class="n">${esc(a ? accName(a) : 'No account')}${a?.mask ? ` <span class="meta">··${esc(a.mask)}</span>` : ''}</span><span class="meta">${sumTxt(ts)}</span></div>${balLine}${ts.map((t) => tbRow(t, 'account')).join('')}`;
   }).join('');
   const PER = { year: 'This year', last: 'Last year', all: 'All' };
   const total = tab === 'done' && rows.length ? `<div class="meta tb-sum">${PER[per]} · ${rows.length} matured · <span class="num" style="color:var(--good)">+${money(rows.reduce((n, t) => n + t.gotBack - t.amount, 0))}</span> · grouped by ${by === 'date' ? 'month' : 'account'}</div>` : '';
@@ -1603,7 +1615,7 @@ function sheetTbill(id) {
       ${kv('event', '#3478F6', 'Bought', mdy(t.buyDate))}
       ${kv('attach_money', '#8E8E93', 'Amount', money(t.amount))}
       ${kv('flag', '#FF9500', open ? 'Matures' : 'Matured', `${mdy(t.maturity)} <span class="meta">· ${tbDays(t)} days</span>`)}
-      ${open ? '' : kv('payments', '#34C759', 'Got back', money(t.gotBack))}
+      ${open ? kv('show_chart', '#34C759', 'Value today ≈', `${money(tbValueNow(t))} <span class="meta" style="color:var(--good)">+${money(tbValueNow(t) - t.amount)}</span>`) : kv('payments', '#34C759', 'Got back', money(t.gotBack))}
       ${kv('percent', '#8E8E93', 'Expected APY', t.expApy != null ? `${t.expApy}%` : '—')}
       ${open ? '' : kv('trending_up', apy != null && t.expApy != null && apy + 0.005 < t.expApy ? '#FF3B30' : '#34C759', 'Actual APY', `<b style="color:${tbApyColor(t)}">${apy != null ? apy.toFixed(2) + '%' : '—'}</b>`)}
       ${t.notes ? kv('edit_note', '#AF52DE', 'Notes', esc(t.notes)) : ''}
