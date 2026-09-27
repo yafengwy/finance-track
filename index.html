@@ -144,11 +144,15 @@ button { cursor: pointer; }
 .tb-sum { padding: 8px 4px 0; }
 .tb-bal { padding: 0 0 0 12px; margin: -2px 0 0; line-height: 1.25; }
 .tb-ghr { text-align: right; line-height: 1.35; }
+.tb-gh .n .tb-tot { font-size: 13px; font-weight: 400; color: var(--sub); margin-top: 1px; }
 .tb-gh:has(.tb-ghr > div + div) { padding-bottom: 0; }
 .tb-bal + .tb-line { padding-top: 4px; }
 .tb-bal + .tb-line { border-top: 0; }
 .tb-gh .nw-st { height: 20px; }
-.tb-gh .n { flex: 1; font-size: 16px; font-weight: 700; }
+.tb-gh:has(.tb-tot) .nw-st { height: auto; align-self: stretch; margin: 2px 0; } /* bar spans the name and Total lines */
+.tb-gh .n { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; line-height: 1.25; }
+.tb-gh .n .meta { white-space: nowrap; } /* a long name wraps its ··mask to a 2nd line instead of cutting the name */
+.tb-ghr { flex-shrink: 0; }
 .tb-list { padding-top: 0; padding-bottom: 6px; }
 .tb-row .nw-st { align-self: stretch; height: auto; }
 .tb-row .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -642,7 +646,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '15.1';
+const APP_VERSION = '15.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1589,8 +1593,9 @@ function viewTbills() {
     // Open: bank balance, and the cash not in T-bills = balance − today's estimated value of the open ones
     const bal = a && typeof a.balanceCurrent === 'number' ? a.balanceCurrent : null;
     const cash = bal != null ? bal - ts.reduce((n, t) => n + tbValueNow(t), 0) : null;
-    const cashTxt = tab === 'open' && bal != null ? `<div>cash ≈ <span class="num">$${Math.max(0, Math.round(cash)).toLocaleString('en-US')}</span></div>` : '';
-    return `<div class="tb-gh"><span class="nw-st" style="background:${esc(a ? accColor(a) : '#C7C7CC')}"></span><span class="n">${esc(a ? accName(a) : 'No account')}${a?.mask ? ` <span class="meta">··${esc(a.mask)}</span>` : ''}</span><span class="meta tb-ghr"><div>${sumTxt(ts)}</div>${cashTxt}</span></div>${ts.map((t) => tbRow(t, 'account')).join('')}`;
+    const open1 = tab === 'open' && bal != null; // Open: "Total <bank balance>" under the name; right: "2 · ≈ T-bills" and "cash ≈"
+    const cashTxt = open1 ? `<div>cash ≈ <span class="num">$${Math.max(0, Math.round(cash)).toLocaleString('en-US')}</span></div>` : '';
+    return `<div class="tb-gh"><span class="nw-st" style="background:${esc(a ? accColor(a) : '#C7C7CC')}"></span><span class="n">${esc(a ? accName(a) : 'No account')}${a?.mask ? ` <span class="meta">··${esc(a.mask)}</span>` : ''}${open1 ? `<div class="tb-tot">Total <span class="num">${money(bal)}</span></div>` : ''}</span><span class="meta tb-ghr"><div>${sumTxt(ts)}</div>${cashTxt}</span></div>${ts.map((t) => tbRow(t, 'account')).join('')}`;
   }).join('');
   const PER = { year: 'This year', last: 'Last year', all: 'All' };
   const total = tab === 'done' && rows.length ? `<div class="meta tb-sum">${PER[per]} · ${rows.length} matured · <span class="num" style="color:var(--good)">+${money(rows.reduce((n, t) => n + t.gotBack - t.amount, 0))}</span> · grouped by ${by === 'date' ? 'month' : 'account'}</div>` : '';
