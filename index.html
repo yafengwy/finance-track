@@ -134,10 +134,13 @@ button { cursor: pointer; }
 .tb-line .tb-note { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tb-line .tb-r { text-align: right; flex-shrink: 0; font-size: 15px; }
 .tb-line .tb-r .meta { font-size: 12px; }
-.tb-line .tb-main b { font-size: 15px; }
+.tb-line .tb-amt2 { font-size: 15px; font-weight: 400; }
+.tb-line .tb-due { font-weight: 700; }
+.tb-list .tb-line { padding-left: 12px; }
+.tb-list .tb-line:has(.nw-st) { padding-left: 0; }
 .tb-tools { display: inline-flex; align-items: center; gap: 6px; }
 .tb-sum { padding: 8px 4px 0; }
-.tb-bal { padding: 0 0 4px 14px; }
+.tb-bal { padding: 0 0 4px 12px; }
 .tb-bal + .tb-line { border-top: 0; }
 .tb-gh .nw-st { height: 20px; }
 .tb-gh .n { flex: 1; font-size: 16px; font-weight: 700; }
@@ -634,7 +637,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '14.0';
+const APP_VERSION = '14.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1533,12 +1536,13 @@ function tbWhen(t) {
 function tbApyColor(t) { const a = tbApy(t); if (a == null || t.expApy == null) return 'inherit'; return a + 0.005 >= t.expApy ? 'var(--good)' : 'var(--bad)'; }
 function tbRow(t, grouped = false) {
   const open = t.gotBack == null;
-  if (grouped) { // compact two-line row inside a group (design C)
-    const sub = [grouped === 'date' ? esc(tbAccName(t)) : '', open ? mdy(t.buyDate) : `${mdy(t.buyDate)} – ${mdy(t.maturity)}`, t.notes ? esc(t.notes) : ''].filter(Boolean).join(' · ');
-    const right = open ? `<div class="num">${mdy(t.maturity)}</div><div class="meta">${tbDue(t) === 0 ? '<span class="tb-pill">Today</span>' : tbDue(t) < 0 ? `<span style="color:var(--bad)">${-tbDue(t)} days ago</span>` : `in ${tbDue(t)} days`}</div>`
-      : `<div class="num" style="color:var(--good)">+${money(t.gotBack - t.amount)}</div><div class="meta num" style="color:${tbApyColor(t)}">${tbApy(t)?.toFixed(2) ?? '—'}%</div>`;
-    return `<button class="tb-line" data-act="tb-open" data-id="${t.id}">${grouped === 'date' ? `<span class="nw-st" style="background:${esc(tbColor(t))}"></span>` : ''}<span class="tb-main"><b class="num">${money(t.amount)}</b><span class="meta tb-note">${sub}</span></span><span class="tb-r">${right}</span></button>`;
+  if (grouped) { // two-line row inside a group: light left side, the maturity date is the bold part
+    const sub = [grouped === 'date' ? esc(tbAccName(t)) : '', open ? `bought ${mdy(t.buyDate)}` : `${mdy(t.buyDate)} – ${mdy(t.maturity)}`, t.notes ? esc(t.notes) : ''].filter(Boolean).join(' · ');
+    const right = open ? `<div class="num tb-due">${mdy(t.maturity)}</div><div class="meta">${tbDue(t) === 0 ? '<span class="tb-pill">Today</span>' : tbDue(t) < 0 ? `<span style="color:var(--bad)">${-tbDue(t)} days ago</span>` : `in ${tbDue(t)} days`}</div>`
+      : `<div class="num tb-due" style="color:var(--good)">+${money(t.gotBack - t.amount)}</div><div class="meta num" style="color:${tbApyColor(t)}">${tbApy(t)?.toFixed(2) ?? '—'}%</div>`;
+    return `<button class="tb-line" data-act="tb-open" data-id="${t.id}">${grouped === 'date' ? `<span class="nw-st" style="background:${esc(tbColor(t))}"></span>` : ''}<span class="tb-main"><span class="num tb-amt2">${money(t.amount)}</span><span class="meta tb-note">${sub}</span></span><span class="tb-r">${right}</span></button>`;
   }
+
 
 
   const right = open ? `<div class="num">${mdy(t.maturity)}</div>${tbWhen(t)}`
@@ -1580,7 +1584,7 @@ function viewTbills() {
     // Open: bank balance, and the cash not in T-bills = balance − today's estimated value of the open ones
     const bal = a && typeof a.balanceCurrent === 'number' ? a.balanceCurrent : null;
     const cash = bal != null ? bal - ts.reduce((n, t) => n + tbValueNow(t), 0) : null;
-    const balLine = tab === 'open' && bal != null ? `<div class="meta tb-bal">Bank balance <span class="num">${money(bal)}</span> · cash ≈ <span class="num">${money(Math.round(cash))}</span></div>` : '';
+    const balLine = tab === 'open' && bal != null ? `<div class="meta tb-bal">Bank <span class="num">${money(bal)}</span> · cash ≈ <span class="num">$${Math.max(0, Math.round(cash)).toLocaleString('en-US')}</span></div>` : '';
     return `<div class="tb-gh"><span class="nw-st" style="background:${esc(a ? accColor(a) : '#C7C7CC')}"></span><span class="n">${esc(a ? accName(a) : 'No account')}${a?.mask ? ` <span class="meta">··${esc(a.mask)}</span>` : ''}</span><span class="meta">${sumTxt(ts)}</span></div>${balLine}${ts.map((t) => tbRow(t, 'account')).join('')}`;
   }).join('');
   const PER = { year: 'This year', last: 'Last year', all: 'All' };
