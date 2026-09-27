@@ -637,7 +637,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '14.1';
+const APP_VERSION = '14.4';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1577,14 +1577,14 @@ function viewTbills() {
   const groups = new Map();
   rows.forEach((t) => { const k = by === 'date' ? t.maturity.slice(0, 7) : (S.accounts[t.accountId] ? t.accountId : ''); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); });
   const gs = [...groups.entries()].sort(by === 'date' ? (a, b) => b[0].localeCompare(a[0]) : (a, b) => (!a[0]) - (!b[0]) || b[1].reduce((n, t) => n + t.amount, 0) - a[1].reduce((n, t) => n + t.amount, 0));
-  const sumTxt = (ts) => tab === 'open' ? `${ts.length} · <span class="num">${money(ts.reduce((n, t) => n + t.amount, 0))}</span>` : `${ts.length} · <span class="num" style="color:var(--good)">+${money(ts.reduce((n, t) => n + t.gotBack - t.amount, 0))}</span>`;
+  const sumTxt = (ts) => tab === 'open' ? `${ts.length} · <span class="num">≈ $${Math.round(ts.reduce((n, t) => n + tbValueNow(t), 0)).toLocaleString('en-US')}</span>` : `${ts.length} · <span class="num" style="color:var(--good)">+${money(ts.reduce((n, t) => n + t.gotBack - t.amount, 0))}</span>`;
   const body = gs.map(([k, ts]) => {
     if (by === 'date') return `<div class="tb-gh"><span class="n">${parseYmd(k + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span><span class="meta">${sumTxt(ts)}</span></div>${ts.map((t) => tbRow(t, 'date')).join('')}`;
     const a = S.accounts[k];
     // Open: bank balance, and the cash not in T-bills = balance − today's estimated value of the open ones
     const bal = a && typeof a.balanceCurrent === 'number' ? a.balanceCurrent : null;
     const cash = bal != null ? bal - ts.reduce((n, t) => n + tbValueNow(t), 0) : null;
-    const balLine = tab === 'open' && bal != null ? `<div class="meta tb-bal">Bank <span class="num">${money(bal)}</span> · cash ≈ <span class="num">$${Math.max(0, Math.round(cash)).toLocaleString('en-US')}</span></div>` : '';
+    const balLine = tab === 'open' && bal != null ? `<div class="meta tb-bal">cash ≈ <span class="num">$${Math.max(0, Math.round(cash)).toLocaleString('en-US')}</span></div>` : '';
     return `<div class="tb-gh"><span class="nw-st" style="background:${esc(a ? accColor(a) : '#C7C7CC')}"></span><span class="n">${esc(a ? accName(a) : 'No account')}${a?.mask ? ` <span class="meta">··${esc(a.mask)}</span>` : ''}</span><span class="meta">${sumTxt(ts)}</span></div>${balLine}${ts.map((t) => tbRow(t, 'account')).join('')}`;
   }).join('');
   const PER = { year: 'This year', last: 'Last year', all: 'All' };
