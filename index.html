@@ -651,7 +651,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '16.2';
+const APP_VERSION = '16.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -713,11 +713,14 @@ function txNoteLine(t) { return t.note && t.note !== txTitle(t) ? `<span class="
 function accName(a) { return a ? (a.customName || a.name) : ''; }
 
 // ---------- periods & card filters ----------
+const SESSION_PERIOD = new Set(['cashflow', 'detail', 'structure']); // these reset to their default each time the app opens
+const sessPeriod = {};
 function getPeriod(card) {
   const def = { key: DEFAULT_PERIOD[card] || 'this_month' };
+  if (SESSION_PERIOD.has(card)) return sessPeriod[card] && PERIOD_LABEL[sessPeriod[card].key] ? sessPeriod[card] : def;
   try { const p = JSON.parse(localStorage.getItem('period:' + card)); return p && PERIOD_LABEL[p.key] ? p : def; } catch { return def; }
 }
-function setPeriod(card, p) { localStorage.setItem('period:' + card, JSON.stringify(p)); }
+function setPeriod(card, p) { if (SESSION_PERIOD.has(card)) { sessPeriod[card] = p; return; } localStorage.setItem('period:' + card, JSON.stringify(p)); }
 function rangeOf(p) {
   const now = new Date(); const y = now.getFullYear(); const m = now.getMonth();
   switch (p.key) {
