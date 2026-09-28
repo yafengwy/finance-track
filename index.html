@@ -143,6 +143,8 @@ button { cursor: pointer; }
 .tb-tools { display: inline-flex; align-items: center; gap: 6px; }
 .tb-sum { padding: 8px 4px 0; }
 .reimb-line { margin-top: -6px; line-height: 1.5; }
+.rb-amt { white-space: nowrap; }
+.rb-tag { font-size: 12px; font-weight: 400; color: var(--sub); }
 .reimb-line .link-plain { color: var(--sub); font-size: 12px; text-decoration: underline dotted; }
 .tb-bal { padding: 0 0 0 12px; margin: -2px 0 0; line-height: 1.25; }
 .tb-ghr { text-align: right; line-height: 1.35; }
@@ -649,7 +651,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '15.7';
+const APP_VERSION = '15.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1602,15 +1604,15 @@ function reimbSection() {
 function reimbRows() {
   const tops = Object.values(S.cats).filter((c) => catType(c) === 'reimb' && !(S.cats[c.parentId] && catType(S.cats[c.parentId]) === 'reimb'));
   const gs = reimbGroups();
-  const shown = (v) => Math.abs(v) < 0.005 ? '<span style="color:var(--good)">✓</span>' : plain(v > 0 ? v : -v) + (v < 0 ? ' back' : '');
+  const shown = (v) => Math.abs(v) < 0.005 ? '<span style="color:var(--good)">✓ settled</span>' : `${plain(v > 0 ? v : -v)} <span class="rb-tag">${v > 0 ? 'not back' : 'extra back'}</span>`;
   return tops.map((top) => {
     const mine = gs.filter((g) => g.cat.id === top.id || S.cats[g.cat.id]?.parentId === top.id);
     const owed = mine.reduce((n, g) => n + g.owed, 0);
     const key = `reimb:${top.id}`; const hasSubs = mine.length > 1 || subsOf(top.id).length > 0; const open = hasSubs && S.expanded.has(key);
-    const inner = `${catIcon(top)}<span class="n">${esc(top.name)}</span><span class="a num">${shown(owed)}</span><span class="p" style="color:var(--sub);font-size:11px">not back</span>`;
+    const inner = `${catIcon(top)}<span class="n">${esc(top.name)}</span><span class="a num rb-amt">${shown(owed)}</span>`;
     const main = hasSubs ? `<button class="cat-btn" data-act="toggle" data-key="${key}" aria-expanded="${open}">${inner}</button>`
       : `<button class="cat-btn" data-act="reimb-open" data-id="${mine[0]?.id || top.id}">${inner}</button>`;
-    const subs = open ? `<div class="subs">${mine.map((g) => `<div class="sub${Math.abs(g.owed) < 0.005 ? ' zero' : ''}"><span class="xp-sp"></span><button class="sub-btn" data-act="reimb-open" data-id="${g.id}"><span class="n">${esc(g.name)}</span><span class="num">${shown(g.owed)}</span><span class="p"></span></button></div>`).join('')}
+    const subs = open ? `<div class="subs">${mine.map((g) => `<div class="sub${Math.abs(g.owed) < 0.005 ? ' zero' : ''}"><span class="xp-sp"></span><button class="sub-btn" data-act="reimb-open" data-id="${g.id}"><span class="n">${esc(g.name)}</span><span class="num rb-amt">${shown(g.owed)}</span></button></div>`).join('')}
       <button class="link-btn all-rec" data-act="reimb-open" data-id="all:${top.id}">All ${esc(top.name)} records ›</button>
       ${S.loadAll ? '' : `<button class="link-btn all-rec" data-act="reimb-all">Include records before ${loadedSince().slice(0, 4)} ›</button>`}</div>` : '';
     return `<div class="cat-row${open ? ' open' : ''}"><div class="cat-line">${main}</div>${subs}</div>`;
