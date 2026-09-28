@@ -315,6 +315,7 @@ input.row-select { direction: ltr; }
 .donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; padding: 0 56px; }
 .dn-name { font-size: 13px; color: var(--sub); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dn-val { font-size: 20px; font-weight: 600; }
+.sel-all .n { font-weight: 600; }
 .legend-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 8px; padding: 0; }
 .legend { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; border: 0; background: none; padding: 0 4px; border-radius: 7px; font-size: 13px; color: var(--text); }
 .legend .n { white-space: nowrap; text-align: left; }
@@ -651,7 +652,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '16.5';
+const APP_VERSION = '16.6';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2253,8 +2254,8 @@ function sheetRecAccounts() {
   const r = recFilterState(); const sel = new Set(r.accounts || []);
   const accs = Object.values(S.accounts).filter((a) => (!a.hidden || sel.has(a.id)) && (!isInvest(a) || hasOwnRecords(a)));
   openSheet(`<h3>Accounts</h3>
-    <div class="set-list"><label class="msel-row"><input type="checkbox" id="acc-all" ${r.accounts ? '' : 'checked'}>${glyph('account_balance', '#8E8E93')}<span class="n">All accounts</span></label></div>
-    ${bankGroups(accs, (a) => `<label class="msel-row"><input type="checkbox" data-accsel="${a.id}" ${sel.has(a.id) ? 'checked' : ''}><span class="ci sq" style="background:${esc(accColor(a))}">${icon(a.type === 'depository' ? 'account_balance' : 'credit_card')}</span><span class="n">${esc(accName(a))}<div class="meta">${esc([S.items[a.itemId]?.institutionName || a.institution, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</div></span></label>`)}
+    <div class="set-list"><label class="msel-row sel-all"><input type="checkbox" id="acc-all" ${r.accounts ? '' : 'checked'}><span class="ci unknown">${icon('done_all')}</span><span class="n">Select all</span></label></div>
+    ${bankGroups(accs, (a) => `<label class="msel-row"><input type="checkbox" data-accsel="${a.id}" ${!r.accounts || sel.has(a.id) ? 'checked' : ''}><span class="ci sq" style="background:${esc(accColor(a))}">${icon(a.type === 'depository' ? 'account_balance' : 'credit_card')}</span><span class="n">${esc(accName(a))}<div class="meta">${esc([S.items[a.itemId]?.institutionName || a.institution, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</div></span></label>`)}
     ${saveBar('rf-acc-save', 'Done')}`);
 }
 function sheetRecCats() {
@@ -2545,8 +2546,8 @@ function mselBody(opts = S.mselOpts || {}) {
   // Accounts start folded; the header says what's picked (nothing ticked = all accounts)
   const nSel = accList.filter((a) => sel.has('a:' + a.id)).length;
   const accHead = `<button class="set-item msel-fold" data-act="msel-acc-fold" aria-expanded="${!!S.mselAccOpen}">${glyph('account_balance_wallet', '#5856D6')}<span class="n">Accounts</span><span class="v">${nSel ? `${nSel} selected` : 'All accounts'}</span>${icon(S.mselAccOpen ? 'expand_less' : 'expand_more')}</button>`;
-  return `${accList.length ? `<div class="set-list">${accHead}</div>${S.mselAccOpen ? accs : ''}` : ''}
-    <div class="sec-head">Categories <span class="meta">Untick a subcategory to leave it out</span></div><div class="set-list">${noneRow}${cats}</div>
+  return `${accList.length ? `<div class="set-list">${accHead}</div>${S.mselAccOpen ? `<div class="set-list">${selAllRow('a', mselAllAccs(opts), 'Select all')}</div>${accs}` : ''}` : ''}
+    <div class="sec-head">Categories <span class="meta">Untick a subcategory to leave it out</span></div><div class="set-list">${selAllRow('c', mselAllCats(opts), 'Select all')}${noneRow}${cats}</div>
     ${labels ? `<div class="sec-head">Labels</div><div class="set-list">${labels}</div>` : ''}`;
 }
 // Picker keys are 'c:<id>' / 'c:=<id>'. A parent is checked only when everything under it is checked.
@@ -2584,10 +2585,25 @@ function mselIds() {
     return id.startsWith('=') ? !has(base) && !covered(base) : !covered(id);
   });
 }
+// "Select all" rows: tick everything, then untick the one or two you want to leave out
+function mselAccList(opts = S.mselOpts || {}) { return opts.accounts ? Object.values(S.accounts).filter((a) => !a.hidden && (!isInvest(a) || hasOwnRecords(a))) : []; }
+function mselAllCats(opts = S.mselOpts || {}) { return visibleTops().every((c) => S.msel.has('c:' + c.id)) && (!opts.none || (S.msel.has('c:__none') && S.msel.has('c:__transfer'))); }
+function mselAllAccs(opts = S.mselOpts || {}) { const l = mselAccList(opts); return l.length > 0 && l.every((a) => S.msel.has('a:' + a.id)); }
+function mselSetAll(kind, on, opts = S.mselOpts || {}) {
+  if (kind === 'c') {
+    [...S.msel].filter((k) => k.startsWith('c:')).forEach((k) => S.msel.delete(k));
+    if (on) { visibleTops().forEach((c) => mselBranch(S.msel, c.id, true)); if (opts.none) { S.msel.add('c:__none'); S.msel.add('c:__transfer'); } mselFix(S.msel); }
+  } else {
+    [...S.msel].filter((k) => k.startsWith('a:')).forEach((k) => S.msel.delete(k));
+    if (on) mselAccList(opts).forEach((a) => S.msel.add('a:' + a.id));
+  }
+}
+const selAllRow = (kind, on, label) => `<label class="msel-row sel-all"><input type="checkbox" data-msel-all="${kind}" ${on ? 'checked' : ''}><span class="ci unknown">${icon('done_all')}</span><span class="n">${label}</span></label>`;
 function mselSpec() {
   const cats = []; const labels = []; const accounts = [];
   mselIds().forEach((id) => { if (id !== '__none' && id !== '__transfer') cats.push(id); });
   S.msel.forEach((k) => { const id = k.slice(2); if (k.startsWith('l:') && S.labels[id]) labels.push(id); if (k.startsWith('a:') && S.accounts[id]) accounts.push(id); });
+  if (mselAllCats()) cats.length = 0; if (mselAllAccs()) accounts.length = 0; // all ticked = no filter
   return { cats, labels, accounts };
 }
 function recentInstant() { try { return JSON.parse(localStorage.getItem('recentInstant')) || []; } catch { return []; } }
@@ -3513,12 +3529,13 @@ document.addEventListener('click', async (e) => {
       case 'rf-filter': openOptions('Saved filter', [{ value: '', label: 'None', iconHtml: glyph('block', '#C7C7CC') }, ...Object.values(S.filters).sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ value: x.id, label: x.name, sub: specName(x), iconHtml: glyph('filter_alt', '#AF52DE') }))], recFilterState().filter, (v) => { recFilterState().filter = v; sheetRecPanel(); render(); }); break;
       case 'rf-acc-save': {
         const ids = [...document.querySelectorAll('[data-accsel]:checked')].map((x) => x.dataset.accsel);
-        recFilterState().accounts = $('acc-all').checked || !ids.length ? null : ids; sheetRecPanel(); render(); break;
+        const allN = document.querySelectorAll('[data-accsel]').length;
+        recFilterState().accounts = !ids.length || ids.length === allN ? null : ids; sheetRecPanel(); render(); break;
       }
       case 'rf-cat-save': {
         const ids = mselIds();
         const lb = [...S.msel].filter((k) => k.startsWith('l:') && S.labels[k.slice(2)]).map((k) => k.slice(2));
-        const r = recFilterState(); r.cats = ids.length ? ids : null; r.labels = lb.length ? lb : null; sheetRecPanel(); render(); break;
+        const r = recFilterState(); r.cats = ids.length && !mselAllCats() ? ids : null; r.labels = lb.length ? lb : null; sheetRecPanel(); render(); break;
       }
       case 'rf-reset': S.rf = null; sheetRecPanel(); render(); break;
       case 'tx': S.back = el.dataset.back || null; openEdit(id); break;
@@ -3708,11 +3725,12 @@ document.addEventListener('change', async (e) => {
     const h = cardHidden(); el.checked ? h.delete(el.dataset.cardShow) : h.add(el.dataset.cardShow);
     localStorage.setItem('cardHidden', JSON.stringify([...h])); render(); return;
   }
-  if (el.id === 'acc-all' && el.checked) { document.querySelectorAll('[data-accsel]').forEach((x) => { x.checked = false; }); return; }
-  if (el.dataset.accsel && el.checked && $('acc-all')) { $('acc-all').checked = false; return; }
+  if (el.id === 'acc-all') { document.querySelectorAll('[data-accsel]').forEach((x) => { x.checked = el.checked; }); return; }
+  if (el.dataset.accsel && $('acc-all')) { $('acc-all').checked = [...document.querySelectorAll('[data-accsel]')].every((x) => x.checked); return; }
+  if (el.dataset.mselAll) { mselSetAll(el.dataset.mselAll, el.checked); const box = $('msel'); if (box) box.innerHTML = mselBody(); return; }
   if (el.dataset.msel) {
     if (el.dataset.msel.startsWith('c:')) { mselToggle(el.dataset.msel, el.checked); const box = $('msel'); if (box) box.innerHTML = mselBody(); }
-    else { el.checked ? S.msel.add(el.dataset.msel) : S.msel.delete(el.dataset.msel); if (el.dataset.msel.startsWith('a:')) { const v = document.querySelector('.msel-fold .v'); if (v) { const n = [...S.msel].filter((k) => k.startsWith('a:')).length; v.textContent = n ? `${n} selected` : 'All accounts'; } } }
+    else { el.checked ? S.msel.add(el.dataset.msel) : S.msel.delete(el.dataset.msel); if (el.dataset.msel.startsWith('a:')) { const v = document.querySelector('.msel-fold .v'); if (v) { const n = [...S.msel].filter((k) => k.startsWith('a:')).length; v.textContent = n ? `${n} selected` : 'All accounts'; } const sa = document.querySelector('[data-msel-all="a"]'); if (sa) sa.checked = mselAllAccs(); } }
     return;
   }
   try {
