@@ -651,7 +651,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '15.9';
+const APP_VERSION = '16.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1614,7 +1614,7 @@ function reimbRows() {
 }
 function reimbLine() {
   const gs = reimbGroups(); if (!gs.length) return '';
-  return `<div class="meta reimb-line">Not counted: reimbursements still out · ${gs.map((g) => `<button class="link-plain" data-act="reimb-open" data-id="${g.id}">${esc(g.name)} ${Math.abs(g.owed) < 0.005 ? '✓' : g.owed > 0 ? money(g.owed) : `+${money(-g.owed)}`}</button>`).join(' · ')}</div>`;
+  return `<div class="meta reimb-line">Reimbursement · ${gs.map((g) => `<button class="link-plain" data-act="reimb-open" data-id="${g.id}">${esc(g.name)} ${Math.abs(g.owed) < 0.005 ? '✓' : g.owed > 0 ? money(g.owed) : `+${money(-g.owed)}`}</button>`).join(' · ')}</div>`;
 }
 function cardTbills() {
   const open = tbOpen(); const st = tbYearStats();
