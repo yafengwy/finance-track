@@ -651,7 +651,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '16.0';
+const APP_VERSION = '16.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1598,7 +1598,7 @@ function reimbGroups() {
 function reimbRows() {
   const tops = Object.values(S.cats).filter((c) => catType(c) === 'reimb' && !(S.cats[c.parentId] && catType(S.cats[c.parentId]) === 'reimb'));
   const gs = reimbGroups();
-  const shown = (v) => Math.abs(v) < 0.005 ? '<span style="color:var(--good)">✓ settled</span>' : `${plain(v > 0 ? v : -v)} <span class="rb-tag">${v > 0 ? 'not back' : 'extra back'}</span>`;
+  const shown = (v) => Math.abs(v) < 0.005 ? '<span style="color:var(--good)">✓ Settled</span>' : `${plain(v > 0 ? v : -v)} <span class="rb-tag">${v > 0 ? 'not back' : 'extra back'}</span>`;
   return tops.map((top) => {
     const mine = gs.filter((g) => g.cat.id === top.id || S.cats[g.cat.id]?.parentId === top.id);
     const owed = mine.reduce((n, g) => n + g.owed, 0);
