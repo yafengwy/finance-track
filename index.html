@@ -651,7 +651,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '15.8';
+const APP_VERSION = '15.9';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1578,6 +1578,7 @@ function tbYearStats() {
 }
 // ---- Reimbursements: money you paid for someone and are waiting to get back. All time, not per period. ----
 // Paying out is +amount (money out), getting it back is −amount, so what's still owed = the sum of amounts.
+const REIMB_START = '2026-09-27'; // reimbursements are counted from this day on; everything before is treated as settled
 function reimbGroups() {
   const tops = Object.values(S.cats).filter((c) => catType(c) === 'reimb' && !(S.cats[c.parentId] && catType(S.cats[c.parentId]) === 'reimb'));
   const out = [];
@@ -1589,17 +1590,10 @@ function reimbGroups() {
     const self = S.txs.filter((t) => t.categoryId === top.id);
     if (self.length) out.push({ id: '=' + top.id, name: `General – ${top.name}`, cat: top, txs: self });
   });
-  out.forEach((g) => { g.owed = g.txs.reduce((n, t) => n + t.amount, 0); });
+  out.forEach((g) => { g.txs = g.txs.filter((t) => t.date >= REIMB_START); g.owed = g.txs.reduce((n, t) => n + t.amount, 0); });
   return out;
 }
 // Reimbursements still out, per person (all time), shown at the bottom of Income & Expenses and Spending by Category
-function reimbVal(v) { return Math.abs(v) < 0.005 ? '<span style="color:var(--good)">Settled ✓</span>' : v > 0 ? `<span class="num">${money(v)}</span>` : `<span class="num" style="color:var(--good)">+${money(-v)} extra back</span>`; }
-function reimbSection() {
-  const gs = reimbGroups(); if (!gs.length) return '';
-  return `<div><div class="sec-head" style="margin-top:8px"><span>Reimbursements · not back yet</span><span>all time</span></div>
-    ${gs.map((g) => `<button class="tb-row" data-act="reimb-open" data-id="${g.id}">${catIcon(g.cat)}<span class="mid"><span style="font-size:15px">${esc(g.name)}</span></span><span class="r">${reimbVal(g.owed)}</span></button>`).join('')}
-    ${S.loadAll ? '' : `<button class="link-btn" data-act="reimb-all" style="align-self:flex-start;padding:6px 0">Include records before ${loadedSince().slice(0, 4)}</button>`}</div>`;
-}
 // Income & Expenses: the reimbursable category as the last row, same look as the others; tap to see each person
 function reimbRows() {
   const tops = Object.values(S.cats).filter((c) => catType(c) === 'reimb' && !(S.cats[c.parentId] && catType(S.cats[c.parentId]) === 'reimb'));
@@ -1614,7 +1608,7 @@ function reimbRows() {
       : `<button class="cat-btn" data-act="reimb-open" data-id="${mine[0]?.id || top.id}">${inner}</button>`;
     const subs = open ? `<div class="subs">${mine.map((g) => `<div class="sub${Math.abs(g.owed) < 0.005 ? ' zero' : ''}"><span class="xp-sp"></span><button class="sub-btn" data-act="reimb-open" data-id="${g.id}"><span class="n">${esc(g.name)}</span><span class="num rb-amt">${shown(g.owed)}</span></button></div>`).join('')}
       <button class="link-btn all-rec" data-act="reimb-open" data-id="all:${top.id}">All ${esc(top.name)} records ›</button>
-      ${S.loadAll ? '' : `<button class="link-btn all-rec" data-act="reimb-all">Include records before ${loadedSince().slice(0, 4)} ›</button>`}</div>` : '';
+</div>` : '';
     return `<div class="cat-row${open ? ' open' : ''}"><div class="cat-line">${main}</div>${subs}</div>`;
   }).join('');
 }
@@ -3396,9 +3390,8 @@ document.addEventListener('click', async (e) => {
       case 'acc': sheetAccount(id); break;
       case 'card-settings': sheetCard(el.dataset.card); break;
       case 'go-tbills': closeSheet(); go('#/tbills'); break;
-      case 'reimb-open': { if (id.startsWith('all:')) { const top = S.cats[id.slice(4)]; const ids = new Set([top.id, ...descendants(top.id)]); const txs = S.txs.filter((t) => ids.has(t.categoryId)); sheetRecords({ title: top.name, period: `Not back ${money(txs.reduce((n, t) => n + t.amount, 0))} · all time`, ids: txs.map((t) => t.id), sort: 'date_desc' }); break; }
-        const g = reimbGroups().find((x) => x.id === id); if (g) sheetRecords({ title: g.name, period: `Not back ${money(g.owed)} · all time`, ids: g.txs.map((t) => t.id), sort: 'date_desc' }); break; }
-      case 'reimb-all': setLoadAll(true); break;
+      case 'reimb-open': { if (id.startsWith('all:')) { const top = S.cats[id.slice(4)]; const ids = new Set([top.id, ...descendants(top.id)]); const txs = S.txs.filter((t) => ids.has(t.categoryId) && t.date >= REIMB_START); sheetRecords({ title: top.name, period: `Not back ${money(txs.reduce((n, t) => n + t.amount, 0))} · since ${mdy(REIMB_START)}`, ids: txs.map((t) => t.id), sort: 'date_desc' }); break; }
+        const g = reimbGroups().find((x) => x.id === id); if (g) sheetRecords({ title: g.name, period: `Not back ${money(g.owed)} · since ${mdy(REIMB_START)}`, ids: g.txs.map((t) => t.id), sort: 'date_desc' }); break; }
       case 'tb-view': sheetTbView(); break;
       case 'tb-view-set': localStorage.setItem(el.dataset.k, el.dataset.v); render(); sheetTbView(); break;
       case 'tb-tab': S.tbTab = el.dataset.v; render(); break;
