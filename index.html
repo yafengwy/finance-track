@@ -150,6 +150,7 @@ button { cursor: pointer; }
 .tb-bal + .tb-line { border-top: 0; }
 .tb-gh .nw-st { height: 20px; }
 .tb-gh:has(.tb-tot) .nw-st { height: auto; align-self: stretch; margin: 2px 0; } /* bar spans the name and Total lines */
+.tb-gh:has(.tb-tot) { margin-bottom: 6px; } /* a bit more room under Total */
 .tb-gh .n { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; line-height: 1.25; }
 .tb-gh .n .meta { white-space: nowrap; } /* a long name wraps its ··mask to a 2nd line instead of cutting the name */
 .tb-ghr { flex-shrink: 0; }
@@ -646,7 +647,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '15.3';
+const APP_VERSION = '15.4';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
