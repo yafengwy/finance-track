@@ -315,12 +315,12 @@ input.row-select { direction: ltr; }
 .donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; padding: 0 56px; }
 .dn-name { font-size: 13px; color: var(--sub); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dn-val { font-size: 20px; font-weight: 600; }
-.legend-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 14px; padding: 0 4px; }
-.legend { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; border: 0; background: none; padding: 0 6px; border-radius: 8px; font-size: 14px; color: var(--text); }
-.legend .n { white-space: normal; text-align: left; }
+.legend-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 8px; padding: 0; }
+.legend { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; border: 0; background: none; padding: 0 4px; border-radius: 7px; font-size: 13px; color: var(--text); }
+.legend .n { white-space: nowrap; text-align: left; }
 .legend .sw { border-radius: 50%; }
 .legend[aria-pressed="true"] { background: var(--bg); }
-.legend .sw { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.legend .sw { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .trend { width: 100%; height: auto; display: block; }
 .legend-inline { display: flex; gap: 16px; font-size: 12px; color: var(--sub); }
 .legend-inline span { display: inline-flex; align-items: center; gap: 6px; }
@@ -651,7 +651,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '16.3';
+const APP_VERSION = '16.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -734,8 +734,19 @@ function rangeOf(p) {
     default: return [ymd(new Date(y, m, 1)), ymd(now)];
   }
 }
+// The period to compare with ("vs prior"): the same stretch one step back.
+// Starts on Jan 1 (This year, Last year) → same dates a year earlier. Starts on the 1st (This month, Last month,
+// last 6/12 months) → same days that many months earlier. Anything else → the same number of days just before.
+function shiftMonths(d, n) { const x = new Date(d.getFullYear(), d.getMonth() + n, 1); const last = new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate(); x.setDate(Math.min(d.getDate(), last)); return x; }
 function prevRange([from, to]) {
   const f = parseYmd(from); const t = parseYmd(to);
+  if (f.getDate() === 1) {
+    const endMonth = t.getDate() === new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate(); // range ends on a month's last day
+    const n = f.getMonth() === 0 ? 12 : (t.getFullYear() - f.getFullYear()) * 12 + t.getMonth() - f.getMonth() + 1;
+    const pf = shiftMonths(f, -n); let pt = shiftMonths(t, -n);
+    if (endMonth) pt = new Date(pt.getFullYear(), pt.getMonth() + 1, 0); // full months compare with full months
+    return [ymd(pf), ymd(pt)];
+  }
   const days = Math.round((t - f) / 86400000) + 1;
   return [ymd(addDays(f, -days)), ymd(addDays(f, -1))];
 }
