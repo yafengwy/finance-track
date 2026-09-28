@@ -142,7 +142,7 @@ button { cursor: pointer; }
 .tb-list .tb-line:has(.nw-st) { padding-left: 0; }
 .tb-tools { display: inline-flex; align-items: center; gap: 6px; }
 .tb-sum { padding: 8px 4px 0; }
-.reimb-line { padding-top: 10px; border-top: 1px solid var(--line); line-height: 1.5; }
+.reimb-line { margin-top: -6px; line-height: 1.5; }
 .reimb-line .link-plain { color: var(--sub); font-size: 12px; text-decoration: underline dotted; }
 .tb-bal { padding: 0 0 0 12px; margin: -2px 0 0; line-height: 1.25; }
 .tb-ghr { text-align: right; line-height: 1.35; }
@@ -649,7 +649,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '15.6';
+const APP_VERSION = '15.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1333,8 +1333,7 @@ function cardDetail() {
     <div class="row-between"><div class="big num" style="font-size:28px">${money(s2.income - s2.expense)}</div>
       ${ch === null ? '' : `<span style="font-size:13px;color:var(${ch <= 0 ? '--good' : '--bad'})">Expenses ${ch > 0 ? '+' : ''}${ch}% vs prior</span>`}</div>
     <div><div class="sec-head"><span>Income</span><span class="num">${plain(s2.income)}</span></div>${section('income')}
-    <div class="sec-head" style="margin-top:8px"><span>Expenses</span><span class="num">${plain(-s2.expense)}</span></div>${section('expense')}</div>
-    ${reimbSection()}
+    <div class="sec-head" style="margin-top:8px"><span>Expenses</span><span class="num">${plain(-s2.expense)}</span></div>${section('expense')}${reimbRows()}</div>
   </section>`;
   return detail;
 }
@@ -1425,15 +1424,14 @@ function cardStructure() {
     : sorted.slice(0, 5).map((t) => txRowHtml(t)).join('') + (sorted.length ? `<button class="link-btn show-more" data-act="show-more">Show more (${sorted.length})</button>` : '');
   S.spendMore = { title: sel ? sel.name : drill ? drill.name : 'All expenses', period: periodLabel(getPeriod('structure')), ids: sorted.map((t) => t.id) };
   return `<section class="card">${cardHead('Spending by Category', 'structure')}
-    ${posTotal ? `<div class="row-between"><div class="big num" style="font-size:26px">${money(total)}</div>${ch === null ? '' : `<span style="font-size:13px;color:var(${ch <= 0 ? '--good' : '--bad'})">${ch > 0 ? '+' : ''}${ch}% vs prior</span>`}</div>
+    ${posTotal ? `<div class="row-between"><div class="big num" style="font-size:26px">${money(total)}</div>${ch === null ? '' : `<span style="font-size:13px;color:var(${ch <= 0 ? '--good' : '--bad'})">${ch > 0 ? '+' : ''}${ch}% vs prior</span>`}</div>${reimbLine()}
     <div class="donut-wrap"><svg viewBox="0 0 180 180" class="donut" role="img" aria-label="Expenses by category">${arcs}</svg><div class="donut-center">${center}</div></div>
     ${deeper || back ? `<div class="center" style="gap:8px;padding:0">${back}${deeper}</div>` : ''}
     <div class="legend-list">${legend}</div>
     <div class="sec-head">Trend${sel ? ` · ${esc(sel.name)}` : ''}</div>
     ${barChart(bs, vals, m.focusColor, { act: 'bar-sel', sel: bi >= 0 ? bi : null })}
     ${listHead}
-    ${listRows}` : '<div class="meta">No expenses in this period</div>'}
-    ${reimbLine()}
+    ${listRows}` : `<div class="meta">No expenses in this period</div>${reimbLine()}`}
   </section>`;
 }
 const SORTS = { date_desc: 'Date: newest first', date_asc: 'Date: oldest first', amt_desc: 'Amount: largest first', amt_asc: 'Amount: smallest first' };
@@ -1599,6 +1597,24 @@ function reimbSection() {
   return `<div><div class="sec-head" style="margin-top:8px"><span>Reimbursements · not back yet</span><span>all time</span></div>
     ${gs.map((g) => `<button class="tb-row" data-act="reimb-open" data-id="${g.id}">${catIcon(g.cat)}<span class="mid"><span style="font-size:15px">${esc(g.name)}</span></span><span class="r">${reimbVal(g.owed)}</span></button>`).join('')}
     ${S.loadAll ? '' : `<button class="link-btn" data-act="reimb-all" style="align-self:flex-start;padding:6px 0">Include records before ${loadedSince().slice(0, 4)}</button>`}</div>`;
+}
+// Income & Expenses: the reimbursable category as the last row, same look as the others; tap to see each person
+function reimbRows() {
+  const tops = Object.values(S.cats).filter((c) => catType(c) === 'reimb' && !(S.cats[c.parentId] && catType(S.cats[c.parentId]) === 'reimb'));
+  const gs = reimbGroups();
+  const shown = (v) => Math.abs(v) < 0.005 ? '<span style="color:var(--good)">✓</span>' : plain(v > 0 ? v : -v) + (v < 0 ? ' back' : '');
+  return tops.map((top) => {
+    const mine = gs.filter((g) => g.cat.id === top.id || S.cats[g.cat.id]?.parentId === top.id);
+    const owed = mine.reduce((n, g) => n + g.owed, 0);
+    const key = `reimb:${top.id}`; const hasSubs = mine.length > 1 || subsOf(top.id).length > 0; const open = hasSubs && S.expanded.has(key);
+    const inner = `${catIcon(top)}<span class="n">${esc(top.name)}</span><span class="a num">${shown(owed)}</span><span class="p" style="color:var(--sub);font-size:11px">not back</span>`;
+    const main = hasSubs ? `<button class="cat-btn" data-act="toggle" data-key="${key}" aria-expanded="${open}">${inner}</button>`
+      : `<button class="cat-btn" data-act="reimb-open" data-id="${mine[0]?.id || top.id}">${inner}</button>`;
+    const subs = open ? `<div class="subs">${mine.map((g) => `<div class="sub${Math.abs(g.owed) < 0.005 ? ' zero' : ''}"><span class="xp-sp"></span><button class="sub-btn" data-act="reimb-open" data-id="${g.id}"><span class="n">${esc(g.name)}</span><span class="num">${shown(g.owed)}</span><span class="p"></span></button></div>`).join('')}
+      <button class="link-btn all-rec" data-act="reimb-open" data-id="all:${top.id}">All ${esc(top.name)} records ›</button>
+      ${S.loadAll ? '' : `<button class="link-btn all-rec" data-act="reimb-all">Include records before ${loadedSince().slice(0, 4)} ›</button>`}</div>` : '';
+    return `<div class="cat-row${open ? ' open' : ''}"><div class="cat-line">${main}</div>${subs}</div>`;
+  }).join('');
 }
 function reimbLine() {
   const gs = reimbGroups(); if (!gs.length) return '';
@@ -3378,7 +3394,8 @@ document.addEventListener('click', async (e) => {
       case 'acc': sheetAccount(id); break;
       case 'card-settings': sheetCard(el.dataset.card); break;
       case 'go-tbills': closeSheet(); go('#/tbills'); break;
-      case 'reimb-open': { const g = reimbGroups().find((x) => x.id === id); if (g) sheetRecords({ title: g.name, period: `Owed ${money(g.owed)}`, ids: g.txs.map((t) => t.id), sort: 'date_desc' }); break; }
+      case 'reimb-open': { if (id.startsWith('all:')) { const top = S.cats[id.slice(4)]; const ids = new Set([top.id, ...descendants(top.id)]); const txs = S.txs.filter((t) => ids.has(t.categoryId)); sheetRecords({ title: top.name, period: `Not back ${money(txs.reduce((n, t) => n + t.amount, 0))} · all time`, ids: txs.map((t) => t.id), sort: 'date_desc' }); break; }
+        const g = reimbGroups().find((x) => x.id === id); if (g) sheetRecords({ title: g.name, period: `Not back ${money(g.owed)} · all time`, ids: g.txs.map((t) => t.id), sort: 'date_desc' }); break; }
       case 'reimb-all': setLoadAll(true); break;
       case 'tb-view': sheetTbView(); break;
       case 'tb-view-set': localStorage.setItem(el.dataset.k, el.dataset.v); render(); sheetTbView(); break;
