@@ -651,7 +651,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '16.1';
+const APP_VERSION = '16.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -665,7 +665,9 @@ const TILE_COLORS = ['#1E3A8A', '#2563EB', '#6D28D9', '#B91C1C', '#475569', '#C2
   '#A1A1AA', '#EAB308', '#65A30D']; // + light grey, soft yellow, grass green
 const TILE_DEFAULTS = 10; // accounts without a chosen color cycle through the first 10 only, so adding colors never repaints them
 const PERIOD_LABEL = { this_month: 'This month', last_month: 'Last month', this_year: 'This year', last_year: 'Last year', custom: 'Custom' };
-const DEFAULT_PERIOD = { trend: 'this_year' };
+const DEFAULT_PERIOD = { cashflow: 'this_month', detail: 'this_year', structure: 'this_month', trend: 'this_year' };
+// one-time: drop the periods saved before these defaults, so the cards start from them
+try { if (!localStorage.getItem('periodDefaults2')) { ['cashflow', 'detail', 'structure'].forEach((c) => localStorage.removeItem('period:' + c)); localStorage.setItem('periodDefaults2', '1'); } } catch { /* storage off */ }
 
 // ---------- helpers ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
