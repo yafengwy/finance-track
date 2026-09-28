@@ -142,6 +142,8 @@ button { cursor: pointer; }
 .tb-list .tb-line:has(.nw-st) { padding-left: 0; }
 .tb-tools { display: inline-flex; align-items: center; gap: 6px; }
 .tb-sum { padding: 8px 4px 0; }
+.reimb-line { padding-top: 10px; border-top: 1px solid var(--line); line-height: 1.5; }
+.reimb-line .link-plain { color: var(--sub); font-size: 12px; text-decoration: underline dotted; }
 .tb-bal { padding: 0 0 0 12px; margin: -2px 0 0; line-height: 1.25; }
 .tb-ghr { text-align: right; line-height: 1.35; }
 .tb-gh .n .tb-tot { font-size: 13px; font-weight: 400; color: var(--sub); margin-top: 1px; }
@@ -647,7 +649,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '15.5';
+const APP_VERSION = '15.6';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -686,7 +688,7 @@ function topOf(cat) { let c = cat; while (c && c.parentId && S.cats[c.parentId])
 function lvl2Of(cat) { let c = cat; if (!c || !c.parentId) return null; while (c.parentId && S.cats[c.parentId]?.parentId) c = S.cats[c.parentId]; return c; }
 function depthOf(cat) { let d = 0; let c = cat; while (c && c.parentId && S.cats[c.parentId]) { c = S.cats[c.parentId]; d++; } return d; }
 // Each category is Income or Expense; a subcategory without its own setting follows its parent.
-function catType(cat) { let c = cat; while (c) { if (c.type === 'income' || c.type === 'expense') return c.type; c = c.parentId ? S.cats[c.parentId] : null; } return 'expense'; }
+function catType(cat) { let c = cat; while (c) { if (c.type === 'income' || c.type === 'expense' || c.type === 'reimb') return c.type; c = c.parentId ? S.cats[c.parentId] : null; } return 'expense'; }
 function sideOf(t) { const c = S.cats[t.categoryId]; return c ? catType(c) : (t.amount < 0 ? 'income' : 'expense'); }
 function descendants(id) { return subsOf(id).flatMap((s) => [s.id, ...descendants(s.id)]); }
 function tops() { return Object.values(S.cats).filter((c) => !c.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
@@ -795,7 +797,7 @@ function stats([from, to], spec) {
   for (const t of S.txs) {
     if (t.date < from || t.date > to || t.isTransfer || !ok(t)) continue;
     const c = S.cats[t.categoryId]; const top = topOf(c);
-    const side = sideOf(t);
+    const side = sideOf(t); if (side === 'reimb') continue; // reimbursable: tracked on its own card, not income or spending
     const key = `${side}:${top ? top.id : 'unknown'}`;
     const v = side === 'income' ? -t.amount : t.amount;
     s[side] += v;
@@ -1332,6 +1334,7 @@ function cardDetail() {
       ${ch === null ? '' : `<span style="font-size:13px;color:var(${ch <= 0 ? '--good' : '--bad'})">Expenses ${ch > 0 ? '+' : ''}${ch}% vs prior</span>`}</div>
     <div><div class="sec-head"><span>Income</span><span class="num">${plain(s2.income)}</span></div>${section('income')}
     <div class="sec-head" style="margin-top:8px"><span>Expenses</span><span class="num">${plain(-s2.expense)}</span></div>${section('expense')}</div>
+    ${reimbSection()}
   </section>`;
   return detail;
 }
@@ -1430,6 +1433,7 @@ function cardStructure() {
     ${barChart(bs, vals, m.focusColor, { act: 'bar-sel', sel: bi >= 0 ? bi : null })}
     ${listHead}
     ${listRows}` : '<div class="meta">No expenses in this period</div>'}
+    ${reimbLine()}
   </section>`;
 }
 const SORTS = { date_desc: 'Date: newest first', date_asc: 'Date: oldest first', amt_desc: 'Amount: largest first', amt_asc: 'Amount: smallest first' };
@@ -1571,6 +1575,34 @@ function tbYearStats() {
   const interest = done.reduce((n, t) => n + (t.gotBack - t.amount), 0);
   const apys = done.map((t) => tbApy(t)).filter((v) => v != null);
   return { interest, apy: apys.length ? apys.reduce((a, b) => a + b, 0) / apys.length : null };
+}
+// ---- Reimbursements: money you paid for someone and are waiting to get back. All time, not per period. ----
+// Paying out is +amount (money out), getting it back is −amount, so what's still owed = the sum of amounts.
+function reimbGroups() {
+  const tops = Object.values(S.cats).filter((c) => catType(c) === 'reimb' && !(S.cats[c.parentId] && catType(S.cats[c.parentId]) === 'reimb'));
+  const out = [];
+  tops.forEach((top) => {
+    const kids = subsOf(top.id);
+    const under = (id) => new Set([id, ...descendants(id)]);
+    if (!kids.length) { const ids = under(top.id); out.push({ id: top.id, name: top.name, cat: top, txs: S.txs.filter((t) => ids.has(t.categoryId)) }); return; }
+    kids.forEach((k) => { const ids = under(k.id); out.push({ id: k.id, name: k.name, cat: k, txs: S.txs.filter((t) => ids.has(t.categoryId)) }); });
+    const self = S.txs.filter((t) => t.categoryId === top.id);
+    if (self.length) out.push({ id: '=' + top.id, name: `General – ${top.name}`, cat: top, txs: self });
+  });
+  out.forEach((g) => { g.owed = g.txs.reduce((n, t) => n + t.amount, 0); });
+  return out;
+}
+// Reimbursements still out, per person (all time), shown at the bottom of Income & Expenses and Spending by Category
+function reimbVal(v) { return Math.abs(v) < 0.005 ? '<span style="color:var(--good)">Settled ✓</span>' : v > 0 ? `<span class="num">${money(v)}</span>` : `<span class="num" style="color:var(--good)">+${money(-v)} extra back</span>`; }
+function reimbSection() {
+  const gs = reimbGroups(); if (!gs.length) return '';
+  return `<div><div class="sec-head" style="margin-top:8px"><span>Reimbursements · not back yet</span><span>all time</span></div>
+    ${gs.map((g) => `<button class="tb-row" data-act="reimb-open" data-id="${g.id}">${catIcon(g.cat)}<span class="mid"><span style="font-size:15px">${esc(g.name)}</span></span><span class="r">${reimbVal(g.owed)}</span></button>`).join('')}
+    ${S.loadAll ? '' : `<button class="link-btn" data-act="reimb-all" style="align-self:flex-start;padding:6px 0">Include records before ${loadedSince().slice(0, 4)}</button>`}</div>`;
+}
+function reimbLine() {
+  const gs = reimbGroups(); if (!gs.length) return '';
+  return `<div class="meta reimb-line">Not counted: reimbursements still out · ${gs.map((g) => `<button class="link-plain" data-act="reimb-open" data-id="${g.id}">${esc(g.name)} ${Math.abs(g.owed) < 0.005 ? '✓' : g.owed > 0 ? money(g.owed) : `+${money(-g.owed)}`}</button>`).join(' · ')}</div>`;
 }
 function cardTbills() {
   const open = tbOpen(); const st = tbYearStats();
@@ -1893,7 +1925,8 @@ function cardTrend() {
   for (const t of S.txs) {
     if (t.isTransfer || !ok(t)) continue;
     const i = idx(t.date); if (i < 0) continue;
-    if (sideOf(t) === 'income') bs[i].inc += -t.amount; else bs[i].exp += t.amount;
+    const sd = sideOf(t); if (sd === 'reimb') continue;
+    if (sd === 'income') bs[i].inc += -t.amount; else bs[i].exp += t.amount;
   }
   const cum = S.trendMode === 'cumulative';
   const net = bs.map((b) => b.inc - b.exp);
@@ -2070,7 +2103,7 @@ function recMatcher() {
     && catOk(t)
     && (!fm || fm(t));
 }
-function signed(t) { return t.isTransfer ? 0 : -t.amount; }
+function signed(t) { return t.isTransfer || sideOf(t) === 'reimb' ? 0 : -t.amount; } // Records totals leave out transfers and reimbursable money
 // Search in a sheet over the current page, so the list behind keeps its place
 function searchRows() {
   const q = (S.sq || '').trim().toLowerCase();
@@ -2226,7 +2259,9 @@ function viewCat(id) {
       <button class="set-item" data-act="rename" data-id="${id}"><span class="n">Name</span><span class="v">${esc(c.name)}</span>${icon('chevron_right')}</button>
       <div class="set-item"><span class="n">Type${c.parentId && !c.type ? '<div class="meta">Same as parent</div>' : ''}</span><div class="seg">
         <button data-act="cat-type" data-id="${id}" data-type="expense" aria-pressed="${catType(c) === 'expense'}">Expense</button>
-        <button data-act="cat-type" data-id="${id}" data-type="income" aria-pressed="${catType(c) === 'income'}">Income</button></div></div>
+        <button data-act="cat-type" data-id="${id}" data-type="income" aria-pressed="${catType(c) === 'income'}">Income</button>
+        <button data-act="cat-type" data-id="${id}" data-type="reimb" aria-pressed="${catType(c) === 'reimb'}">Reimbursable</button></div></div>
+      ${catType(c) === 'reimb' ? '<div class="meta" style="padding:6px 14px 10px">Not counted as spending or income. What you paid and what came back are added up, any year, on the Reimbursements card.</div>' : ''}
       <label class="set-item"><span class="n">Show</span><input type="checkbox" class="switch" data-act="cat-show" data-id="${id}" ${c.hidden ? '' : 'checked'}></label>
     </div>
     ${canHaveSubs ? `<div class="sec-head">Subcategories</div>
@@ -3343,6 +3378,8 @@ document.addEventListener('click', async (e) => {
       case 'acc': sheetAccount(id); break;
       case 'card-settings': sheetCard(el.dataset.card); break;
       case 'go-tbills': closeSheet(); go('#/tbills'); break;
+      case 'reimb-open': { const g = reimbGroups().find((x) => x.id === id); if (g) sheetRecords({ title: g.name, period: `Owed ${money(g.owed)}`, ids: g.txs.map((t) => t.id), sort: 'date_desc' }); break; }
+      case 'reimb-all': setLoadAll(true); break;
       case 'tb-view': sheetTbView(); break;
       case 'tb-view-set': localStorage.setItem(el.dataset.k, el.dataset.v); render(); sheetTbView(); break;
       case 'tb-tab': S.tbTab = el.dataset.v; render(); break;
