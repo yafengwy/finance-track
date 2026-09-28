@@ -647,7 +647,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '15.4';
+const APP_VERSION = '15.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1356,12 +1356,16 @@ function spendingModel(spec, r) {
     const name = drill ? (k === '_self' ? `General – ${drill.name}` : (c?.name || 'Deleted')) : (c ? c.name : 'Uncategorized');
     const hasSubs = !!c && k !== '_self' && k !== 'unknown' && txs.some((t) => t.categoryId !== c.id); // records sit in its subcategories: can go deeper
     return { id: k, name, value: txs.reduce((a, t) => a + t.amount, 0), color: c ? catColor(c) : '#C7C7CC', cat: c, txs, hasSubs };
-  }).filter((g) => g.value > 0.004).sort((a, b) => b.value - a.value);
-  if (drill) segs.forEach((g, i) => { g.color = shade(drill.color || catColor(drill) || '#8E8E93', i, segs.length); });
-  const sel = segs.find((g) => g.id === S.donutSel) || null;
+  }).sort((a, b) => b.value - a.value);
+  // Groups whose refunds outweigh their spending (net below zero) can't be a slice, but they still count in the total,
+  // so the total matches Cash Flow's Expenses
+  const negs = segs.filter((g) => g.value < -0.004);
+  const pos = segs.filter((g) => g.value > 0.004);
+  if (drill) pos.forEach((g, i) => { g.color = shade(drill.color || catColor(drill) || '#8E8E93', i, pos.length); });
+  const sel = [...pos, ...negs].find((g) => g.id === S.donutSel) || null;
   const focus = sel ? sel.txs : segs.flatMap((g) => g.txs);
   const focusColor = sel ? sel.color : drill ? (drill.color || '#3478F6') : '#3478F6';
-  return { all, drill, segs, sel, focus, focusColor, total: segs.reduce((n, g) => n + g.value, 0) };
+  return { all, drill, segs: pos, negs, sel, focus, focusColor, total: segs.reduce((n, g) => n + g.value, 0), posTotal: pos.reduce((n, g) => n + g.value, 0) };
 }
 function barChart(bs, values, color, opts = {}) {
   const n = bs.length; const W = 340; const H = opts.h || 130; const base = H - 20;
@@ -1387,19 +1391,20 @@ function cardStructure() {
   const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
   const m = spendingModel(spec, r);
   const prevTotal = spendingModel(spec, prevRange(r)).total;
-  const { segs, sel, drill, total } = m;
+  const { segs, sel, drill, total, negs, posTotal } = m;
   let off = 0;
-  const arcs = total ? segs.map((g) => {
-    const len = (g.value / total) * 100; const gap = segs.length > 1 ? 0.6 : 0; const L = Math.max(len - gap, 0.01);
+  const arcs = posTotal ? segs.map((g) => {
+    const len = (g.value / posTotal) * 100; const gap = segs.length > 1 ? 0.6 : 0; const L = Math.max(len - gap, 0.01);
     const el = `<circle cx="90" cy="90" r="64" pathLength="100" fill="none" stroke="${g.color}" stroke-width="${sel && sel.id === g.id ? 32 : 24}" opacity="${sel && sel.id !== g.id ? 0.45 : 1}"
       stroke-dasharray="${L} ${100 - L}" stroke-dashoffset="${-off}" transform="rotate(-90 90 90)" data-act="donut-sel" data-id="${g.id}" style="cursor:pointer"><title>${esc(g.name)}</title></circle>`;
     off += len; return el;
   }).join('') : '';
   const center = sel
-    ? `<div class="dn-name">${esc(sel.name)}</div><div class="dn-val num">${money(sel.value)}</div><div class="meta">${Math.round((sel.value / total) * 100)}%</div>`
+    ? `<div class="dn-name">${esc(sel.name)}</div><div class="dn-val num">${money(sel.value)}</div><div class="meta">${sel.value < 0 ? 'refunds exceed spending' : Math.round((sel.value / total) * 100) + '%'}</div>`
     : `<div class="dn-name">${drill ? esc(drill.name) : 'All expenses'}</div><div class="dn-val num">${money(total)}</div>`;
   const ch = drill ? null : pctChange(total, prevTotal);
-  const legend = segs.map((g) => `<button class="legend" data-act="donut-sel" data-id="${g.id}" aria-pressed="${sel?.id === g.id}"><span class="sw" style="background:${g.color}"></span><span class="n">${esc(g.name)}</span></button>`).join('');
+  const legend = segs.map((g) => `<button class="legend" data-act="donut-sel" data-id="${g.id}" aria-pressed="${sel?.id === g.id}"><span class="sw" style="background:${g.color}"></span><span class="n">${esc(g.name)}</span></button>`).join('')
+    + negs.map((g) => `<button class="legend" data-act="donut-sel" data-id="${g.id}" aria-pressed="${sel?.id === g.id}"><span class="sw" style="background:none;border:2px solid ${g.color}"></span><span class="n">${esc(g.name)} <span class="num" style="color:var(--good)">${money(g.value)}</span></span></button>`).join('');
   const deeper = sel?.hasSubs ? `<button class="pill-btn" data-act="donut-drill" data-id="${sel.id}">${icon('zoom_in')}Go deeper</button>` : '';
   const up = drill && S.cats[drill.parentId];
   const back = drill ? `<button class="pill-btn" data-act="donut-back">${icon('chevron_left')}${up ? esc(up.name) : 'All categories'}</button>` : '';
@@ -1417,7 +1422,7 @@ function cardStructure() {
     : sorted.slice(0, 5).map((t) => txRowHtml(t)).join('') + (sorted.length ? `<button class="link-btn show-more" data-act="show-more">Show more (${sorted.length})</button>` : '');
   S.spendMore = { title: sel ? sel.name : drill ? drill.name : 'All expenses', period: periodLabel(getPeriod('structure')), ids: sorted.map((t) => t.id) };
   return `<section class="card">${cardHead('Spending by Category', 'structure')}
-    ${total ? `<div class="row-between"><div class="big num" style="font-size:26px">${money(total)}</div>${ch === null ? '' : `<span style="font-size:13px;color:var(${ch <= 0 ? '--good' : '--bad'})">${ch > 0 ? '+' : ''}${ch}% vs prior</span>`}</div>
+    ${posTotal ? `<div class="row-between"><div class="big num" style="font-size:26px">${money(total)}</div>${ch === null ? '' : `<span style="font-size:13px;color:var(${ch <= 0 ? '--good' : '--bad'})">${ch > 0 ? '+' : ''}${ch}% vs prior</span>`}</div>
     <div class="donut-wrap"><svg viewBox="0 0 180 180" class="donut" role="img" aria-label="Expenses by category">${arcs}</svg><div class="donut-center">${center}</div></div>
     ${deeper || back ? `<div class="center" style="gap:8px;padding:0">${back}${deeper}</div>` : ''}
     <div class="legend-list">${legend}</div>
