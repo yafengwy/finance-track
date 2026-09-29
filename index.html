@@ -135,6 +135,9 @@ button { cursor: pointer; }
 .nw-hist .inv-tip { min-height: 30px; } /* room for the note line, so the chart doesn't jump when a dot is tapped */
 .nw-hist .inv-wrap { margin-top: 1.5px; }
 .nw-hist > .meta:not(.inv-tip) { margin-top: 8px; }
+.nw-pick-per { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+#rbc-list .set-item .n { min-width: 0; }
+.nw-pick-t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; } /* long bank descriptions: two lines at most */
 .nw-tiprow { display: flex; align-items: center; gap: 4px; }
 .nw-tipbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 5.5px 10px; border: 0; border-radius: 10px; background: rgba(255,149,0,.12); font: inherit; font-size: 13px; line-height: 1.35; text-align: left; color: var(--text); }
 .nw-tipbtn .nw-n { flex: none; width: 18px; height: 18px; border-radius: 50%; background: #FF9500; color: #fff; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
@@ -707,7 +710,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '18.0';
+const APP_VERSION = '18.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2156,9 +2159,9 @@ function sheetNwPick() {
   nwCapture();
   const from = invStart(nwPeriod()); const to = ymd(new Date());
   const list = S.txs.filter((t) => !t.isTransfer && t.date >= from && t.date <= to).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
-  const rows = list.map((t) => `<button class="set-item" data-act="nw-pick" data-id="${t.id}" data-bcl="${esc(`${txTitle(t)} ${txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}">${catIcon(S.cats[t.categoryId])}<span class="n">${esc(txTitle(t))}<div class="meta">${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span><span class="v num">${money(Math.abs(t.amount))}</span></button>`).join('');
+  const rows = list.map((t) => `<button class="set-item" data-act="nw-pick" data-id="${t.id}" data-bcl="${esc(`${txTitle(t)} ${txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}">${catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span><span class="v num" style="flex:none">${money(Math.abs(t.amount))}</span></button>`).join('');
   openSheet(`<h3>Choose record</h3>
-    <div class="meta">${INV_PERIODS[nwPeriod()]}, the same period as the chart. Biggest first.</div>
+    <div class="nw-pick-per">${INV_PERIODS[nwPeriod()]}</div>
     <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search name, amount or date" autocomplete="off" aria-label="Search records"></div>
     <div class="set-list" id="rbc-list">${rows || '<div class="empty">No records loaded</div>'}</div>`);
   S.sheetBack = () => sheetNwNote(S.nwDraft?.id || null);
