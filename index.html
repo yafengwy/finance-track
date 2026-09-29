@@ -435,7 +435,8 @@ input.row-select { direction: ltr; }
 .subs3 { padding-left: 36px; }
 .rec-page { padding-bottom: 150px; }
 .rec-sum { padding: 0 4px; }
-#rec-results > .rec-sum:has(+ div > .yr-sec) { margin-bottom: -12px; } /* half the space above the first day header */
+#rec-results > .rec-sum:has(+ div > .yr-sec) { margin-bottom: -12px; }
+.rec-search + #rec-results { margin-top: -11px; } /* half the space between the search box and the chips */ /* half the space above the first day header */
 .day.row-between { font-weight: 600; }
 .rec-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; max-width: 640px; margin: 0 auto; background: rgba(255,255,255,.96); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border-radius: 18px 18px 0 0; box-shadow: 0 -4px 20px rgba(0,0,0,.08); padding: 4px 16px calc(12px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 6px; }
 .dock-grab { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 2px; }
@@ -726,7 +727,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '19.6';
+const APP_VERSION = '19.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2035,20 +2036,17 @@ function firstReadings() {
   const f = {}; for (const h of S.balHist || []) for (const [id, v] of Object.entries(h.balances)) if (!(id in f) && typeof v === 'number') f[id] = v;
   return f;
 }
-function invSeries(ids, start) {
-  const today = ymd(new Date()); const first = firstReadings(); const last = {}; const pts = []; let base = null;
-  for (const h of S.balHist || []) {
-    if (h.date > today) break;
-    ids.forEach((id) => { if (typeof h.balances[id] === 'number') last[id] = h.balances[id]; });
-    const v = ids.reduce((n, id) => n + (last[id] ?? first[id] ?? S.accounts[id]?.balanceCurrent ?? 0), 0); const known = ids.some((id) => id in last);
-    if (!known) continue;
-    if (h.date < start) { base = v; continue; }
-    pts.push({ d: h.date, v });
-  }
-  if (base != null && (!pts.length || pts[0].d > start)) pts.unshift({ d: start, v: base });
-  const now = ids.reduce((n, id) => n + (S.accounts[id]?.balanceCurrent || 0), 0); // today = the live balances
-  if (pts.length && pts[pts.length - 1].d === today) pts[pts.length - 1].v = now; else pts.push({ d: today, v: now });
-  return pts;
+// Points like Net Worth: every day for "This month", otherwise the 1st, 15th and last day of each month, then today (live balances).
+// Readings are still saved every day; a date without one uses the latest reading before it.
+function invSeries(ids, k) {
+  const today = ymd(new Date()); const first = firstReadings(); const hist = S.balHist || [];
+  const firstHist = hist.find((h) => ids.some((id) => typeof h.balances[id] === 'number'))?.date || today;
+  let start = invStart(k); if (start < firstHist) start = firstHist; if (start > today) start = today;
+  return nwDates(start, today, k === 'month').map((d) => {
+    if (d === today) return { d, v: ids.reduce((n, id) => n + (S.accounts[id]?.balanceCurrent || 0), 0) };
+    const last = {}; for (const h of hist) { if (h.date > d) break; ids.forEach((id) => { if (typeof h.balances[id] === 'number') last[id] = h.balances[id]; }); }
+    return { d, v: ids.reduce((n, id) => n + (last[id] ?? first[id] ?? S.accounts[id]?.balanceCurrent ?? 0), 0) };
+  });
 }
 const kMoney = (v, step = 0) => {
   const a = Math.abs(v); const dec = (unit, d) => Math.max(d, step ? Math.min(2, Math.ceil(-Math.log10(step / unit) - 1e-9)) : 0);
@@ -2095,7 +2093,7 @@ function cardInvest() {
   const sel = invSelected(); const all = sel.length === accs.length;
   const chips = `<div class="chips inv-chips"><button class="chip" data-act="inv-acc" data-id="" aria-pressed="${all}">All</button>${accs.map((a) => `<button class="chip" data-act="inv-acc" data-id="${a.id}" aria-pressed="${!all && sel.includes(a.id)}"><span class="nw-st" style="background:${esc(accColor(a))}"></span>${esc(accName(a))}</button>`).join('')}</div>`;
   if (!S.balHist) return `<section class="card">${head}${chips}<div class="meta">Loading…</div></section>`;
-  const pts = invSeries(sel, invStart(k)); const first = pts[0]; const lastP = pts[pts.length - 1];
+  const pts = invSeries(sel, k); const first = pts[0]; const lastP = pts[pts.length - 1];
   const chg = lastP.v - first.v; const pct = first.v ? (chg / Math.abs(first.v)) * 100 : 0; const up = chg >= 0;
   const color = up ? '#34C759' : '#FF3B30';
   const since = shortDate(first.d).replace(new RegExp(`, ${new Date().getFullYear()}$`), '');
@@ -2124,11 +2122,11 @@ function invScrub(e) {
   let best = c.pts[0]; c.pts.forEach((p) => { if (Math.abs(c.X(p.d) - x) < Math.abs(c.X(best.d) - x)) best = p; });
   const px = c.X(best.d); const py = c.Y(best.v);
   $(`${k}-mark`).style.display = ''; $(`${k}-mline`).setAttribute('x1', px); $(`${k}-mline`).setAttribute('x2', px); $(`${k}-mdot`).setAttribute('cx', px); $(`${k}-mdot`).setAttribute('cy', py);
-  // Net Worth: change from the previous point (1st / 15th / month end); Investments: change from the start of the period
-  const i = c.pts.indexOf(best); const base = k === 'nw' ? c.pts[i - 1] : c.pts[0];
+  // Change from the previous point (1st / 15th / month end, or the day before in "This month")
+  const i = c.pts.indexOf(best); const base = c.pts[i - 1];
   if (!base || base === best) { $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span>`; return; }
   const d = best.v - base.v; const pc = base.v ? (d / Math.abs(base.v)) * 100 : 0;
-  const vs = k === 'nw' ? ` <span class="meta">vs ${esc(parseYmd(base.d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</span>` : '';
+  const vs = ` <span class="meta">vs ${esc(parseYmd(base.d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</span>`;
   $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span> · <span style="color:${d >= 0 ? '#34C759' : '#FF3B30'}">${money(d, true)} (${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%)</span>${vs}`;
 }
 document.addEventListener('pointerdown', invScrub);
