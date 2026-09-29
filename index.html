@@ -435,6 +435,7 @@ input.row-select { direction: ltr; }
 .subs3 { padding-left: 36px; }
 .rec-page { padding-bottom: 150px; }
 .rec-sum { padding: 0 4px; }
+#rec-results > .rec-sum:has(+ div > .yr-sec) { margin-bottom: -12px; } /* half the space above the first day header */
 .day.row-between { font-weight: 600; }
 .rec-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; max-width: 640px; margin: 0 auto; background: rgba(255,255,255,.96); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border-radius: 18px 18px 0 0; box-shadow: 0 -4px 20px rgba(0,0,0,.08); padding: 4px 16px calc(12px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 6px; }
 .dock-grab { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 2px; }
@@ -725,7 +726,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '19.4';
+const APP_VERSION = '19.5';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2433,7 +2434,7 @@ function recFilterState() { return S.rf || (S.rf = { accounts: null, types: null
 function recFilterCount() { const r = recFilterState(); return (r.accounts ? 1 : 0) + (r.types ? 1 : 0) + (r.cats || r.labels ? 1 : 0) + (r.filter ? 1 : 0); }
 // Type: money in = every + record, money out = every − record (transfers included in both), Transfers = transfers only
 const REC_TYPES = { in: ['Money in', 'arrow_downward', '#34C759'], out: ['Money out', 'arrow_upward', '#FF3B30'], transfer: ['Transfers', 'swap_horiz', '#8E8E93'] };
-function recTypeOk(t, types) { return types.includes(t.amount < 0 ? 'in' : 'out') || (t.isTransfer && types.includes('transfer')); }
+function recTypeOk(t, types, inclTr = true) { return ((inclTr || !t.isTransfer) && types.includes(t.amount < 0 ? 'in' : 'out')) || (t.isTransfer && types.includes('transfer')); }
 function recMatcher() {
   const r = recFilterState(); const p = recPeriod();
   const accs = r.accounts ? new Set(r.accounts) : null;
@@ -2447,7 +2448,7 @@ function recMatcher() {
   const fm = r.filter && S.filters[r.filter] ? specMatcher(S.filters[r.filter]) : null;
   return (t) => (p.unit === 'all' || (t.date >= p.from && t.date <= p.to))
     && (!accs || accs.has(t.accountId))
-    && (!r.types || recTypeOk(t, r.types))
+    && (!r.types || recTypeOk(t, r.types, r.typesTr !== false))
     && catOk(t)
     && (!fm || fm(t));
 }
@@ -2574,7 +2575,7 @@ function sheetRecPanel() {
   const picked = [...(r.cats || []).map(catName), ...(r.labels || []).map((id) => S.labels[id] ? '#' + S.labels[id].name : null)].filter(Boolean);
   const catTxt = !picked.length ? 'All' : picked.length <= 2 ? picked.join(', ') : `${picked.length} selected`;
   const fTxt = S.filters[r.filter]?.name || 'None';
-  const typeTxt = !r.types ? 'All' : r.types.map((k) => REC_TYPES[k][0]).join(', ');
+  const typeTxt = !r.types ? 'All' : r.types.map((k) => REC_TYPES[k][0]).join(', ') + (r.typesTr === false && r.types.some((k) => k !== 'transfer') ? ' (no transfers)' : '');
   openSheet(`<h3>Show records</h3>
     <div class="set-list">
       ${valueRow('rf-acc', glyph('account_balance_wallet', '#5856D6'), 'Accounts', esc(accTxt))}
@@ -2599,7 +2600,8 @@ function sheetRecTypes() {
   openSheet(`<h3>Type</h3>
     <div class="set-list"><label class="msel-row sel-all"><input type="checkbox" id="type-all" ${r.types ? '' : 'checked'}><span class="ci unknown">${icon('done_all')}</span><span class="n">Select all</span></label>
     ${Object.entries(REC_TYPES).map(([k, [l, ic, c]]) => `<label class="msel-row"><input type="checkbox" data-typesel="${k}" ${!r.types || r.types.includes(k) ? 'checked' : ''}>${glyph(ic, c)}<span class="n">${l}</span></label>`).join('')}</div>
-    <div class="meta" style="padding:0 4px">Money in = every record with +, Money out = every record with −, transfers included. Transfers = transfers only.</div>
+    <div class="set-list" style="margin-top:10px"><label class="set-item">${glyph('swap_horiz', '#8E8E93')}<span class="n">Include transfers in Money in and Money out</span><input type="checkbox" class="switch" id="type-tr" ${r.typesTr === false ? '' : 'checked'}></label></div>
+    <div class="meta" style="padding:0 4px">Money in = records with +, Money out = records with −. Transfers = transfers only.</div>
     ${saveBar('rf-type-save', 'Done')}`, { short: true });
 }
 function sheetRecCats() {
@@ -3889,7 +3891,7 @@ document.addEventListener('click', async (e) => {
       case 'rec-panel': sheetRecPanel(); break;
       case 'rf-acc': sheetRecAccounts(); break;
       case 'rf-type': sheetRecTypes(); break;
-      case 'rf-type-save': { const ks = [...document.querySelectorAll('[data-typesel]:checked')].map((x) => x.dataset.typesel); recFilterState().types = !ks.length || ks.length === Object.keys(REC_TYPES).length ? null : ks; (WIDE.matches ? closeSheet() : sheetRecPanel()); render(); break; }
+      case 'rf-type-save': { const ks = [...document.querySelectorAll('[data-typesel]:checked')].map((x) => x.dataset.typesel); recFilterState().typesTr = $('type-tr') ? $('type-tr').checked : true; recFilterState().types = !ks.length || ks.length === Object.keys(REC_TYPES).length ? null : ks; (WIDE.matches ? closeSheet() : sheetRecPanel()); render(); break; }
       case 'rf-cat': sheetRecCats(); break;
       case 'rf-filter': openOptions('Saved filter', [{ value: '', label: 'None', iconHtml: glyph('block', '#C7C7CC') }, ...Object.values(S.filters).sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ value: x.id, label: x.name, sub: specName(x), iconHtml: glyph('filter_alt', '#AF52DE') }))], recFilterState().filter, (v) => { recFilterState().filter = v; (WIDE.matches ? closeSheet() : sheetRecPanel()); render(); }); break;
       case 'rf-acc-save': {
