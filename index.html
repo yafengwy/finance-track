@@ -162,6 +162,9 @@ button { cursor: pointer; }
 .tb-line .tb-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .tb-line .tb-an { font-size: 13px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tb-line .tb-note { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-line:has(.tb-notes) { align-items: flex-start; }
+.tb-row:has(.tb-note) { align-items: flex-start; } /* with notes under a row, the right side stays level with the amount line */
+.tb-line:has(.tb-notes) .nw-st { margin-top: var(--tb-bar-top, 8px); }
 .tb-line .tb-notes { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 1px; } /* full notes, wrapped */
 .tb-kv-notes { align-items: flex-start; padding-top: 12px; padding-bottom: 12px; }
 .tb-kv-notes .tb-notes-full { display: block; margin-top: 4px; color: var(--sub); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.4; }
@@ -713,7 +716,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '18.2';
+const APP_VERSION = '18.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
