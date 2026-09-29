@@ -128,10 +128,19 @@ button { cursor: pointer; }
 .nw-main .ms { color: var(--sub); font-size: 18px; }
 .nw-tx { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nw-edit .ms { font-size: 18px; color: var(--sub); }
-.nw-tiprow { display: flex; align-items: center; gap: 2px; }
-.nw-tipbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 13px; text-align: left; color: var(--text); }
+/* Net Worth history: spacing between title, chips, total, change and the note line is half the usual card gap */
+.card.nw-hist { gap: 0; }
+.nw-hist .inv-chips { margin-top: 8px; margin-bottom: 11px; }
+.nw-hist .inv-chg { margin: 6.5px 0 10px; }
+.nw-hist .inv-tip { min-height: 34px; } /* room for the note line, so the chart doesn't jump when a dot is tapped */
+.nw-hist .inv-wrap { margin-top: 2px; }
+.nw-hist > .meta:not(.inv-tip) { margin-top: 8px; }
+.nw-tiprow { display: flex; align-items: center; gap: 4px; }
+.nw-tipbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 0; border-radius: 10px; background: rgba(255,149,0,.12); font: inherit; font-size: 13px; line-height: 1.35; text-align: left; color: var(--text); }
+.nw-tipbtn .nw-n { flex: none; width: 18px; height: 18px; border-radius: 50%; background: #FF9500; color: #fff; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.nw-tipbtn b { font-weight: 600; }
 .nw-tiptx { min-width: 0; }
-.nw-tiprow .nw-edit { width: 32px; height: 32px; }
+.nw-tiprow .nw-edit { width: 34px; height: 34px; flex: none; border: 0; background: none; }
 .nw-tipbtn .ms { font-size: 16px; color: var(--sub); margin-left: auto; }
 .nw-n, .nw-note .nw-n { flex: none; width: 18px; height: 18px; border-radius: 50%; background: #FF9500; color: #fff; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .nw-note .t { flex: 1; min-width: 0; }
@@ -2083,8 +2092,7 @@ function invScrub(e) {
   if (mk || (e.type === 'pointermove' && S.nwSel && k === 'nw' && !e.buttons)) {
     if (!mk) return;
     if (e.type !== 'pointerdown') return;
-    if (S.nwSel === mk.id) { nwOpenNote(mk.id); return; }
-    const n = S.chartNotes?.[mk.id]; S.nwSel = mk.id;
+    const n = S.chartNotes?.[mk.id]; S.nwSel = mk.id; $(`${k}-mark`).style.display = 'none';
     $(`${k}-tip`).innerHTML = `<span class="nw-tiprow"><button class="nw-tipbtn" data-act="nw-tip-open"><span class="nw-n">${mk.n}</span><span class="nw-tiptx"><b>${esc(shortDate(mk.d))}</b> · ${esc(n?.text || '')}${n?.amount ? ` · <span class="num">${money(n.amount)}</span>` : ''}</span>${nwNoteTx(n) ? icon('chevron_right') : ''}</button><button class="icon-btn nw-edit" data-act="nw-note" data-id="${mk.id}" aria-label="Edit note">${icon('edit')}</button></span>`;
     return;
   }
@@ -2146,9 +2154,11 @@ function nwCapture() { const d = S.nwDraft; if (!d || !$('nwn-date')) return; d.
 // Choose the record: biggest amounts first, with a search box
 function sheetNwPick() {
   nwCapture();
-  const list = S.txs.filter((t) => !t.isTransfer).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
+  const from = invStart(nwPeriod()); const to = ymd(new Date());
+  const list = S.txs.filter((t) => !t.isTransfer && t.date >= from && t.date <= to).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
   const rows = list.map((t) => `<button class="set-item" data-act="nw-pick" data-id="${t.id}" data-bcl="${esc(`${txTitle(t)} ${txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}">${catIcon(S.cats[t.categoryId])}<span class="n">${esc(txTitle(t))}<div class="meta">${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span><span class="v num">${money(Math.abs(t.amount))}</span></button>`).join('');
   openSheet(`<h3>Choose record</h3>
+    <div class="meta">${INV_PERIODS[nwPeriod()]}, the same period as the chart. Biggest first.</div>
     <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search name, amount or date" autocomplete="off" aria-label="Search records"></div>
     <div class="set-list" id="rbc-list">${rows || '<div class="empty">No records loaded</div>'}</div>`);
   S.sheetBack = () => sheetNwNote(S.nwDraft?.id || null);
@@ -2177,7 +2187,7 @@ function cardNetWorthChart(accs) {
   const head = `<div class="card-head"><div><p class="h2">Net Worth history</p><div class="meta">${INV_PERIODS[k]}</div></div>
     <span class="nw-head-btns"><button class="icon-btn" data-act="nw-note" aria-label="Add a note">${icon('add')}</button><button class="icon-btn" data-act="nw-period" aria-label="Period">${icon('more_horiz')}</button></span></div>`;
   const chips = hasBiz ? `<div class="chips inv-chips">${Object.entries(NW_SCOPES).map(([v, l]) => `<button class="chip" data-act="nw-scope" data-v="${v}" aria-pressed="${sc === v}">${l}</button>`).join('')}</div>` : '';
-  if (!S.balHist) return `<section class="card">${head}${chips}<div class="meta">Loading…</div></section>`;
+  if (!S.balHist) return `<section class="card nw-hist">${head}${chips}<div class="meta">Loading…</div></section>`;
   const pick = !hasBiz || sc === 'all' ? accs : accs.filter((a) => isBusiness(a) === (sc === 'biz'));
   const pts = nwSeries(pick, invStart(k)); const first = pts[0]; const lastP = pts[pts.length - 1];
   const chg = lastP.v - first.v; const pct = first.v ? (chg / Math.abs(first.v)) * 100 : 0; const up = chg >= 0;
@@ -2189,7 +2199,7 @@ function cardNetWorthChart(accs) {
     ? `<div class="meta" style="padding:10px 0">History starts ${esc(shortDate(lastP.d))}. A point is saved every day at the morning sync and whenever you refresh, so the chart fills in from here.</div>`
     : `<div class="inv-tip meta" id="nw-tip">${notes.length ? 'Tap an orange dot to see its note' : 'Touch the chart to see a date'}</div><div class="inv-wrap">${invChartSvg(pts, color, 'nw', notes.map((x, i) => ({ d: x.date, n: i + 1, id: x.id })))}</div>`;
   const list = '';
-  return `<section class="card">${head}${chips}
+  return `<section class="card nw-hist">${head}${chips}
     <div class="big num">${money(lastP.v)}</div>
     <div class="inv-chg" style="color:${pts.length > 1 ? color : 'var(--sub)'}">${pts.length > 1 ? `${money(chg, true)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)` : '—'} <span class="meta">since ${esc(since)}</span></div>
     ${body}${list}</section>`;
