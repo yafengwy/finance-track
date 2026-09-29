@@ -447,6 +447,10 @@ input.row-select { direction: ltr; }
 .rec-page ~ .fab-wrap, .fab-wrap { bottom: calc(140px + var(--safe-bottom)); }
 .tx-main { padding: 10px 0; }
 .rec-head { align-items: center; }
+.rec-chiprow { display: flex; align-items: center; gap: 8px; }
+.rec-chiprow .chips { flex: 1; min-width: 0; }
+.rec-chiprow > span:first-child { flex: 1; }
+.rec-sortbtn { flex: none; margin: 0; }
 .rec-head h3 { flex: 1; min-width: 0; }
 .rec-head .pill-btn { flex-shrink: 0; margin-left: auto; }
 .rec-head .link-btn { flex-shrink: 0; margin-left: auto; white-space: nowrap; padding: 6px 0 6px 12px; }
@@ -723,7 +727,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '19.2';
+const APP_VERSION = '19.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1556,6 +1560,7 @@ function cardStructure() {
     ${listRows}` : `<div class="meta">No expenses in this period</div>${reimbLine()}`}
   </section>`;
 }
+const REC_SORTS = { date_desc: ['Date: newest first', 'Newest'], amt_desc: ['Amount: largest first', 'Largest'], amt_asc: ['Amount: smallest first', 'Smallest'] };
 const SORTS = { date_desc: 'Date: newest first', date_asc: 'Date: oldest first', amt_desc: 'Amount: largest first', amt_asc: 'Amount: smallest first' };
 // Records popup: used by "Show more" and by tapping any row in Income & Expenses
 function sheetRecords(pop) {
@@ -2428,9 +2433,9 @@ function recLabel() {
 }
 function recFilterState() { return S.rf || (S.rf = { accounts: null, types: null, cats: null, labels: null, filter: '' }); }
 function recFilterCount() { const r = recFilterState(); return (r.accounts ? 1 : 0) + (r.types ? 1 : 0) + (r.cats || r.labels ? 1 : 0) + (r.filter ? 1 : 0); }
-// Type: money in (+), money out (−) and transfers; transfers are only "Transfers", never in or out
+// Type: money in = every + record, money out = every − record (transfers included in both), Transfers = transfers only
 const REC_TYPES = { in: ['Money in', 'arrow_downward', '#34C759'], out: ['Money out', 'arrow_upward', '#FF3B30'], transfer: ['Transfers', 'swap_horiz', '#8E8E93'] };
-function recTypeOf(t) { return t.isTransfer ? 'transfer' : t.amount < 0 ? 'in' : 'out'; }
+function recTypeOk(t, types) { return types.includes(t.amount < 0 ? 'in' : 'out') || (t.isTransfer && types.includes('transfer')); }
 function recMatcher() {
   const r = recFilterState(); const p = recPeriod();
   const accs = r.accounts ? new Set(r.accounts) : null;
@@ -2444,7 +2449,7 @@ function recMatcher() {
   const fm = r.filter && S.filters[r.filter] ? specMatcher(S.filters[r.filter]) : null;
   return (t) => (p.unit === 'all' || (t.date >= p.from && t.date <= p.to))
     && (!accs || accs.has(t.accountId))
-    && (!r.types || r.types.includes(recTypeOf(t)))
+    && (!r.types || recTypeOk(t, r.types))
     && catOk(t)
     && (!fm || fm(t));
 }
@@ -2496,17 +2501,21 @@ function viewTx(params) {
   if (!catKey && f === 'conflict') list = list.filter((t) => conf.has(t.id));
   const chip = (k, label) => `<button class="chip" data-act="txf" data-f="${k}" aria-pressed="${!catKey && f === k}">${label}</button>`;
   const unknownCount = S.txs.filter((t) => !t.categoryId && !t.isTransfer).length;
+  // Sort (top right of the chips): newest first (by day, with day headers) or by amount (one flat list, each row shows its date)
+  const sortK = REC_SORTS[S.recSort] ? S.recSort : 'date_desc'; const bySize = sortK !== 'date_desc';
+  if (bySize) list = [...list].sort((a, b) => (sortK === 'amt_desc' ? 1 : -1) * (Math.abs(b.amount) - Math.abs(a.amount)) || b.date.localeCompare(a.date));
   const byDay = {}; list.forEach((t) => { byDay[t.date] = (byDay[t.date] || 0) + signed(t); });
   let html = ''; let day = ''; let yr = ''; const thisYr = String(new Date().getFullYear());
   const shown = list.slice(0, 500);
   for (const t of shown) {
     const y = t.date.slice(0, 4);
-    if (y !== yr) { // each year other than this one gets a header that stays at the top while you scroll through it
+    if (bySize) { if (!day) { day = 'flat'; html += '<div class="list">'; } }
+    else if (y !== yr) { // each year other than this one gets a header that stays at the top while you scroll through it
       if (day) html += '</div>'; day = '';
       if (yr) html += '</section>';
       yr = y; html += `<section class="yr-sec">${y !== thisYr ? `<div class="yr-head">${y}</div>` : ''}`;
     }
-    if (t.date !== day) {
+    if (!bySize && t.date !== day) {
       if (day) html += '</div>';
       day = t.date; const sum = byDay[day];
       html += `<div class="day row-between"><span>${parseYmd(day).toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric' })}</span><span class="num">Σ ${money(sum, true)}</span></div><div class="list">`;
@@ -2517,7 +2526,7 @@ function viewTx(params) {
     html += `<div class="tx${t.isTransfer ? ' transfer' : ''}">
       <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${((ic) => conf.has(t.id) ? warnIcon(ic) : ic)(t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c))}</button>
       <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(txTitle(t))}</span>
-      <span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(acc))}${t.pending ? ' <span class="tag">Pending</span>' : ''}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
+      <span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(acc))}${bySize ? ` · ${esc(shortDate(t.date))}` : ''}${t.pending ? ' <span class="tag">Pending</span>' : ''}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
       <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
@@ -2545,7 +2554,7 @@ function viewTx(params) {
       <button class="pp-arrow" data-act="rec-shift" data-dir="1" aria-label="Next period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_right')}</button>
     </div></div>`;
   return `<div class="page rec-page">${title}${searchBar}<div id="rec-results" class="page" style="padding:0">
-    ${catKey ? '' : `<div class="chips">${chip('all', 'All')}${chip('unknown', `Uncategorized ${unknownCount}`)}${chip('conflict', `Conflicts ${conf.size}`)}</div>`}
+    <div class="rec-chiprow">${catKey ? '<span></span>' : `<div class="chips">${chip('all', 'All')}${chip('unknown', `Uncategorized ${unknownCount}`)}${chip('conflict', `Conflicts ${conf.size}`)}</div>`}<button class="pill-btn small rec-sortbtn" data-act="rec-page-sort" aria-label="Sort records">${icon('sort')}${REC_SORTS[sortK][1]}</button></div>
     ${!catKey && f === 'conflict' && conf.size ? `<div class="meta" style="padding:0 4px">These records match rules that give different categories. Tap an icon to choose. ${[...conf].some((x) => S.txById[x]?.categoryId) ? `<button class="pill-btn small" data-act="conflict-ok-all" style="margin-top:6px">${icon('done_all')}Keep current categories</button>` : ''}</div>` : ''}
     <div class="row-between rec-sum"><span class="meta">${esc(recLabel())} · ${list.length} record${list.length === 1 ? '' : 's'}</span><span class="num">Σ ${money(total, true)}</span></div>
     <div>${html}</div>${list.length > 500 ? '<div class="meta">Showing the latest 500. Narrow the period or search.</div>' : ''}</div></div>${dock}`;
@@ -2592,7 +2601,7 @@ function sheetRecTypes() {
   openSheet(`<h3>Type</h3>
     <div class="set-list"><label class="msel-row sel-all"><input type="checkbox" id="type-all" ${r.types ? '' : 'checked'}><span class="ci unknown">${icon('done_all')}</span><span class="n">Select all</span></label>
     ${Object.entries(REC_TYPES).map(([k, [l, ic, c]]) => `<label class="msel-row"><input type="checkbox" data-typesel="${k}" ${!r.types || r.types.includes(k) ? 'checked' : ''}>${glyph(ic, c)}<span class="n">${l}</span></label>`).join('')}</div>
-    <div class="meta" style="padding:0 4px">Money in = records with +, money out = records with −. Transfers are only under Transfers.</div>
+    <div class="meta" style="padding:0 4px">Money in = every record with +, Money out = every record with −, transfers included. Transfers = transfers only.</div>
     ${saveBar('rf-type-save', 'Done')}`, { short: true });
 }
 function sheetRecCats() {
@@ -3857,6 +3866,7 @@ document.addEventListener('click', async (e) => {
       }
       case 'show-more': sheetShowMore(); break;
       case 'row-rec': openRowRecords(el.dataset.side, el.dataset.scope, el.dataset.title); break;
+      case 'rec-page-sort': openOptions('Sort records', Object.entries(REC_SORTS).map(([k, [l]]) => ({ value: k, label: l, iconHtml: glyph(k.startsWith('date') ? 'calendar_today' : 'attach_money', '#3478F6') })), REC_SORTS[S.recSort] ? S.recSort : 'date_desc', (v) => { S.recSort = v; closeSheet(); render(); }); break;
       case 'rec-sort': openOptions('Sort by', Object.entries(SORTS).map(([k, l]) => ({ value: k, label: l, iconHtml: glyph(k.startsWith('date') ? 'calendar_today' : 'attach_money', '#3478F6') })), S.recPop.sort, (v) => { S.recPop.sort = v; sheetRecords(); }); break;
       case 'donut-sel': S.donutSel = S.donutSel === id ? null : id; render(); break;
       case 'bar-sel': S.barSel = S.barSel === id ? null : id; render(); break;
