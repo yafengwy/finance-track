@@ -727,7 +727,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '19.8';
+const APP_VERSION = '20.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1843,14 +1843,14 @@ function tbDefaultCat() {
 function tbCatLabel(id) { const c = S.cats[id]; if (!c) return 'Choose'; const p = S.cats[c.parentId]; return p ? `${p.name} › ${c.name}` : c.name; }
 function sheetTbMature(id) {
   const t = S.tbills[id]; if (!t) return;
-  const m = S.tbMat && S.tbMat.id === id ? S.tbMat : (S.tbMat = { id, back: '', record: true, cat: tbDefaultCat(), acc: S.accounts[t.accountId] ? t.accountId : 'cash' }); // income goes to the account it was bought in
+  const m = S.tbMat && S.tbMat.id === id ? S.tbMat : (S.tbMat = { id, back: '', record: true, cat: tbDefaultCat(), acc: S.accounts[t.accountId] ? t.accountId : (invAccountsAll().length === 1 ? invAccountsAll()[0].id : '') }); // income goes to the investment account it was bought in
   const n = tbDue(t); const when = n === 0 ? 'Matures today' : n < 0 ? `Matured ${mdy(t.maturity)}` : `Matures ${mdy(t.maturity)}`;
   if (t.gotBack != null) { // already matured: only record the interest as income
     openSheet(`<h3>Record income</h3>
       <div class="meta" style="padding:0 4px 8px">${esc(tbAccName(t))} · Matured ${mdy(t.maturity)}. Skip this if you already entered it yourself.</div>
       <div class="set-list"><div class="set-item">${glyph('add_card', '#34C759')}<span class="n">Interest</span><span class="v num"><b style="color:var(--good)">+${money(t.gotBack - t.amount)}</b></span></div>
         ${valueRow('tb-cat', glyph('category', '#FF9500'), 'Category', esc(tbCatLabel(m.cat)))}
-        ${valueRow('tb-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(m.acc === 'cash' ? 'Cash' : accName(S.accounts[m.acc]) || 'Cash'))}</div>
+        ${valueRow('tb-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(accName(S.accounts[m.acc]) || 'Choose'))}</div>
       ${saveBar('tb-income-save', 'Save', ` data-id="${id}"`)}`, { short: true });
     S.sheetBack = () => sheetTbill(id); return;
   }
@@ -1864,7 +1864,7 @@ function sheetTbMature(id) {
     <div class="set-list">
       <label class="set-item">${glyph('receipt_long', '#3478F6')}<span class="n">Record the interest as income</span><input type="checkbox" class="switch" id="tb-rec" ${m.record ? 'checked' : ''}></label>
       ${valueRow('tb-cat', glyph('category', '#FF9500'), 'Category', esc(tbCatLabel(m.cat)))}
-      ${valueRow('tb-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(m.acc === 'cash' ? 'Cash' : accName(S.accounts[m.acc]) || 'Cash'))}
+      ${valueRow('tb-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(accName(S.accounts[m.acc]) || 'Choose'))}
     </div>
     ${saveBar('tb-mature-save', 'Save', ` data-id="${id}"`)}`, { short: true });
   S.sheetBack = () => sheetTbill(id);
@@ -1883,8 +1883,8 @@ async function tbIncomeSave(id) {
   const m = S.tbMat; const t = S.tbills[id]; if (!t || !m) return;
   const interest = Math.round((t.gotBack - t.amount) * 100) / 100;
   if (!S.cats[m.cat]) { toast('Choose a category'); return; }
+  if (!S.accounts[m.acc]) { toast('Choose the investment account'); return; }
   localStorage.setItem('tbCat', m.cat);
-  await ensureCash(m.acc);
   const ref = doc(collection(db, 'transactions'));
   await setDoc(ref, { amount: -interest, date: t.maturity, accountId: m.acc, categoryId: m.cat, isTransfer: false, labels: [], note: '', name: `${tbAccName(t)} T-bill interest`,
     itemId: null, merchant: '', currency: 'USD', pending: false, manual: true, ruled: true, createdAt: serverTimestamp() });
@@ -1898,8 +1898,8 @@ async function tbMatureSave(id) {
   const upd = { gotBack: back };
   if (m.record && interest > 0) {
     if (!S.cats[m.cat]) { toast('Choose a category for the income'); return; }
+    if (!S.accounts[m.acc]) { toast('Choose the investment account'); return; }
     localStorage.setItem('tbCat', m.cat);
-    await ensureCash(m.acc);
     const ref = doc(collection(db, 'transactions'));
     await setDoc(ref, { amount: -interest, date: t.maturity <= ymd(new Date()) ? t.maturity : ymd(new Date()), accountId: m.acc, categoryId: m.cat, isTransfer: false, labels: [], note: '', name: `${tbAccName(t)} T-bill interest`,
       itemId: null, merchant: '', currency: 'USD', pending: false, manual: true, ruled: true, createdAt: serverTimestamp() });
@@ -1911,7 +1911,7 @@ async function tbMatureSave(id) {
 }
 // ---- add / edit ----
 function hasOwnRecords(a) { return S.txs.some((t) => t.accountId === a.id); } // an investment account with records you added
-function tbAccOptions() { return [...invAccountsAll().map((a) => ({ value: a.id, label: accName(a), sub: [bankName(a), a.mask && '••' + a.mask].filter(Boolean).join(' '), iconHtml: `<span class="nw-st" style="background:${esc(accColor(a))}"></span>` })), ...accountOptionList()]; }
+function tbAccOptions() { return invAccountsAll().map((a) => ({ value: a.id, label: accName(a), sub: [bankName(a), a.mask && '••' + a.mask].filter(Boolean).join(' '), iconHtml: `<span class="nw-st" style="background:${esc(accColor(a))}"></span>` })); } // investment accounts only
 function invAccountsAll() { return Object.values(S.accounts).filter((a) => isInvest(a) && !a.hidden); }
 function sheetTbEdit(id) {
   const t = id ? S.tbills[id] : null;
@@ -2173,7 +2173,7 @@ function nwSeries(accs, k) {
     // banks and cards: today's balance + the records after that date put back (a payment out is +, money in is −)
     let v = bankNow; let man = 0;
     for (const t of raw) {
-      if (bankIds.has(t.accountId) && t.date > d) v += t.amount;
+      if (bankIds.has(t.accountId) && !t.manual && t.date > d) v += t.amount; // records you added by hand are not in the bank's balance
       else if (manIds.has(t.accountId) && t.date <= d) man -= t.amount;
     }
     // investments: the last reading on or before that date (before the first reading: the first one)
