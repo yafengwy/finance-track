@@ -135,7 +135,8 @@ button { cursor: pointer; }
 .nw-hist .inv-tip { min-height: 30px; } /* room for the note line, so the chart doesn't jump when a dot is tapped */
 .nw-hist .inv-wrap { margin-top: 1.5px; }
 .nw-hist > .meta:not(.inv-tip) { margin-top: 8px; }
-.nw-pick-per { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+.nw-pick-per { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+.nw-pick-per .pill-btn { margin: 0; flex: none; }
 #rbc-list .set-item .n { min-width: 0; }
 .nw-pick-t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; } /* long bank descriptions: two lines at most */
 .nw-tiprow { display: flex; align-items: center; gap: 4px; }
@@ -722,7 +723,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '19.0';
+const APP_VERSION = '19.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2210,9 +2211,8 @@ function sheetNwPick() {
   const list = S.txs.filter((t) => t.date >= from && t.date <= to && (withTr || !t.isTransfer)).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
   const rows = list.map((t) => `<button class="set-item" data-act="nw-pick" data-id="${t.id}" data-bcl="${esc(`${txTitle(t)} ${t.isTransfer ? 'transfer' : txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}">${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${t.isTransfer ? 'Transfer · ' : ''}${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span><span class="v num" style="flex:none">${money(Math.abs(t.amount))}</span></button>`).join('');
   const q = $('rbq')?.value || '';
-  openSheet(`<div class="row-between rec-head"><h3>Choose record</h3>
-      <button class="pill-btn small" data-act="nw-pick-tr" aria-pressed="${withTr}">${icon(withTr ? 'check_circle' : 'radio_button_unchecked')}Transfers</button></div>
-    <div class="nw-pick-per">${INV_PERIODS[nwPeriod()]}</div>
+  openSheet(`<h3>Choose record</h3>
+    <div class="nw-pick-per"><span>${INV_PERIODS[nwPeriod()]}</span><button class="pill-btn small" data-act="nw-pick-tr" aria-pressed="${withTr}">${icon(withTr ? 'check_circle' : 'radio_button_unchecked')}Transfers</button></div>
     <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search name, amount or date" autocomplete="off" aria-label="Search records"></div>
     <div class="set-list" id="rbc-list">${rows || '<div class="empty">No records loaded</div>'}</div>`);
   if (q && $('rbq')) { $('rbq').value = q; $('rbq').dispatchEvent(new Event('input', { bubbles: true })); }
