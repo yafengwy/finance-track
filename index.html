@@ -331,14 +331,14 @@ input.row-select { direction: ltr; }
   .rec-ph { position: fixed; top: 0; bottom: 0; right: var(--railW); width: var(--paneW); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--sub); font-size: 13px; background: var(--card); box-shadow: -1px 0 0 var(--line); z-index: 5; }
   .rec-ph .ms { font-size: 34px; opacity: .5; }
   .rec-rail { position: fixed; top: 0; bottom: 0; right: 0; width: var(--railW); padding: calc(12px + var(--safe-top)) env(safe-area-inset-right, 0px) calc(12px + var(--safe-bottom)) 0; display: flex; flex-direction: column; align-items: center; gap: 8px; background: rgba(255,255,255,.96); box-shadow: -1px 0 0 var(--line); z-index: 9; }
-  .rr-btn { width: 52px; min-height: 44px; border: 0; border-radius: 14px; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; position: relative; font: inherit; font-size: 10px; }
-  .rr-btn:disabled { opacity: .35; }
-  .rr-btn .ms { font-size: 24px; }
-  .rr-f b { position: absolute; top: 4px; right: 6px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 10px; line-height: 16px; }
-  .rr-mid { width: 60px; border: 0; border-radius: 14px; background: var(--accent); color: #fff; font: inherit; font-size: 12px; font-weight: 700; line-height: 1.2; padding: 10px 4px; }
-  .rr-sep { width: 32px; height: 1px; background: var(--line); margin: 4px 0; }
-  .rr-add { margin-top: auto; width: 52px; height: 52px; border: 0; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(52,120,246,.35); }
+  .rr-add { width: 52px; height: 52px; flex-shrink: 0; border: 0; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(52,120,246,.35); }
   .rr-add .ms { font-size: 28px; }
+  .rr-mid { width: 62px; border: 0; border-radius: 14px; background: var(--bg); color: var(--text); font: inherit; font-size: 11px; font-weight: 700; line-height: 1.2; padding: 8px 4px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .rr-mid .ms { font-size: 22px; color: var(--accent); }
+  .rr-gap { flex: 1; }
+  .rr-btn { width: 62px; min-height: 54px; border: 0; border-radius: 14px; background: none; color: var(--sub); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font: inherit; font-size: 10px; font-weight: 600; }
+  .rr-btn .ms { font-size: 24px; }
+  .rr-btn.on { background: #E6EEFD; color: var(--accent); } /* this filter is on */
   #app:has(.dash-cols) { padding-bottom: 0; }
   .dash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding-bottom: 0; height: calc(100dvh - var(--hdr, 110px)); }
   .dash-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: calc(16px + var(--safe-bottom)); scrollbar-width: none; }
@@ -680,7 +680,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '16.9';
+const APP_VERSION = '17.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2269,13 +2269,15 @@ function viewTx(params) {
   const total = list.reduce((n, t) => n + signed(t), 0);
   const searchBar = `<div class="rec-search"><div class="searchbar">${icon('search')}<input id="txsearch" type="search" placeholder="Search merchant, note, category, amount" value="${esc(S.search)}" autocomplete="off" aria-label="Search records"><span id="search-clear-slot">${searchClearBtn()}</span></div></div>`;
   const nf = recFilterCount(); const p = recPeriod();
-  const rail = `<nav class="rec-rail" aria-label="Period and filters">
-    <button class="rr-btn" data-act="rec-shift" data-dir="-1" aria-label="Previous period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_left')}</button>
-    <button class="rr-mid" data-act="rec-kind">${esc(recLabel())}</button>
-    <button class="rr-btn" data-act="rec-shift" data-dir="1" aria-label="Next period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_right')}</button>
-    <span class="rr-sep"></span>
-    <button class="rr-btn rr-f" data-act="rec-panel" aria-label="Accounts, categories and filter">${icon('tune')}${nf ? `<b>${nf}</b>` : ''}<span>Filter</span></button>
-    <button class="rr-add" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></nav>
+  const rf = recFilterState();
+  const railBtn = (act, ic, label, on) => `<button class="rr-btn${on ? ' on' : ''}" data-act="${act}" aria-label="${label}">${icon(ic)}<span>${label}</span></button>`;
+  const rail = `<nav class="rec-rail" aria-label="Add, period and filters">
+    <button class="rr-add" data-act="add-tx" aria-label="Add a record">${icon('add')}</button>
+    <button class="rr-mid" data-act="rec-kind" aria-label="Choose period">${icon('calendar_month')}<span>${esc(recLabel())}</span></button>
+    <span class="rr-gap"></span>
+    ${railBtn('rf-acc', 'account_balance_wallet', 'Accounts', !!rf.accounts)}
+    ${railBtn('rf-cat', 'category', 'Categories', !!(rf.cats || rf.labels))}
+    ${railBtn('rf-filter', 'filter_alt', 'Filter', !!rf.filter)}</nav>
     <div class="rec-ph">${icon('receipt_long')}<div>Tap a record to see it here</div></div>`;
   const dock = WIDE.matches ? rail : `<div class="rec-dock">
     <button class="dock-grab" data-act="rec-panel" aria-label="Accounts, categories and filter"><span class="grab"></span><span class="meta">${nf ? `${nf} filter${nf > 1 ? 's' : ''} on · ` : ''}Accounts · Categories · Filter</span></button>
@@ -3593,16 +3595,16 @@ document.addEventListener('click', async (e) => {
       case 'rec-panel': sheetRecPanel(); break;
       case 'rf-acc': sheetRecAccounts(); break;
       case 'rf-cat': sheetRecCats(); break;
-      case 'rf-filter': openOptions('Saved filter', [{ value: '', label: 'None', iconHtml: glyph('block', '#C7C7CC') }, ...Object.values(S.filters).sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ value: x.id, label: x.name, sub: specName(x), iconHtml: glyph('filter_alt', '#AF52DE') }))], recFilterState().filter, (v) => { recFilterState().filter = v; sheetRecPanel(); render(); }); break;
+      case 'rf-filter': openOptions('Saved filter', [{ value: '', label: 'None', iconHtml: glyph('block', '#C7C7CC') }, ...Object.values(S.filters).sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ value: x.id, label: x.name, sub: specName(x), iconHtml: glyph('filter_alt', '#AF52DE') }))], recFilterState().filter, (v) => { recFilterState().filter = v; (WIDE.matches ? closeSheet() : sheetRecPanel()); render(); }); break;
       case 'rf-acc-save': {
         const ids = [...document.querySelectorAll('[data-accsel]:checked')].map((x) => x.dataset.accsel);
         const allN = document.querySelectorAll('[data-accsel]').length;
-        recFilterState().accounts = !ids.length || ids.length === allN ? null : ids; sheetRecPanel(); render(); break;
+        recFilterState().accounts = !ids.length || ids.length === allN ? null : ids; (WIDE.matches ? closeSheet() : sheetRecPanel()); render(); break;
       }
       case 'rf-cat-save': {
         const ids = mselIds();
         const lb = [...S.msel].filter((k) => k.startsWith('l:') && S.labels[k.slice(2)]).map((k) => k.slice(2));
-        const r = recFilterState(); r.cats = ids.length && !mselAllCats() ? ids : null; r.labels = lb.length ? lb : null; sheetRecPanel(); render(); break;
+        const r = recFilterState(); r.cats = ids.length && !mselAllCats() ? ids : null; r.labels = lb.length ? lb : null; (WIDE.matches ? closeSheet() : sheetRecPanel()); render(); break;
       }
       case 'rf-reset': S.rf = null; sheetRecPanel(); render(); break;
       case 'tx': S.back = el.dataset.back || null; openEdit(id); break;
