@@ -722,7 +722,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '18.5';
+const APP_VERSION = '18.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2129,23 +2129,51 @@ const NW_SCOPES = { all: 'All', per: 'Personal', biz: 'Business' };
 function nwScope() { const k = localStorage.getItem('nwScope'); return NW_SCOPES[k] ? k : 'all'; }
 function nwPeriod() { const k = localStorage.getItem('nwPeriod'); return INV_PERIODS[k] ? k : 'year'; }
 // Same sign as the Net Worth card: credit cards and loans count negative; manual accounts are summed from their records
-function nwSeries(accs, start) {
-  const today = ymd(new Date()); const first = firstReadings(); const last = {}; const pts = []; let base = null;
-  const plaid = accs.filter((a) => !a.manual); const manual = accs.filter((a) => a.manual);
-  const sign = (a) => (['credit', 'loan'].includes(a.type) ? -1 : 1);
-  const manualAt = (d) => manual.reduce((n, a) => n - (S.raw || []).filter((t) => t.accountId === a.id && (t.date || '') <= d).reduce((m, t) => m + t.amount, 0), 0);
-  for (const h of S.balHist || []) {
-    if (h.date > today) break;
-    plaid.forEach((a) => { if (typeof h.balances[a.id] === 'number') last[a.id] = h.balances[a.id]; });
-    if (!plaid.some((a) => a.id in last)) continue;
-    const v = plaid.reduce((n, a) => n + sign(a) * (last[a.id] ?? first[a.id] ?? a.balanceCurrent ?? 0), 0) + manualAt(h.date);
-    if (h.date < start) { base = v; continue; }
-    pts.push({ d: h.date, v });
+// Net worth on fixed dates: every day for "This month"; otherwise the 1st, the 15th and the last day of each month; the last point is today.
+// Bank and card accounts are worked out backwards from today's balance through their records (so every date has a value);
+// investment accounts (CDs, T-bills) have no records, so they use the saved balance readings (month-end imports and daily snapshots).
+function nwDates(start, today, daily) {
+  const out = []; const d = parseYmd(start); const end = parseYmd(today);
+  if (daily) { for (; d <= end; d.setDate(d.getDate() + 1)) out.push(ymd(d)); }
+  else {
+    for (let m = new Date(d.getFullYear(), d.getMonth(), 1); m <= end; m.setMonth(m.getMonth() + 1)) {
+      const y = m.getFullYear(); const mo = m.getMonth();
+      [ymd(new Date(y, mo, 1)), ymd(new Date(y, mo, 15)), ymd(new Date(y, mo + 1, 0))].forEach((x) => { if (x >= start && x < today) out.push(x); });
+    }
   }
-  if (base != null && (!pts.length || pts[0].d > start)) pts.unshift({ d: start, v: base });
-  const now = accs.reduce((n, a) => n + accountBalance(a), 0); // today = the live balances
-  if (pts.length && pts[pts.length - 1].d === today) pts[pts.length - 1].v = now; else pts.push({ d: today, v: now });
-  return pts;
+  if (!out.includes(start) && start < today) out.unshift(start);
+  if (out[out.length - 1] !== today) out.push(today);
+  return [...new Set(out)].sort();
+}
+function nwSeries(accs, k) {
+  const today = ymd(new Date());
+  const raw = (S.raw || []).filter((t) => !t.pending && t.date);
+  const inv = accs.filter((a) => !a.manual && isInvest(a)); const bank = accs.filter((a) => !a.manual && !isInvest(a)); const manual = accs.filter((a) => a.manual);
+  // earliest date with data: records (bounded by what is loaded) or balance readings
+  const loadedFrom = S.loadAll ? '0000-00-00' : loadedSince();
+  const ids = new Set(accs.map((a) => a.id));
+  const firstTx = raw.filter((t) => ids.has(t.accountId)).reduce((m, t) => (t.date < m ? t.date : m), today);
+  const firstHist = (S.balHist || []).find((h) => inv.some((a) => typeof h.balances[a.id] === 'number'))?.date || today;
+  let start = invStart(k); const dataFrom = firstTx < firstHist ? firstTx : firstHist;
+  if (start < dataFrom) start = dataFrom; if (start < loadedFrom) start = loadedFrom; if (start > today) start = today;
+  const dates = nwDates(start, today, k === 'month');
+  const first = firstReadings();
+  const hist = S.balHist || [];
+  const bankIds = new Set(bank.map((a) => a.id)); const manIds = new Set(manual.map((a) => a.id));
+  const bankNow = bank.reduce((n, a) => n + accountBalance(a), 0);
+  return dates.map((d) => {
+    if (d === today) return { d, v: accs.reduce((n, a) => n + accountBalance(a), 0) }; // today = the live balances
+    // banks and cards: today's balance + the records after that date put back (a payment out is +, money in is −)
+    let v = bankNow; let man = 0;
+    for (const t of raw) {
+      if (bankIds.has(t.accountId) && t.date > d) v += t.amount;
+      else if (manIds.has(t.accountId) && t.date <= d) man -= t.amount;
+    }
+    // investments: the last reading on or before that date (before the first reading: the first one)
+    const last = {}; for (const h of hist) { if (h.date > d) break; inv.forEach((a) => { if (typeof h.balances[a.id] === 'number') last[a.id] = h.balances[a.id]; }); }
+    const iv = inv.reduce((n, a) => n + (['credit', 'loan'].includes(a.type) ? -1 : 1) * (last[a.id] ?? first[a.id] ?? a.balanceCurrent ?? 0), 0);
+    return { d, v: v + man + iv };
+  });
 }
 // A note can point at a record (the car purchase, the tax payment): date and amount come from it, and tapping the note opens it
 function nwNoteTx(x) { return x?.txId ? S.txById[x.txId] || S.rawById?.[x.txId] || null : null; }
@@ -2174,8 +2202,8 @@ function nwCapture() { const d = S.nwDraft; if (!d || !$('nwn-date')) return; d.
 function sheetNwPick() {
   nwCapture();
   const from = invStart(nwPeriod()); const to = ymd(new Date());
-  const list = S.txs.filter((t) => !t.isTransfer && t.date >= from && t.date <= to).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
-  const rows = list.map((t) => `<button class="set-item" data-act="nw-pick" data-id="${t.id}" data-bcl="${esc(`${txTitle(t)} ${txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}">${catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span><span class="v num" style="flex:none">${money(Math.abs(t.amount))}</span></button>`).join('');
+  const list = S.txs.filter((t) => t.date >= from && t.date <= to).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
+  const rows = list.map((t) => `<button class="set-item" data-act="nw-pick" data-id="${t.id}" data-bcl="${esc(`${txTitle(t)} ${t.isTransfer ? 'transfer' : txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}">${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${t.isTransfer ? 'Transfer · ' : ''}${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span><span class="v num" style="flex:none">${money(Math.abs(t.amount))}</span></button>`).join('');
   openSheet(`<h3>Choose record</h3>
     <div class="nw-pick-per">${INV_PERIODS[nwPeriod()]}</div>
     <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search name, amount or date" autocomplete="off" aria-label="Search records"></div>
@@ -2208,7 +2236,7 @@ function cardNetWorthChart(accs) {
   const chips = hasBiz ? `<div class="chips inv-chips">${Object.entries(NW_SCOPES).map(([v, l]) => `<button class="chip" data-act="nw-scope" data-v="${v}" aria-pressed="${sc === v}">${l}</button>`).join('')}</div>` : '';
   if (!S.balHist) return `<section class="card nw-hist">${head}${chips}<div class="meta">Loading…</div></section>`;
   const pick = !hasBiz || sc === 'all' ? accs : accs.filter((a) => isBusiness(a) === (sc === 'biz'));
-  const pts = nwSeries(pick, invStart(k)); const first = pts[0]; const lastP = pts[pts.length - 1];
+  const pts = nwSeries(pick, k); const first = pts[0]; const lastP = pts[pts.length - 1];
   const chg = lastP.v - first.v; const pct = first.v ? (chg / Math.abs(first.v)) * 100 : 0; const up = chg >= 0;
   const color = up ? '#34C759' : '#FF3B30';
   const since = shortDate(first.d).replace(new RegExp(`, ${new Date().getFullYear()}$`), '');
