@@ -682,7 +682,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '17.7';
+const APP_VERSION = '17.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1349,7 +1349,7 @@ function viewAccounts() {
     return `<div class="page"><div class="empty">${icon('account_balance')}<div>No bank accounts connected yet</div>
       <button class="pill-btn primary" data-act="link">Connect your first bank</button></div></div>`;
   }
-  if (WIDE.matches && netWorthCard(accs, 'biz')) return `<div class="page dash-page dash-cols"><div class="dash-col">${banners}${netWorthCard(accs, 'per')}</div><div class="dash-col">${cardNetWorthChart(accs)}${netWorthCard(accs, 'biz')}</div></div>`;
+  if (WIDE.matches && netWorthCard(accs, 'biz')) return `<div class="page dash-page dash-cols"><div class="dash-col">${banners}${netWorthCard(accs, 'per')}</div><div class="dash-col">${netWorthCard(accs, 'biz')}${cardNetWorthChart(accs)}</div></div>`;
   return `<div class="page">
     ${netWorthCard(accs)}
     ${cardNetWorthChart(accs)}
