@@ -447,10 +447,8 @@ input.row-select { direction: ltr; }
 .rec-page ~ .fab-wrap, .fab-wrap { bottom: calc(140px + var(--safe-bottom)); }
 .tx-main { padding: 10px 0; }
 .rec-head { align-items: center; }
-.rec-chiprow { display: flex; align-items: center; gap: 8px; }
-.rec-chiprow .chips { flex: 1; min-width: 0; }
-.rec-chiprow > span:first-child { flex: 1; }
-.rec-sortbtn { flex: none; margin: 0; }
+.rec-sortlink { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); display: inline-flex; align-items: center; vertical-align: baseline; }
+.rec-sortlink .ms { font-size: 14px; margin-left: 1px; vertical-align: -2px; }
 .rec-head h3 { flex: 1; min-width: 0; }
 .rec-head .pill-btn { flex-shrink: 0; margin-left: auto; }
 .rec-head .link-btn { flex-shrink: 0; margin-left: auto; white-space: nowrap; padding: 6px 0 6px 12px; }
@@ -727,7 +725,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '19.3';
+const APP_VERSION = '19.4';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2554,9 +2552,9 @@ function viewTx(params) {
       <button class="pp-arrow" data-act="rec-shift" data-dir="1" aria-label="Next period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_right')}</button>
     </div></div>`;
   return `<div class="page rec-page">${title}${searchBar}<div id="rec-results" class="page" style="padding:0">
-    <div class="rec-chiprow">${catKey ? '<span></span>' : `<div class="chips">${chip('all', 'All')}${chip('unknown', `Uncategorized ${unknownCount}`)}${chip('conflict', `Conflicts ${conf.size}`)}</div>`}<button class="pill-btn small rec-sortbtn" data-act="rec-page-sort" aria-label="Sort records">${icon('sort')}${REC_SORTS[sortK][1]}</button></div>
+    ${catKey ? '' : `<div class="chips">${chip('all', 'All')}${chip('unknown', `Uncategorized ${unknownCount}`)}${chip('conflict', `Conflicts ${conf.size}`)}</div>`}
     ${!catKey && f === 'conflict' && conf.size ? `<div class="meta" style="padding:0 4px">These records match rules that give different categories. Tap an icon to choose. ${[...conf].some((x) => S.txById[x]?.categoryId) ? `<button class="pill-btn small" data-act="conflict-ok-all" style="margin-top:6px">${icon('done_all')}Keep current categories</button>` : ''}</div>` : ''}
-    <div class="row-between rec-sum"><span class="meta">${esc(recLabel())} · ${list.length} record${list.length === 1 ? '' : 's'}</span><span class="num">Σ ${money(total, true)}</span></div>
+    <div class="row-between rec-sum"><span class="meta">${esc(recLabel())} · ${list.length} record${list.length === 1 ? '' : 's'} · <button class="rec-sortlink" data-act="rec-page-sort" aria-label="Sort records">${REC_SORTS[sortK][1]}${icon('expand_more')}</button></span><span class="num">Σ ${money(total, true)}</span></div>
     <div>${html}</div>${list.length > 500 ? '<div class="meta">Showing the latest 500. Narrow the period or search.</div>' : ''}</div></div>${dock}`;
 }
 function sheetRecCustom() {
