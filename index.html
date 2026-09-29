@@ -1659,15 +1659,15 @@ function tbWhen(t) {
   const n = tbDue(t);
   if (n === 0) return '<span class="tb-pill">Today</span>';
   if (n < 0) return `<span class="tb-pill late">${-n} day${n === -1 ? '' : 's'} ago</span>`;
-  return `<span class="meta">in ${n} day${n === 1 ? '' : 's'}</span>`;
+  return `<span class="meta">In ${n} day${n === 1 ? '' : 's'}</span>`;
 }
 // actual APY: green if at or above what you expected, red if below
 function tbApyColor(t) { const a = tbApy(t); if (a == null || t.expApy == null) return 'inherit'; return a + 0.005 >= t.expApy ? 'var(--good)' : 'var(--bad)'; }
 function tbRow(t, grouped = false) {
   const open = t.gotBack == null;
   if (grouped) { // two-line row inside a group: light left side, the maturity date is the bold part
-    const sub = [grouped === 'date' ? esc(tbAccName(t)) : '', open ? `bought ${mdy(t.buyDate)}` : `${mdy(t.buyDate)} – ${mdy(t.maturity)}`].filter(Boolean).join(' · ');
-    const right = open ? `<div class="num tb-due">${mdy(t.maturity)}</div><div class="meta">${tbDue(t) === 0 ? '<span class="tb-pill">Today</span>' : tbDue(t) < 0 ? `<span style="color:var(--bad)">${-tbDue(t)} days ago</span>` : `in ${tbDue(t)} days`}</div>`
+    const sub = [grouped === 'date' ? esc(tbAccName(t)) : '', open ? `Bought ${mdy(t.buyDate)}` : `${mdy(t.buyDate)} – ${mdy(t.maturity)}`].filter(Boolean).join(' · ');
+    const right = open ? `<div class="num tb-due">${mdy(t.maturity)}</div><div class="meta">${tbDue(t) === 0 ? '<span class="tb-pill">Today</span>' : tbDue(t) < 0 ? `<span style="color:var(--bad)">${-tbDue(t)} days ago</span>` : `In ${tbDue(t)} days`}</div>`
       : `<div class="num tb-due" style="color:var(--good)">+${money(t.gotBack - t.amount)}</div><div class="meta num" style="color:${tbApyColor(t)}">${tbApy(t)?.toFixed(2) ?? '—'}%</div>`;
     return `<button class="tb-line" data-act="tb-open" data-id="${t.id}">${grouped === 'date' ? `<span class="nw-st" style="background:${esc(tbColor(t))}"></span>` : ''}<span class="tb-main"><span class="num tb-amt2">${money(t.amount)}</span><span class="meta tb-note">${sub}</span>${t.notes ? `<span class="meta tb-notes">Notes: ${esc(t.notes)}</span>` : ''}</span><span class="tb-r">${right}</span></button>`;
   }
@@ -1775,7 +1775,7 @@ function tbPart(tab) {
     return `<div class="tb-gh"><span class="nw-st" style="background:${esc(a ? accColor(a) : '#C7C7CC')}"></span><span class="n">${esc(a ? accName(a) : 'No account')}${a?.mask ? ` <span class="meta">··${esc(a.mask)}</span>` : ''}${open1 ? `<div class="tb-tot">Total <span class="num">${money(bal)}</span></div>` : ''}</span><span class="meta tb-ghr"><div>${sumTxt(ts)}</div>${cashTxt}</span></div>${ts.map((t) => tbRow(t, 'account')).join('')}`;
   }).join('');
   const PER = { year: 'This year', last: 'Last year', all: 'All' };
-  const total = tab === 'done' && rows.length ? `<div class="meta tb-sum">${PER[per]} · ${rows.length} matured · <span class="num" style="color:var(--good)">+${money(rows.reduce((n, t) => n + t.gotBack - t.amount, 0))}</span> · grouped by ${by === 'date' ? 'month' : 'account'}</div>` : '';
+  const total = tab === 'done' && rows.length ? `<div class="meta tb-sum">${PER[per]} · ${rows.length} matured · <span class="num" style="color:var(--good)">+${money(rows.reduce((n, t) => n + t.gotBack - t.amount, 0))}</span> · Grouped by ${by === 'date' ? 'month' : 'account'}</div>` : '';
   const list = body ? `<div class="card tb-list">${body}</div>` : `<div class="card"><div class="empty">${tab === 'open' ? 'Nothing open' : 'Nothing matured in this period'}</div></div>`;
   return { total, list };
 }
@@ -1828,7 +1828,7 @@ function sheetTbMature(id) {
   const n = tbDue(t); const when = n === 0 ? 'Matures today' : n < 0 ? `Matured ${mdy(t.maturity)}` : `Matures ${mdy(t.maturity)}`;
   if (t.gotBack != null) { // already matured: only record the interest as income
     openSheet(`<h3>Record income</h3>
-      <div class="meta" style="padding:0 4px 8px">${esc(tbAccName(t))} · matured ${mdy(t.maturity)}. Skip this if you already entered it yourself.</div>
+      <div class="meta" style="padding:0 4px 8px">${esc(tbAccName(t))} · Matured ${mdy(t.maturity)}. Skip this if you already entered it yourself.</div>
       <div class="set-list"><div class="set-item">${glyph('add_card', '#34C759')}<span class="n">Interest</span><span class="v num"><b style="color:var(--good)">+${money(t.gotBack - t.amount)}</b></span></div>
         ${valueRow('tb-cat', glyph('category', '#FF9500'), 'Category', esc(tbCatLabel(m.cat)))}
         ${valueRow('tb-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(m.acc === 'cash' ? 'Cash' : accName(S.accounts[m.acc]) || 'Cash'))}</div>
@@ -1836,7 +1836,7 @@ function sheetTbMature(id) {
     S.sheetBack = () => sheetTbill(id); return;
   }
   openSheet(`<h3>${esc(tbAccName(t))}</h3>
-    <div class="meta" style="padding:0 4px 8px">${when} · bought ${money(t.amount)} on ${mdy(t.buyDate)}${t.expApy != null ? ` · expected ${t.expApy}%` : ''}</div>
+    <div class="meta" style="padding:0 4px 8px">${when} · Bought ${money(t.amount)} on ${mdy(t.buyDate)}${t.expApy != null ? ` · Expected ${t.expApy}%` : ''}</div>
     <div class="field"><label for="tb-back">Got back</label><input class="input num" id="tb-back" inputmode="decimal" placeholder="97000" value="${esc(m.back)}" autocomplete="off"></div>
     <div class="set-list">
       <div class="set-item">${glyph('add_card', '#34C759')}<span class="n">Interest</span><span class="v num" id="tb-int">—</span></div>
@@ -2999,7 +2999,7 @@ function sheetRuleBankCats() {
   sel.forEach((v) => { if (!(v in n)) n[v] = 0; });
   const mine = new Set(tx ? [tx.pfcPrimary, tx.pfcDetailed].filter(Boolean) : []);
   const tops = Object.keys(n).filter((k) => !prim[k] || prim[k] === k).sort((a, b) => titleCase(a).localeCompare(titleCase(b)));
-  const row = (v, sub) => `<label class="msel-row${sub ? ' sub' : ''}" data-bcl="${esc(bankCatLabel(v).toLowerCase())}"><input type="checkbox" data-rubc="${esc(v)}" ${sel.has(v) ? 'checked' : ''}>${glyph('account_balance', mine.has(v) ? '#3478F6' : '#8E8E93')}<span class="n">${esc(bankCatLabel(v))}<div class="meta">${n[v]} record${n[v] === 1 ? '' : 's'}${mine.has(v) ? ' · this record' : ''}</div></span></label>`;
+  const row = (v, sub) => `<label class="msel-row${sub ? ' sub' : ''}" data-bcl="${esc(bankCatLabel(v).toLowerCase())}"><input type="checkbox" data-rubc="${esc(v)}" ${sel.has(v) ? 'checked' : ''}>${glyph('account_balance', mine.has(v) ? '#3478F6' : '#8E8E93')}<span class="n">${esc(bankCatLabel(v))}<div class="meta">${n[v]} record${n[v] === 1 ? '' : 's'}${mine.has(v) ? ' · This record' : ''}</div></span></label>`;
   const body = tops.map((p) => row(p, false) + Object.keys(n).filter((k) => prim[k] === p && k !== p).sort((a, b) => bankCatLabel(a).localeCompare(bankCatLabel(b))).map((k) => row(k, true)).join('')).join('');
   openSheet(`<h3>Bank category</h3>
     <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search bank categories" autocomplete="off" aria-label="Search bank categories"></div>
@@ -3017,7 +3017,7 @@ function sheetRuleMerchants() {
   (d.merchants || []).forEach((m) => { const k = m.toLowerCase(); if (!(k in n)) { n[k] = 0; name[k] = m; } });
   const mine = (tx?.merchant || '').trim().toLowerCase();
   const keys = Object.keys(n).sort((a, b) => (b === mine) - (a === mine) || sel.has(b) - sel.has(a) || n[b] - n[a] || a.localeCompare(b));
-  const rows = keys.map((k) => `<label class="msel-row" data-bcl="${esc(k)}"><input type="checkbox" data-rum="${esc(name[k])}" ${sel.has(k) ? 'checked' : ''}>${glyph('storefront', k === mine ? '#3478F6' : '#8E8E93')}<span class="n">${esc(name[k])}<div class="meta">${n[k]} record${n[k] === 1 ? '' : 's'}${k === mine ? ' · this record' : ''}</div></span></label>`).join('');
+  const rows = keys.map((k) => `<label class="msel-row" data-bcl="${esc(k)}"><input type="checkbox" data-rum="${esc(name[k])}" ${sel.has(k) ? 'checked' : ''}>${glyph('storefront', k === mine ? '#3478F6' : '#8E8E93')}<span class="n">${esc(name[k])}<div class="meta">${n[k]} record${n[k] === 1 ? '' : 's'}${k === mine ? ' · This record' : ''}</div></span></label>`).join('');
   openSheet(`<h3>Merchant</h3>
     <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search merchants" autocomplete="off" aria-label="Search merchants"></div>
     <div class="meta">The merchant name the bank gives. Tick one or more; the name must match exactly (not case-sensitive).</div>
@@ -3032,7 +3032,7 @@ function bankCatOptions(tx) {
   S.txs.forEach((t) => { if (t.pfcPrimary) n[t.pfcPrimary] = (n[t.pfcPrimary] || 0) + 1; if (t.pfcDetailed) n[t.pfcDetailed] = (n[t.pfcDetailed] || 0) + 1; });
   const first = tx ? [tx.pfcDetailed, tx.pfcPrimary].filter(Boolean) : [];
   const rest = Object.keys(n).filter((k) => !first.includes(k)).sort((a, b) => bankCatLabel(a).localeCompare(bankCatLabel(b)));
-  return [...first, ...rest].map((v) => ({ value: v, label: bankCatLabel(v), sub: `${n[v] || 0} record${n[v] === 1 ? '' : 's'}${first.includes(v) ? ' · this record' : ''}`, iconHtml: glyph('account_balance', '#8E8E93') }));
+  return [...first, ...rest].map((v) => ({ value: v, label: bankCatLabel(v), sub: `${n[v] || 0} record${n[v] === 1 ? '' : 's'}${first.includes(v) ? ' · This record' : ''}`, iconHtml: glyph('account_balance', '#8E8E93') }));
 }
 function titleCase(v) { return String(v || '').toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()); }
 function bankDetails(t) {
@@ -3418,7 +3418,7 @@ function ruleConflictHtml(d) {
     <div class="meta" style="padding:0 4px 6px">These records also match another rule with a different category, so neither rule sets their category. They show a red ! in Records until you choose.</div>
     <div class="set-list">${cf.map((x, i) => { const t = ruleText(x.rule, true); const c = S.cats[x.rule.categoryId];
       return `<div class="set-item">${warnIcon(c ? catIcon(c) : glyph('category', '#8E8E93'))}<button class="n ru-list-btn" data-act="edit-rule" data-id="${x.rule.id}">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div>
-        <div class="meta">${x.ids.length} record${x.ids.length === 1 ? '' : 's'} match both${x.rule.preferred ? ' · that rule is preferred' : d.preferred ? ' · this rule is preferred' : ''}</div></button>
+        <div class="meta">${x.ids.length} record${x.ids.length === 1 ? '' : 's'} match both${x.rule.preferred ? ' · That rule is preferred' : d.preferred ? ' · This rule is preferred' : ''}</div></button>
         <button class="pill-btn small" data-act="ru-conf" data-i="${i}">View</button></div>`; }).join('')}</div>`;
 }
 function renderRule() {
@@ -3696,8 +3696,8 @@ document.addEventListener('click', async (e) => {
       case 'acc': sheetAccount(id); break;
       case 'card-settings': sheetCard(el.dataset.card); break;
       case 'go-tbills': closeSheet(); go('#/tbills'); break;
-      case 'reimb-open': { if (id.startsWith('all:')) { const top = S.cats[id.slice(4)]; const ids = new Set([top.id, ...descendants(top.id)]); const txs = S.txs.filter((t) => ids.has(t.categoryId) && t.date >= REIMB_START); sheetRecords({ title: top.name, period: `Not back ${money(txs.reduce((n, t) => n + t.amount, 0))} · since ${mdy(REIMB_START)}`, ids: txs.map((t) => t.id), sort: 'date_desc' }); break; }
-        const g = reimbGroups().find((x) => x.id === id); if (g) sheetRecords({ title: g.name, period: `Not back ${money(g.owed)} · since ${mdy(REIMB_START)}`, ids: g.txs.map((t) => t.id), sort: 'date_desc' }); break; }
+      case 'reimb-open': { if (id.startsWith('all:')) { const top = S.cats[id.slice(4)]; const ids = new Set([top.id, ...descendants(top.id)]); const txs = S.txs.filter((t) => ids.has(t.categoryId) && t.date >= REIMB_START); sheetRecords({ title: top.name, period: `Not back ${money(txs.reduce((n, t) => n + t.amount, 0))} · Since ${mdy(REIMB_START)}`, ids: txs.map((t) => t.id), sort: 'date_desc' }); break; }
+        const g = reimbGroups().find((x) => x.id === id); if (g) sheetRecords({ title: g.name, period: `Not back ${money(g.owed)} · Since ${mdy(REIMB_START)}`, ids: g.txs.map((t) => t.id), sort: 'date_desc' }); break; }
       case 'tb-view': sheetTbView(); break;
       case 'tb-view-set': localStorage.setItem(el.dataset.k, el.dataset.v); render(); sheetTbView(); break;
       case 'tb-tab': S.tbTab = el.dataset.v; render(); break;
