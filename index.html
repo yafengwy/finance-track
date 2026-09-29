@@ -680,7 +680,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '17.1';
+const APP_VERSION = '17.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2272,8 +2272,8 @@ function viewTx(params) {
   const rf = recFilterState();
   const railBtn = (act, ic, label, on) => `<button class="rr-btn${on ? ' on' : ''}" data-act="${act}" aria-label="${label}">${icon(ic)}<span>${label}</span></button>`;
   const rail = `<nav class="rec-rail" aria-label="Add, period and filters">
-    <button class="rr-add" data-act="add-tx" aria-label="Add a record">${icon('add')}</button>
     <span class="rr-gap"></span>
+    <button class="rr-add" data-act="add-tx" aria-label="Add a record">${icon('add')}</button>
     <button class="rr-mid" data-act="rec-kind" aria-label="Choose period">${icon('calendar_month')}<span>${esc(recLabel())}</span></button>
     ${railBtn('rf-acc', 'account_balance_wallet', 'Accounts', !!rf.accounts)}
     ${railBtn('rf-cat', 'category', 'Categories', !!(rf.cats || rf.labels))}
