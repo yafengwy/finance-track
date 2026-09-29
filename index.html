@@ -722,7 +722,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '18.7';
+const APP_VERSION = '19.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2119,8 +2119,12 @@ function invScrub(e) {
   let best = c.pts[0]; c.pts.forEach((p) => { if (Math.abs(c.X(p.d) - x) < Math.abs(c.X(best.d) - x)) best = p; });
   const px = c.X(best.d); const py = c.Y(best.v);
   $(`${k}-mark`).style.display = ''; $(`${k}-mline`).setAttribute('x1', px); $(`${k}-mline`).setAttribute('x2', px); $(`${k}-mdot`).setAttribute('cx', px); $(`${k}-mdot`).setAttribute('cy', py);
-  const d = best.v - c.pts[0].v; const pc = c.pts[0].v ? (d / Math.abs(c.pts[0].v)) * 100 : 0;
-  $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span> · <span style="color:${d >= 0 ? '#34C759' : '#FF3B30'}">${money(d, true)} (${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%)</span>`;
+  // Net Worth: change from the previous point (1st / 15th / month end); Investments: change from the start of the period
+  const i = c.pts.indexOf(best); const base = k === 'nw' ? c.pts[i - 1] : c.pts[0];
+  if (!base || base === best) { $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span>`; return; }
+  const d = best.v - base.v; const pc = base.v ? (d / Math.abs(base.v)) * 100 : 0;
+  const vs = k === 'nw' ? ` <span class="meta">vs ${esc(parseYmd(base.d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</span>` : '';
+  $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span> · <span style="color:${d >= 0 ? '#34C759' : '#FF3B30'}">${money(d, true)} (${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%)</span>${vs}`;
 }
 document.addEventListener('pointerdown', invScrub);
 document.addEventListener('pointermove', invScrub);
@@ -2202,12 +2206,16 @@ function nwCapture() { const d = S.nwDraft; if (!d || !$('nwn-date')) return; d.
 function sheetNwPick() {
   nwCapture();
   const from = invStart(nwPeriod()); const to = ymd(new Date());
-  const list = S.txs.filter((t) => t.date >= from && t.date <= to).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
+  const withTr = S.nwPickTr !== false; // transfers are listed unless switched off (top right)
+  const list = S.txs.filter((t) => t.date >= from && t.date <= to && (withTr || !t.isTransfer)).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
   const rows = list.map((t) => `<button class="set-item" data-act="nw-pick" data-id="${t.id}" data-bcl="${esc(`${txTitle(t)} ${t.isTransfer ? 'transfer' : txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}">${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${t.isTransfer ? 'Transfer · ' : ''}${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span><span class="v num" style="flex:none">${money(Math.abs(t.amount))}</span></button>`).join('');
-  openSheet(`<h3>Choose record</h3>
+  const q = $('rbq')?.value || '';
+  openSheet(`<div class="row-between rec-head"><h3>Choose record</h3>
+      <button class="pill-btn small" data-act="nw-pick-tr" aria-pressed="${withTr}">${icon(withTr ? 'check_circle' : 'radio_button_unchecked')}Transfers</button></div>
     <div class="nw-pick-per">${INV_PERIODS[nwPeriod()]}</div>
     <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search name, amount or date" autocomplete="off" aria-label="Search records"></div>
     <div class="set-list" id="rbc-list">${rows || '<div class="empty">No records loaded</div>'}</div>`);
+  if (q && $('rbq')) { $('rbq').value = q; $('rbq').dispatchEvent(new Event('input', { bubbles: true })); }
   S.sheetBack = () => sheetNwNote(S.nwDraft?.id || null);
 }
 async function nwNoteSave() {
@@ -2231,7 +2239,7 @@ function cardNetWorthChart(accs) {
   if (!S.balHist) loadBalHist();
   const k = nwPeriod(); const sc = nwScope();
   const hasBiz = accs.some(isBusiness);
-  const head = `<div class="card-head"><div><p class="h2">Net Worth history</p><div class="meta">${INV_PERIODS[k]}</div></div>
+  const head = `<div class="card-head"><div><p class="h2">Net Worth</p><div class="meta">${INV_PERIODS[k]}</div></div>
     <span class="nw-head-btns"><button class="icon-btn" data-act="nw-note" aria-label="Add a note">${icon('add')}</button><button class="icon-btn" data-act="nw-period" aria-label="Period">${icon('more_horiz')}</button></span></div>`;
   const chips = hasBiz ? `<div class="chips inv-chips">${Object.entries(NW_SCOPES).map(([v, l]) => `<button class="chip" data-act="nw-scope" data-v="${v}" aria-pressed="${sc === v}">${l}</button>`).join('')}</div>` : '';
   if (!S.balHist) return `<section class="card nw-hist">${head}${chips}<div class="meta">Loading…</div></section>`;
@@ -3768,6 +3776,7 @@ document.addEventListener('click', async (e) => {
       case 'nw-open': nwOpenNote(id); break;
       case 'nw-tip-open': if (S.nwSel) nwOpenNote(S.nwSel); break;
       case 'nw-pick-open': sheetNwPick(); break;
+      case 'nw-pick-tr': S.nwPickTr = S.nwPickTr === false; sheetNwPick(); break;
       case 'nw-pick': { const t = S.txById[id]; const d = S.nwDraft; if (t && d) { d.txId = t.id; d.date = t.date; d.amount = Math.abs(t.amount); if (!String(d.text || '').trim()) d.text = txTitle(t); } sheetNwNote(d?.id || null); break; }
       case 'nw-unlink': nwCapture(); if (S.nwDraft) S.nwDraft.txId = null; sheetNwNote(S.nwDraft?.id || null); break;
       case 'nw-note-save': await nwNoteSave(); break;
