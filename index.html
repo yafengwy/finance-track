@@ -111,13 +111,15 @@ button { cursor: pointer; }
 .chip { height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); font-size: 14px; font-weight: 600; white-space: nowrap; }
 .chip[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
 .yr-head { position: sticky; top: calc(var(--hdr, 110px) + var(--rsh, 60px) - 2px); z-index: 3; margin: 0 -16px; padding: 6px 16px; background: var(--bg); font-size: 15px; font-weight: 700; color: var(--text); }
-.inv-chips { margin: 4px 0 10px; }
-.inv-chips .chip { display: inline-flex; align-items: center; gap: 6px; }
-.inv-chips .nw-st { width: 4px; height: 14px; border-radius: 2px; }
+.inv-chips { margin: 4px -16px 10px; padding: 0 16px; gap: 6px; scrollbar-width: none; }
+.inv-chips::-webkit-scrollbar { display: none; }
+.inv-chips .chip { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; font-size: 13px; flex: none; }
+.inv-chips .nw-st { width: 3px; height: 12px; border-radius: 2px; }
 .inv-chg { font-size: 15px; font-weight: 600; margin: 2px 0 8px; }
+.inv-imp { background: var(--bg); border-radius: 12px; padding: 10px 12px; margin: 4px 0 8px; }
 .inv-tip { min-height: 20px; font-size: 13px; }
 .inv-wrap { margin: 4px -4px 0; touch-action: pan-y; }
-#inv-chart { width: 100%; height: auto; display: block; }
+.bal-chart { width: 100%; height: auto; display: block; }
 .inv-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .inv-grid.v { stroke-dasharray: 2 3; }
 .inv-ax { font-size: 10px; fill: var(--sub); }
@@ -680,7 +682,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '17.3';
+const APP_VERSION = '17.7';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1347,9 +1349,10 @@ function viewAccounts() {
     return `<div class="page"><div class="empty">${icon('account_balance')}<div>No bank accounts connected yet</div>
       <button class="pill-btn primary" data-act="link">Connect your first bank</button></div></div>`;
   }
-  if (WIDE.matches && netWorthCard(accs, 'biz')) return `<div class="page dash-page dash-cols"><div class="dash-col">${banners}${netWorthCard(accs, 'per')}</div><div class="dash-col">${netWorthCard(accs, 'biz')}</div></div>`;
+  if (WIDE.matches && netWorthCard(accs, 'biz')) return `<div class="page dash-page dash-cols"><div class="dash-col">${banners}${netWorthCard(accs, 'per')}</div><div class="dash-col">${cardNetWorthChart(accs)}${netWorthCard(accs, 'biz')}</div></div>`;
   return `<div class="page">
     ${netWorthCard(accs)}
+    ${cardNetWorthChart(accs)}
     ${banners}
   </div>`;
 }
@@ -1936,6 +1939,38 @@ async function loadBalHist() {
   catch (e) { console.warn('balance history', e); S.balHist = []; }
   S.balHistLoading = false; render();
 }
+// ---- Month-end balances copied from the bank websites (Jan 2025 – Sep 2026), imported once into balanceHistory ----
+const INV_HIST_DATES = '2025-01-31 2025-02-28 2025-03-31 2025-04-30 2025-05-31 2025-06-30 2025-07-31 2025-08-31 2025-09-30 2025-10-31 2025-11-30 2025-12-31 2026-01-31 2026-02-28 2026-03-31 2026-04-30 2026-05-31 2026-06-30 2026-07-31 2026-08-31 2026-09-25'.split(' ');
+const INV_HIST_SEED = [
+  { label: 'Chase ··0829', match: (a) => a.mask === '0829', v: '98668.25 98992.55 79246.86 79523.29 79822.10 80094.22 80081.12 80374.82 80133.97 80102.84 80344.37 63954.17 80785.61 81011.65 61183.11 61367.59 61540.07 61706.46 61931.34 62109.11 62045.18' },
+  { label: 'Chase ··7497', match: (a) => a.mask === '7497', v: '90792.93 90997.07 101911.70 102267.63 102652.35 103002.70 103675.92 104010.38 104742.82 105235.29 105533.30 105898.19 89551.34 89802.93 90074.80 73652.01 73883.63 36073.87 36194.98 36300.60 36605.44' },
+  { label: 'Merrill (BofA ··6478)', match: (a) => a.mask === '6478', v: '125673.41 126076.30 126494.88 126919.14 116040.42 116426.06 116859.71 117292.55 117686.00 118032.38 118357.36 118760.30 119075.25 120633.49 112460.31 112804.64 101118.86 101381.65 101745.34 102044.17 102301.19' },
+];
+// Each seed row → the one investment account it matches (none or several = not matched)
+function invHistMatches() {
+  const accs = Object.values(S.accounts).filter((a) => isInvest(a) && !a.hidden);
+  return INV_HIST_SEED.map((r) => { const m = accs.filter(r.match); return { ...r, acc: m.length === 1 ? m[0] : null, n: m.length }; });
+}
+function invHistPending() {
+  if (!S.balHist) return [];
+  return invHistMatches().filter((r) => r.acc && !S.balHist.some((h) => h.date === INV_HIST_DATES[0] && typeof h.balances[r.acc.id] === 'number'));
+}
+function invHistBox() {
+  const todo = invHistPending(); if (!todo.length) return '';
+  const all = invHistMatches();
+  const lines = all.map((r) => `<div class="meta">${esc(r.label)} → ${r.acc ? `<b>${esc(accName(r.acc))}</b>${todo.includes(r) ? '' : ' (done)'}` : r.n ? `${r.n} accounts match, skipped` : 'no account found, skipped'}</div>`).join('');
+  return `<div class="inv-imp"><div class="meta" style="margin-bottom:4px">Month-end balances Jan 2025 – Sep 2026 from the bank sites:</div>${lines}<button class="pill-btn primary" data-act="inv-hist-import" style="margin-top:8px">${icon('download')}Import history</button></div>`;
+}
+async function invHistImport() {
+  const todo = invHistPending(); if (!todo.length) return;
+  const b = writeBatch(db);
+  INV_HIST_DATES.forEach((d, i) => {
+    const bal = {}; todo.forEach((r) => { bal[r.acc.id] = Number(r.v.split(' ')[i]); });
+    b.set(doc(db, 'balanceHistory', d), { date: d, balances: bal }, { merge: true });
+  });
+  try { await b.commit(); } catch (e) { toast('Import failed'); console.warn(e); return; }
+  S.balHist = null; toast(`${todo.length} account${todo.length === 1 ? '' : 's'} imported`); loadBalHist();
+}
 const INV_PERIODS = { month: 'This month', m3: 'Last 3 months', m6: 'Last 6 months', year: 'This year', y1: 'Last 12 months', all: 'All time' };
 function invPeriod() { const k = localStorage.getItem('invPeriod'); return INV_PERIODS[k] ? k : 'year'; }
 function invStart(k) {
@@ -1945,12 +1980,17 @@ function invStart(k) {
 function invAccounts() { return Object.values(S.accounts).filter((a) => isInvest(a) && !a.hidden && (a.balanceCurrent || 0) !== 0).sort((a, b) => (b.balanceCurrent || 0) - (a.balanceCurrent || 0)); }
 function invSelected() { let v = []; try { v = JSON.parse(localStorage.getItem('invAccs')) || []; } catch { /* all */ } const ids = invAccounts().map((a) => a.id); v = v.filter((id) => ids.includes(id)); return v.length ? v : ids; }
 // Daily totals for the picked accounts; a day without a reading for an account keeps its last known balance
+// First reading of each account in the history (used for dates before an account has any reading)
+function firstReadings() {
+  const f = {}; for (const h of S.balHist || []) for (const [id, v] of Object.entries(h.balances)) if (!(id in f) && typeof v === 'number') f[id] = v;
+  return f;
+}
 function invSeries(ids, start) {
-  const today = ymd(new Date()); const last = {}; const pts = []; let base = null;
+  const today = ymd(new Date()); const first = firstReadings(); const last = {}; const pts = []; let base = null;
   for (const h of S.balHist || []) {
     if (h.date > today) break;
     ids.forEach((id) => { if (typeof h.balances[id] === 'number') last[id] = h.balances[id]; });
-    const v = ids.reduce((n, id) => n + (last[id] ?? 0), 0); const known = ids.some((id) => id in last);
+    const v = ids.reduce((n, id) => n + (last[id] ?? first[id] ?? S.accounts[id]?.balanceCurrent ?? 0), 0); const known = ids.some((id) => id in last);
     if (!known) continue;
     if (h.date < start) { base = v; continue; }
     pts.push({ d: h.date, v });
@@ -1960,9 +2000,13 @@ function invSeries(ids, start) {
   if (pts.length && pts[pts.length - 1].d === today) pts[pts.length - 1].v = now; else pts.push({ d: today, v: now });
   return pts;
 }
-const kMoney = (v) => { const a = Math.abs(v); const s = a >= 1e6 ? `${(a / 1e6).toFixed(a >= 1e7 ? 1 : 2)}M` : a >= 1e3 ? `${(a / 1e3).toFixed(a >= 1e5 ? 0 : 1)}k` : a.toFixed(0); return `${v < 0 ? '-' : ''}$${s}`; };
+const kMoney = (v, step = 0) => {
+  const a = Math.abs(v); const dec = (unit, d) => Math.max(d, step ? Math.min(2, Math.ceil(-Math.log10(step / unit) - 1e-9)) : 0);
+  const s = a >= 1e6 ? `${(a / 1e6).toFixed(dec(1e6, a >= 1e7 ? 1 : 2))}M` : a >= 1e3 ? `${(a / 1e3).toFixed(dec(1e3, a >= 1e5 ? 0 : 1))}k` : a.toFixed(dec(1, 0));
+  return `${v < 0 ? '-' : ''}$${s}`;
+};
 function niceStep(range, n) { const raw = range / n; const p = 10 ** Math.floor(Math.log10(raw)); return [1, 2, 2.5, 5, 10].map((x) => x * p).find((x) => x >= raw) || raw; }
-function invChartSvg(pts, color) {
+function invChartSvg(pts, color, key = 'inv') {
   const W = 340; const H = 190; const L = 48; const R = 8; const T = 10; const B = 26; const w = W - L - R; const h = H - T - B;
   const t0 = parseYmd(pts[0].d).getTime(); const t1 = parseYmd(pts[pts.length - 1].d).getTime(); const span = Math.max(t1 - t0, 1);
   let lo = Math.min(...pts.map((p) => p.v)); let hi = Math.max(...pts.map((p) => p.v));
@@ -1970,7 +2014,7 @@ function invChartSvg(pts, color) {
   const step = niceStep(hi - lo, 4); lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
   const X = (d) => L + ((parseYmd(d).getTime() - t0) / span) * w; const Y = (v) => T + (1 - (v - lo) / (hi - lo)) * h;
   let grid = '';
-  for (let v = lo; v <= hi + step / 2; v += step) grid += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" class="inv-grid"/><text x="${L - 6}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="inv-ax">${kMoney(v)}</text>`;
+  for (let v = lo; v <= hi + step / 2; v += step) grid += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" class="inv-grid"/><text x="${L - 6}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="inv-ax">${kMoney(v, step)}</text>`;
   // date ticks: months for longer ranges, days for a month
   const days = span / 864e5; let ticks = [];
   if (days <= 40) { for (let i = 0; i <= 4; i++) ticks.push(ymd(new Date(t0 + (span * i) / 4))); }
@@ -1979,11 +2023,11 @@ function invChartSvg(pts, color) {
   const xt = [...new Set(ticks)].map((d) => `<line x1="${X(d).toFixed(1)}" x2="${X(d).toFixed(1)}" y1="${T}" y2="${T + h}" class="inv-grid v"/><text x="${X(d).toFixed(1)}" y="${H - 8}" text-anchor="${X(d) > W - R - 20 ? 'end' : X(d) < L + 20 ? 'start' : 'middle'}" class="inv-ax">${tl(d)}</text>`).join('');
   const line = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.d).toFixed(1)},${Y(p.v).toFixed(1)}`).join('');
   const area = `${line}L${X(pts[pts.length - 1].d).toFixed(1)},${T + h}L${X(pts[0].d).toFixed(1)},${T + h}Z`;
-  S.invChart = { pts, L, R, W, T, h, X, Y };
-  return `<svg id="inv-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Investment balance over time">
+  (S.charts ||= {})[key] = { pts, L, R, W, T, h, X, Y };
+  return `<svg id="${key}-chart" class="bal-chart" data-k="${key}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Balance over time">
     ${grid}${xt}<path d="${area}" fill="${color}" opacity=".12"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
     <circle cx="${X(pts[pts.length - 1].d).toFixed(1)}" cy="${Y(pts[pts.length - 1].v).toFixed(1)}" r="3.5" fill="${color}"/>
-    <g id="inv-mark" style="display:none"><line id="inv-mline" y1="${T}" y2="${T + h}" stroke="var(--sub)" stroke-dasharray="3 3"/><circle id="inv-mdot" r="4.5" fill="${color}" stroke="var(--card)" stroke-width="2"/></g></svg>`;
+    <g id="${key}-mark" style="display:none"><line id="${key}-mline" y1="${T}" y2="${T + h}" stroke="var(--sub)" stroke-dasharray="3 3"/><circle id="${key}-mdot" r="4.5" fill="${color}" stroke="var(--card)" stroke-width="2"/></g></svg>`;
 }
 function cardInvest() {
   if (!S.balHist) { loadBalHist(); }
@@ -1992,7 +2036,7 @@ function cardInvest() {
     <button class="icon-btn" data-act="inv-settings" aria-label="Investments settings">${icon('more_horiz')}</button></div>`;
   if (!accs.length) return `<section class="card">${head}<div class="meta">No investment accounts. Turn on Investment for an account on the Accounts page.</div></section>`;
   const sel = invSelected(); const all = sel.length === accs.length;
-  const chips = `<div class="chips wrap inv-chips"><button class="chip" data-act="inv-acc" data-id="" aria-pressed="${all}">All</button>${accs.map((a) => `<button class="chip" data-act="inv-acc" data-id="${a.id}" aria-pressed="${!all && sel.includes(a.id)}"><span class="nw-st" style="background:${esc(accColor(a))}"></span>${esc(accName(a))}${a.mask ? ` ··${esc(a.mask)}` : ''}</button>`).join('')}</div>`;
+  const chips = `<div class="chips inv-chips"><button class="chip" data-act="inv-acc" data-id="" aria-pressed="${all}">All</button>${accs.map((a) => `<button class="chip" data-act="inv-acc" data-id="${a.id}" aria-pressed="${!all && sel.includes(a.id)}"><span class="nw-st" style="background:${esc(accColor(a))}"></span>${esc(accName(a))}</button>`).join('')}</div>`;
   if (!S.balHist) return `<section class="card">${head}${chips}<div class="meta">Loading…</div></section>`;
   const pts = invSeries(sel, invStart(k)); const first = pts[0]; const lastP = pts[pts.length - 1];
   const chg = lastP.v - first.v; const pct = first.v ? (chg / Math.abs(first.v)) * 100 : 0; const up = chg >= 0;
@@ -2001,7 +2045,7 @@ function cardInvest() {
   const body = pts.length < 2 || first.d === lastP.d
     ? `<div class="meta" style="padding:10px 0">History starts ${esc(shortDate(lastP.d))}. A point is saved every day at the morning sync and whenever you refresh, so the chart fills in from here.</div>`
     : `<div class="inv-tip meta" id="inv-tip">Touch the chart to see a date</div><div class="inv-wrap">${invChartSvg(pts, color)}</div>`;
-  return `<section class="card">${head}${chips}
+  return `<section class="card">${head}${invHistBox()}${chips}
     <div class="big num">${money(lastP.v)}</div>
     <div class="inv-chg" style="color:${pts.length > 1 ? color : 'var(--sub)'}">${pts.length > 1 ? `${money(chg, true)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)` : '—'} <span class="meta">since ${esc(since)}</span></div>
     ${body}
@@ -2009,16 +2053,60 @@ function cardInvest() {
 }
 // Scrubbing the chart: a dashed line and the date's balance and change from the start
 function invScrub(e) {
-  const svg = e.target.closest?.('#inv-chart'); const c = S.invChart; if (!svg || !c) return;
+  const svg = e.target.closest?.('.bal-chart'); if (!svg) return; const k = svg.dataset.k; const c = S.charts?.[k]; if (!c) return;
   const r = svg.getBoundingClientRect(); const x = ((e.clientX - r.left) / r.width) * c.W;
   let best = c.pts[0]; c.pts.forEach((p) => { if (Math.abs(c.X(p.d) - x) < Math.abs(c.X(best.d) - x)) best = p; });
   const px = c.X(best.d); const py = c.Y(best.v);
-  $('inv-mark').style.display = ''; $('inv-mline').setAttribute('x1', px); $('inv-mline').setAttribute('x2', px); $('inv-mdot').setAttribute('cx', px); $('inv-mdot').setAttribute('cy', py);
+  $(`${k}-mark`).style.display = ''; $(`${k}-mline`).setAttribute('x1', px); $(`${k}-mline`).setAttribute('x2', px); $(`${k}-mdot`).setAttribute('cx', px); $(`${k}-mdot`).setAttribute('cy', py);
   const d = best.v - c.pts[0].v; const pc = c.pts[0].v ? (d / Math.abs(c.pts[0].v)) * 100 : 0;
-  $('inv-tip').innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span> · <span style="color:${d >= 0 ? '#34C759' : '#FF3B30'}">${money(d, true)} (${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%)</span>`;
+  $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span> · <span style="color:${d >= 0 ? '#34C759' : '#FF3B30'}">${money(d, true)} (${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%)</span>`;
 }
 document.addEventListener('pointerdown', invScrub);
 document.addEventListener('pointermove', invScrub);
+// ---- Net Worth history (Accounts page): All = Personal + Business; Personal includes its investment accounts ----
+const NW_SCOPES = { all: 'All', per: 'Personal', biz: 'Business' };
+function nwScope() { const k = localStorage.getItem('nwScope'); return NW_SCOPES[k] ? k : 'all'; }
+function nwPeriod() { const k = localStorage.getItem('nwPeriod'); return INV_PERIODS[k] ? k : 'year'; }
+// Same sign as the Net Worth card: credit cards and loans count negative; manual accounts are summed from their records
+function nwSeries(accs, start) {
+  const today = ymd(new Date()); const first = firstReadings(); const last = {}; const pts = []; let base = null;
+  const plaid = accs.filter((a) => !a.manual); const manual = accs.filter((a) => a.manual);
+  const sign = (a) => (['credit', 'loan'].includes(a.type) ? -1 : 1);
+  const manualAt = (d) => manual.reduce((n, a) => n - (S.raw || []).filter((t) => t.accountId === a.id && (t.date || '') <= d).reduce((m, t) => m + t.amount, 0), 0);
+  for (const h of S.balHist || []) {
+    if (h.date > today) break;
+    plaid.forEach((a) => { if (typeof h.balances[a.id] === 'number') last[a.id] = h.balances[a.id]; });
+    if (!plaid.some((a) => a.id in last)) continue;
+    const v = plaid.reduce((n, a) => n + sign(a) * (last[a.id] ?? first[a.id] ?? a.balanceCurrent ?? 0), 0) + manualAt(h.date);
+    if (h.date < start) { base = v; continue; }
+    pts.push({ d: h.date, v });
+  }
+  if (base != null && (!pts.length || pts[0].d > start)) pts.unshift({ d: start, v: base });
+  const now = accs.reduce((n, a) => n + accountBalance(a), 0); // today = the live balances
+  if (pts.length && pts[pts.length - 1].d === today) pts[pts.length - 1].v = now; else pts.push({ d: today, v: now });
+  return pts;
+}
+function cardNetWorthChart(accs) {
+  if (!S.balHist) loadBalHist();
+  const k = nwPeriod(); const sc = nwScope();
+  const hasBiz = accs.some(isBusiness);
+  const head = `<div class="card-head"><div><p class="h2">Net Worth history</p><div class="meta">${INV_PERIODS[k]}</div></div>
+    <button class="icon-btn" data-act="nw-period" aria-label="Period">${icon('more_horiz')}</button></div>`;
+  const chips = hasBiz ? `<div class="chips inv-chips">${Object.entries(NW_SCOPES).map(([v, l]) => `<button class="chip" data-act="nw-scope" data-v="${v}" aria-pressed="${sc === v}">${l}</button>`).join('')}</div>` : '';
+  if (!S.balHist) return `<section class="card">${head}${chips}<div class="meta">Loading…</div></section>`;
+  const pick = !hasBiz || sc === 'all' ? accs : accs.filter((a) => isBusiness(a) === (sc === 'biz'));
+  const pts = nwSeries(pick, invStart(k)); const first = pts[0]; const lastP = pts[pts.length - 1];
+  const chg = lastP.v - first.v; const pct = first.v ? (chg / Math.abs(first.v)) * 100 : 0; const up = chg >= 0;
+  const color = up ? '#34C759' : '#FF3B30';
+  const since = shortDate(first.d).replace(new RegExp(`, ${new Date().getFullYear()}$`), '');
+  const body = pts.length < 2 || first.d === lastP.d
+    ? `<div class="meta" style="padding:10px 0">History starts ${esc(shortDate(lastP.d))}. A point is saved every day at the morning sync and whenever you refresh, so the chart fills in from here.</div>`
+    : `<div class="inv-tip meta" id="nw-tip">Touch the chart to see a date</div><div class="inv-wrap">${invChartSvg(pts, color, 'nw')}</div>`;
+  return `<section class="card">${head}${chips}
+    <div class="big num">${money(lastP.v)}</div>
+    <div class="inv-chg" style="color:${pts.length > 1 ? color : 'var(--sub)'}">${pts.length > 1 ? `${money(chg, true)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)` : '—'} <span class="meta">since ${esc(since)}</span></div>
+    ${body}</section>`;
+}
 function cardTrend() {
   const spec = cardSpec('trend').spec; const ok = specMatcher(spec);
   const bs = buckets(rangeOf(getPeriod('trend'))).map((b) => ({ ...b, inc: 0, exp: 0 }));
@@ -3524,7 +3612,10 @@ document.addEventListener('click', async (e) => {
         openOptions('Income category', cats.map((c) => ({ value: c.id, label: tbCatLabel(c.id), iconHtml: catIcon(c) })), S.tbMat.cat, (v) => { S.tbMat.cat = v; sheetTbMature(mid); }); S.sheetBack = () => sheetTbMature(mid); break; }
       case 'tb-acc': { tbCaptureMat(); const mid = S.tbMat.id; openOptions('Record in account', tbAccOptions(), S.tbMat.acc, (v) => { S.tbMat.acc = v; sheetTbMature(mid); }); S.sheetBack = () => sheetTbMature(mid); break; }
       case 'tb-import': await tbImport(); break;
+      case 'inv-hist-import': await invHistImport(); break;
       case 'inv-settings': openOptions('Investments period', Object.entries(INV_PERIODS).map(([v, l]) => ({ value: v, label: l, iconHtml: glyph('date_range', '#3478F6') })), invPeriod(), (v) => { localStorage.setItem('invPeriod', v); closeSheet(); render(); }); break;
+      case 'nw-scope': localStorage.setItem('nwScope', el.dataset.v); render(); break;
+      case 'nw-period': openOptions('Net Worth period', Object.entries(INV_PERIODS).map(([v, l]) => ({ value: v, label: l, iconHtml: glyph('date_range', '#3478F6') })), nwPeriod(), (v) => { localStorage.setItem('nwPeriod', v); closeSheet(); render(); }); break;
       case 'inv-acc': {
         const ids = invAccounts().map((a) => a.id); let sel = invSelected(); const all = sel.length === ids.length;
         if (!el.dataset.id) sel = []; else if (all) sel = [el.dataset.id]; else sel = sel.includes(el.dataset.id) ? sel.filter((x) => x !== el.dataset.id) : [...sel, el.dataset.id];
