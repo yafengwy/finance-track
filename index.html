@@ -118,7 +118,7 @@ button { cursor: pointer; }
 .inv-chg { font-size: 15px; font-weight: 600; margin: 2px 0 8px; }
 .inv-imp { background: var(--bg); border-radius: 12px; padding: 10px 12px; margin: 4px 0 8px; }
 .inv-tip { min-height: 20px; font-size: 13px; }
-.inv-wrap { margin: 4px -4px 0; touch-action: pan-y; }
+.inv-wrap { margin: 4px -16px 0; touch-action: pan-y; } /* chart runs edge to edge of the card */
 .bal-chart { width: 100%; height: auto; display: block; }
 .nw-mk { font-size: 9px; font-weight: 700; fill: #fff; pointer-events: none; }
 .nw-notes { margin-top: 8px; display: flex; flex-direction: column; }
@@ -132,15 +132,15 @@ button { cursor: pointer; }
 .card.nw-hist { gap: 0; }
 .nw-hist .inv-chips { margin-top: 8px; margin-bottom: 11px; }
 .nw-hist .inv-chg { margin: 6.5px 0 10px; }
-.nw-hist .inv-tip { min-height: 34px; } /* room for the note line, so the chart doesn't jump when a dot is tapped */
-.nw-hist .inv-wrap { margin-top: 2px; }
+.nw-hist .inv-tip { min-height: 30px; } /* room for the note line, so the chart doesn't jump when a dot is tapped */
+.nw-hist .inv-wrap { margin-top: 1.5px; }
 .nw-hist > .meta:not(.inv-tip) { margin-top: 8px; }
 .nw-tiprow { display: flex; align-items: center; gap: 4px; }
-.nw-tipbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 0; border-radius: 10px; background: rgba(255,149,0,.12); font: inherit; font-size: 13px; line-height: 1.35; text-align: left; color: var(--text); }
+.nw-tipbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 5.5px 10px; border: 0; border-radius: 10px; background: rgba(255,149,0,.12); font: inherit; font-size: 13px; line-height: 1.35; text-align: left; color: var(--text); }
 .nw-tipbtn .nw-n { flex: none; width: 18px; height: 18px; border-radius: 50%; background: #FF9500; color: #fff; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .nw-tipbtn b { font-weight: 600; }
 .nw-tiptx { min-width: 0; }
-.nw-tiprow .nw-edit { width: 34px; height: 34px; flex: none; border: 0; background: none; }
+.nw-tiprow .nw-edit { width: 30px; height: 30px; flex: none; border: 0; background: none; }
 .nw-tipbtn .ms { font-size: 16px; color: var(--sub); margin-left: auto; }
 .nw-n, .nw-note .nw-n { flex: none; width: 18px; height: 18px; border-radius: 50%; background: #FF9500; color: #fff; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .nw-note .t { flex: 1; min-width: 0; }
@@ -707,7 +707,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '17.9';
+const APP_VERSION = '18.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2039,14 +2039,14 @@ function valueOn(pts, d) {
   return pts[pts.length - 1].v;
 }
 function invChartSvg(pts, color, key = 'inv', marks = []) {
-  const W = 340; const H = 190; const L = 48; const R = 8; const T = 10; const B = 26; const w = W - L - R; const h = H - T - B;
+  const W = 358; const H = 196; const L = 16; const R = 16; const T = 14; const B = 24; const w = W - L - R; const h = H - T - B;
   const t0 = parseYmd(pts[0].d).getTime(); const t1 = parseYmd(pts[pts.length - 1].d).getTime(); const span = Math.max(t1 - t0, 1);
   let lo = Math.min(...pts.map((p) => p.v)); let hi = Math.max(...pts.map((p) => p.v));
   if (hi - lo < 1) { lo -= 50; hi += 50; }
   const step = niceStep(hi - lo, 4); lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
   const X = (d) => L + ((parseYmd(d).getTime() - t0) / span) * w; const Y = (v) => T + (1 - (v - lo) / (hi - lo)) * h;
   let grid = '';
-  for (let v = lo; v <= hi + step / 2; v += step) grid += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" class="inv-grid"/><text x="${L - 6}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="inv-ax">${kMoney(v, step)}</text>`;
+  for (let v = lo; v <= hi + step / 2; v += step) grid += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" class="inv-grid"/><text x="${L}" y="${(Y(v) - 4).toFixed(1)}" class="inv-ax">${kMoney(v, step)}</text>`;
   // date ticks: months for longer ranges, days for a month
   const days = span / 864e5; let ticks = [];
   if (days <= 40) { for (let i = 0; i <= 4; i++) ticks.push(ymd(new Date(t0 + (span * i) / 4))); }
