@@ -680,7 +680,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '17.2';
+const APP_VERSION = '17.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -701,7 +701,21 @@ try { if (!localStorage.getItem('periodDefaults2')) { ['cashflow', 'detail', 'st
 // ---------- helpers ----------
 // Wide screen (iPhone Duo opened sideways ≈ 890, iPad, computer): two-column layouts; phone / cover screen / upright inner screen: one column
 const WIDE = window.matchMedia('(min-width: 800px)');
-WIDE.addEventListener?.('change', () => { closeSheet?.(); render(); });
+WIDE.addEventListener?.('change', () => { closeSheet?.(); render(); settleVars(); });
+// Sticky offsets (--hdr header height, --rsh search bar height) must be re-measured after the layout settles; rotation reports the size change in several steps
+function measureVars() {
+  const root = document.documentElement.style;
+  const hdr = document.querySelector('.top'); if (hdr) root.setProperty('--hdr', hdr.offsetHeight + 'px');
+  const rs = document.querySelector('.rec-search'); if (rs) root.setProperty('--rsh', rs.offsetHeight + 'px');
+}
+function settleVars() {
+  measureVars();
+  requestAnimationFrame(() => { measureVars(); requestAnimationFrame(measureVars); });
+  [120, 350, 700].forEach((ms) => setTimeout(measureVars, ms));
+}
+window.addEventListener('resize', settleVars);
+window.addEventListener('orientationchange', settleVars);
+window.visualViewport?.addEventListener('resize', settleVars);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money = (n, sign = false) => `${n < 0 ? '-' : sign && n > 0 ? '+' : ''}$${fmt.format(Math.abs(n))}`;
@@ -1134,8 +1148,7 @@ function render() {
   const body = (views[r.name] || viewAccounts)();
   $('app').innerHTML = (main ? headerMain(r.name) : headerSub(r)) + body
     + (r.name === 'tx' && !WIDE.matches ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
-  const hdr = document.querySelector('.top'); if (hdr) document.documentElement.style.setProperty('--hdr', hdr.offsetHeight + 'px');
-  const rs = document.querySelector('.rec-search'); if (rs) document.documentElement.style.setProperty('--rsh', rs.offsetHeight + 'px');
+  measureVars();
   window.scrollTo(0, y);
   document.querySelectorAll('.dash-col').forEach((c, i) => { if (colScroll[i]) c.scrollTop = colScroll[i]; });
   if (focusId && $(focusId)) { const f = $(focusId); f.focus(); if (caret != null && f.setSelectionRange) f.setSelectionRange(caret, caret); }
