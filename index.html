@@ -726,7 +726,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '19.5';
+const APP_VERSION = '19.6';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2184,19 +2184,23 @@ function nwSeries(accs, k) {
     return { d, v: v + man + iv };
   });
 }
-// A note can point at a record (the car purchase, the tax payment): date and amount come from it, and tapping the note opens it
-function nwNoteTx(x) { return x?.txId ? S.txById[x.txId] || S.rawById?.[x.txId] || null : null; }
+// A note can point at one or more records (the car purchase, two tax payments): the amount is their total, and tapping the note opens them
+function nwIds(x) { return x?.txIds || (x?.txId ? [x.txId] : []); }
+function nwNoteTxs(x) { return nwIds(x).map((id) => S.txById[id] || S.rawById?.[id]).filter(Boolean); }
+function nwNoteTx(x) { return nwNoteTxs(x)[0] || null; }
 function sheetNwNote(id, fromTx) {
   if (!S.nwDraft || S.nwDraft.id !== (id || null)) {
     const x = id ? S.chartNotes?.[id] : null; const t = fromTx ? S.txById[fromTx] : null;
-    S.nwDraft = x ? { id, date: x.date, text: x.text || '', amount: x.amount || '', txId: x.txId || null }
-      : { id: null, date: t ? t.date : ymd(new Date()), text: t ? txTitle(t) : '', amount: t ? Math.abs(t.amount) : '', txId: t ? t.id : null };
+    S.nwDraft = x ? { id, date: x.date, text: x.text || '', amount: x.amount || '', txIds: nwIds(x) }
+      : { id: null, date: t ? t.date : ymd(new Date()), text: t ? txTitle(t) : '', amount: t ? Math.abs(t.amount) : '', txIds: t ? [t.id] : [] };
   }
-  const d = S.nwDraft; const t = d.txId ? nwNoteTx(d) : null;
-  const rec = d.txId ? (t ? `${esc(txTitle(t))}<div class="meta">${esc(shortDate(t.date))} · ${money(Math.abs(t.amount))}</div>` : '<span class="meta">Record deleted or not loaded</span>') : '<span class="meta">Optional</span>';
+  const d = S.nwDraft; const txs = nwNoteTxs(d); const n = d.txIds.length;
+  const rec = !n ? '<span class="meta">Optional</span>'
+    : n === 1 ? (txs[0] ? `${esc(txTitle(txs[0]))}<div class="meta">${esc(shortDate(txs[0].date))} · ${money(Math.abs(txs[0].amount))}</div>` : '<span class="meta">Record deleted or not loaded</span>')
+    : `${n} records<div class="meta">Total ${money(txs.reduce((m, t) => m + Math.abs(t.amount), 0))}</div>`;
   openSheet(`<h3>${id ? 'Edit note' : 'New note'}</h3>
-    <div class="set-list"><button class="set-item" data-act="nw-pick-open">${glyph('receipt_long', '#3478F6')}<span class="n">Record</span><span class="v" style="text-align:right">${rec}</span>${icon('chevron_right')}</button></div>
-    ${d.txId ? `<button class="pill-btn small" data-act="nw-unlink" style="margin-top:6px">${icon('link_off')}Unlink record</button>` : ''}
+    <div class="set-list"><button class="set-item" data-act="nw-pick-open">${glyph('receipt_long', '#3478F6')}<span class="n">${n > 1 ? 'Records' : 'Record'}</span><span class="v" style="text-align:right">${rec}</span>${icon('chevron_right')}</button></div>
+    ${n ? `<button class="pill-btn small" data-act="nw-unlink" style="margin-top:6px">${icon('link_off')}Unlink ${n > 1 ? 'records' : 'record'}</button>` : ''}
     <div class="tb-form">
       <div class="field"><label for="nwn-date">Date</label><input class="input" type="date" id="nwn-date" value="${esc(d.date || '')}"></div>
       <div class="field"><label for="nwn-amt">Amount</label><input class="input num" id="nwn-amt" inputmode="decimal" value="${d.amount ? esc(d.amount) : ''}" placeholder="Optional"></div>
@@ -2207,37 +2211,54 @@ function sheetNwNote(id, fromTx) {
   if (S.nwFromEdit) S.sheetBack = () => { S.nwDraft = null; S.nwFromEdit = false; renderEdit(); };
 }
 function nwCapture() { const d = S.nwDraft; if (!d || !$('nwn-date')) return; d.date = $('nwn-date').value; d.text = $('nwn-text').value; d.amount = $('nwn-amt').value; }
-// Choose the record: biggest amounts first, with a search box
+// Choose records (tick one or more): biggest amounts first, with a search box; Done puts their total in Amount and the earliest date in Date
+function nwPickLabel() { const n = S.nwPickSel?.size || 0; return n ? `Done · ${n} selected` : 'Done'; }
 function sheetNwPick() {
   nwCapture();
+  const sel = S.nwPickSel;
   const from = invStart(nwPeriod()); const to = ymd(new Date());
-  const withTr = S.nwPickTr !== false; // transfers are listed unless switched off (top right)
-  const list = S.txs.filter((t) => t.date >= from && t.date <= to && (withTr || !t.isTransfer)).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
-  const rows = list.map((t) => `<button class="set-item" data-act="nw-pick" data-id="${t.id}" data-bcl="${esc(`${txTitle(t)} ${t.isTransfer ? 'transfer' : txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}">${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${t.isTransfer ? 'Transfer · ' : ''}${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span><span class="v num" style="flex:none">${money(Math.abs(t.amount))}</span></button>`).join('');
+  const withTr = S.nwPickTr !== false; // transfers are listed unless switched off
+  const list = S.txs.filter((t) => (t.date >= from && t.date <= to && (withTr || !t.isTransfer)) || sel.has(t.id)).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
+  const rows = list.map((t) => `<label class="msel-row" data-bcl="${esc(`${txTitle(t)} ${t.isTransfer ? 'transfer' : txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}"><input type="checkbox" data-nwsel="${t.id}" ${sel.has(t.id) ? 'checked' : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${t.isTransfer ? 'Transfer · ' : ''}${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span><span class="v num" style="flex:none">${money(Math.abs(t.amount))}</span></label>`).join('');
   const q = $('rbq')?.value || '';
-  openSheet(`<h3>Choose record</h3>
+  openSheet(`<h3>Choose records</h3>
     <div class="nw-pick-per"><span>${INV_PERIODS[nwPeriod()]}</span><button class="pill-btn small" data-act="nw-pick-tr" aria-pressed="${withTr}">${icon(withTr ? 'check_circle' : 'radio_button_unchecked')}Transfers</button></div>
     <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search name, amount or date" autocomplete="off" aria-label="Search records"></div>
-    <div class="set-list" id="rbc-list">${rows || '<div class="empty">No records loaded</div>'}</div>`);
+    <div class="set-list" id="rbc-list">${rows || '<div class="empty">No records loaded</div>'}</div>
+    <div class="sticky-save"><button class="pill-btn primary" data-act="nw-pick-done" id="nw-pick-done">${nwPickLabel()}</button></div>`);
   if (q && $('rbq')) { $('rbq').value = q; $('rbq').dispatchEvent(new Event('input', { bubbles: true })); }
   S.sheetBack = () => sheetNwNote(S.nwDraft?.id || null);
+}
+function nwPickDone() {
+  const d = S.nwDraft; if (!d) return;
+  const ids = [...(S.nwPickSel || [])]; const txs = ids.map((id) => S.txById[id]).filter(Boolean);
+  const changed = ids.join() !== d.txIds.join();
+  d.txIds = ids;
+  if (changed && txs.length) {
+    d.amount = Math.round(txs.reduce((m, t) => m + Math.abs(t.amount), 0) * 100) / 100;
+    d.date = txs.map((t) => t.date).sort()[0];
+    if (!String(d.text || '').trim() && txs.length === 1) d.text = txTitle(txs[0]);
+  }
+  sheetNwNote(d.id || null);
 }
 async function nwNoteSave() {
   nwCapture(); const d = S.nwDraft; if (!d) return;
   const text = (d.text || '').trim(); const amt = String(d.amount ?? '').trim();
   if (!d.date) { toast('Enter the date'); return; }
   if (!text) { toast('Write what it was for'); return; }
-  const data = { date: d.date, text, amount: amt ? num(amt) || null : null, txId: d.txId || null };
+  const data = { date: d.date, text, amount: amt ? num(amt) || null : null, txIds: d.txIds || [], txId: null };
   if (d.id) await updateDoc(doc(db, 'chartNotes', d.id), data);
   else await setDoc(doc(collection(db, 'chartNotes')), { ...data, createdAt: serverTimestamp() });
   const back = S.nwFromEdit; S.nwDraft = null; S.nwFromEdit = false; closeSheet(); toast('Saved');
   if (back && S.edit) setTimeout(renderEdit, 300);
 }
-// Tapping a note: open its record when it has one, otherwise edit the note
+// Tapping a note: one record opens it, several open a list of them, none opens the note
 function nwOpenNote(id) {
   const x = S.chartNotes?.[id]; if (!x) return;
-  const t = nwNoteTx(x);
-  if (t && S.txById[t.id]) { S.back = null; openEdit(t.id); } else { S.nwDraft = null; sheetNwNote(id); }
+  const txs = nwNoteTxs(x).filter((t) => S.txById[t.id]);
+  if (txs.length === 1) { S.back = null; openEdit(txs[0].id); }
+  else if (txs.length > 1) sheetRecords({ title: x.text || 'Records', period: shortDate(x.date), ids: txs.map((t) => t.id), sort: 'date_desc' });
+  else { S.nwDraft = null; sheetNwNote(id); }
 }
 function cardNetWorthChart(accs) {
   if (!S.balHist) loadBalHist();
@@ -3178,7 +3199,7 @@ function renderEdit() {
     ${e.manual ? `<div class="sec-head">Name</div><input class="input" id="ed-name" value="${esc(e.name || '')}" placeholder="e.g. Animal Hospital" autocomplete="off" aria-label="Name">` : ''}
     <div class="sec-head">Note</div><input class="input" id="ed-note" value="${esc(e.note)}" placeholder="${esc(t ? (t.merchant || t.name || '') : 'Add a note')}" autocomplete="off" aria-label="Note">
     ${t && !t.manual ? bankDetails(t) : ''}
-    ${t ? (() => { const ex = Object.values(S.chartNotes || {}).find((x) => x.txId === e.txId); return `<button class="pill-btn wide" data-act="nw-note-tx">${icon('push_pin')}${ex ? `On Net Worth chart: ${esc(ex.text)}` : 'Mark on Net Worth chart'}</button>`; })() : ''}
+    ${t ? (() => { const ex = Object.values(S.chartNotes || {}).find((x) => nwIds(x).includes(e.txId)); return `<button class="pill-btn wide" data-act="nw-note-tx">${icon('push_pin')}${ex ? `On Net Worth chart: ${esc(ex.text)}` : 'Mark on Net Worth chart'}</button>`; })() : ''}
     ${t && !e.part && e.manual ? `<button class="pill-btn danger wide" data-act="del-tx" data-id="${e.txId}">${icon('delete')}Delete record</button>` : ''}
     ${saveBar('save-edit', 'Save')}`, { short: true }); // same height as the records list it often opens from
 
@@ -3794,15 +3815,15 @@ document.addEventListener('click', async (e) => {
       case 'nw-note': S.nwDraft = null; S.nwFromEdit = false; sheetNwNote(el.dataset.id || null); break;
       case 'nw-note-tx': {
         captureEdit(); const tid = S.edit?.txId; if (!tid) break;
-        const ex = Object.values(S.chartNotes || {}).find((x) => x.txId === tid);
+        const ex = Object.values(S.chartNotes || {}).find((x) => nwIds(x).includes(tid));
         S.nwDraft = null; S.nwFromEdit = true; sheetNwNote(ex ? ex.id : null, ex ? null : tid); break;
       }
       case 'nw-open': nwOpenNote(id); break;
       case 'nw-tip-open': if (S.nwSel) nwOpenNote(S.nwSel); break;
-      case 'nw-pick-open': sheetNwPick(); break;
+      case 'nw-pick-open': S.nwPickSel = new Set(S.nwDraft?.txIds || []); sheetNwPick(); break;
       case 'nw-pick-tr': S.nwPickTr = S.nwPickTr === false; sheetNwPick(); break;
-      case 'nw-pick': { const t = S.txById[id]; const d = S.nwDraft; if (t && d) { d.txId = t.id; d.date = t.date; d.amount = Math.abs(t.amount); if (!String(d.text || '').trim()) d.text = txTitle(t); } sheetNwNote(d?.id || null); break; }
-      case 'nw-unlink': nwCapture(); if (S.nwDraft) S.nwDraft.txId = null; sheetNwNote(S.nwDraft?.id || null); break;
+      case 'nw-pick-done': nwPickDone(); break;
+      case 'nw-unlink': nwCapture(); if (S.nwDraft) S.nwDraft.txIds = []; sheetNwNote(S.nwDraft?.id || null); break;
       case 'nw-note-save': await nwNoteSave(); break;
       case 'nw-note-del': if (confirm('Delete this note? The record stays.')) { await deleteDoc(doc(db, 'chartNotes', id)); const back = S.nwFromEdit; S.nwDraft = null; S.nwFromEdit = false; closeSheet(); toast('Deleted'); if (back && S.edit) setTimeout(renderEdit, 300); } break;
       case 'nw-scope': localStorage.setItem('nwScope', el.dataset.v); render(); break;
@@ -4082,6 +4103,7 @@ document.addEventListener('compositionend', (e) => {
   S.search = e.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refreshRecResults, 200);
 });
 document.addEventListener('change', async (e) => {
+  if (e.target.dataset.nwsel && S.nwPickSel) { e.target.checked ? S.nwPickSel.add(e.target.dataset.nwsel) : S.nwPickSel.delete(e.target.dataset.nwsel); if ($('nw-pick-done')) $('nw-pick-done').textContent = nwPickLabel(); return; }
   if (e.target.dataset.rum && S.ruleDraft) { const v = e.target.dataset.rum; const a = (S.ruleDraft.merchants || []).filter((x) => x.toLowerCase() !== v.toLowerCase()); if (e.target.checked) a.push(v); S.ruleDraft.merchants = a; return; }
   if (e.target.dataset.rubc && S.ruleDraft) { const v = e.target.dataset.rubc; const a = new Set(S.ruleDraft.bankCats || []); e.target.checked ? a.add(v) : a.delete(v); S.ruleDraft.bankCats = [...a]; return; }
   if (e.target.dataset.ruacc && S.ruleDraft) { const id = e.target.dataset.ruacc; const a = new Set(S.ruleDraft.onlyAccs || []); e.target.checked ? a.add(id) : a.delete(id); S.ruleDraft.onlyAccs = [...a]; return; }
