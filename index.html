@@ -43,7 +43,7 @@ button { cursor: pointer; }
 .num { font-variant-numeric: tabular-nums; }
 .ms { font-variation-settings: 'FILL' 0, 'wght' 350; font-family: 'Material Symbols Rounded'; font-weight: normal; font-style: normal; font-size: 20px; line-height: 1; display: inline-block; white-space: nowrap; direction: ltr; -webkit-font-feature-settings: 'liga'; font-feature-settings: 'liga'; }
 
-#app { max-width: 560px; margin: 0 auto; min-height: 100vh; padding-bottom: calc(96px + var(--safe-bottom)); }
+#app { max-width: 640px; margin: 0 auto; min-height: 100vh; padding-bottom: calc(96px + var(--safe-bottom)); }
 
 /* header */
 .top { background: rgba(242,242,244,.92); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); color: var(--text); padding: calc(var(--safe-top) + 6px) 12px 8px; position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--line); }
@@ -225,7 +225,7 @@ button { cursor: pointer; }
 .who-name { font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
 .drawer a, .drawer button { display: flex; align-items: center; gap: 14px; min-height: 50px; padding: 0 12px; border: 0; border-radius: 10px; background: none; text-decoration: none; color: var(--text); font-weight: 400; font-size: 16px; text-align: left; }
 .drawer .ms { color: var(--accent); font-size: 24px; }
-.sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow-y: auto; background: var(--card); z-index: 21; border-radius: 18px 18px 0 0; padding: 12px 16px calc(20px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 14px; max-width: 560px; margin: 0 auto; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow-y: auto; background: var(--card); z-index: 21; border-radius: 18px 18px 0 0; padding: 12px 16px calc(20px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 14px; max-width: 640px; margin: 0 auto; }
 .sheet > * { flex-shrink: 0; }
 .sheet { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: manipulation; }
 body.sheet-open { overflow: hidden; }
@@ -259,7 +259,7 @@ body.sheet-open { overflow: hidden; }
 .fab { width: 50px; height: 50px; border-radius: 50%; border: 0; background: #2563EB; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(37,99,235,.35); }
 .fab .ms { font-size: 26px; }
 /* the round button opens two actions: add a record, or jump to the search box */
-.fab-wrap { position: fixed; right: max(20px, calc(50vw - 260px)); bottom: calc(24px + var(--safe-bottom)); z-index: 6; }
+.fab-wrap { position: fixed; right: max(20px, calc(50vw - 300px)); bottom: calc(24px + var(--safe-bottom)); z-index: 6; }
 .fab-mini { display: none; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 0; border-radius: 20px; background: var(--card); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; box-shadow: 0 3px 10px rgba(21,24,29,.18); }
 .fab-wrap.open .fab-mini { display: inline-flex; }
 .fab-mini .ms { font-size: 20px; color: var(--accent); }
@@ -316,6 +316,34 @@ input.row-select { direction: ltr; }
 .dn-name { font-size: 13px; color: var(--sub); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dn-val { font-size: 20px; font-weight: 600; }
 .sel-all .n { font-weight: 600; }
+/* Wide screens (iPhone Duo opened sideways ≈ 890 wide, iPad, computer): Dashboard cards in two columns.
+   Narrower (phone, cover screen 466, inner screen upright 626) keep the single column. */
+/* landscape: keep clear of the rounded corners / camera on the sides */
+#app { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+@media (min-width: 800px) {
+  #app:has(.dash-page) { max-width: 1120px; }
+  /* Records: list on the left, the record you tap on the right, period + filter on a rail at the far right */
+  body.rec-wide { --railW: calc(72px + env(safe-area-inset-right, 0px)); --paneW: 42vw; }
+  body.rec-wide #app { max-width: none; margin: 0; padding-right: calc(var(--paneW) + var(--railW)); }
+  body.rec-wide.sheet-open { overflow: auto; }
+  body.rec-wide #sheet .scrim { display: none; }
+  body.rec-wide .sheet { left: auto !important; right: var(--railW) !important; top: 0 !important; bottom: 0 !important; width: var(--paneW) !important; max-width: none !important; max-height: none !important; height: 100dvh !important; margin: 0; border-radius: 0; box-shadow: -1px 0 0 var(--line); transform: none !important; z-index: 8; }
+  .rec-ph { position: fixed; top: 0; bottom: 0; right: var(--railW); width: var(--paneW); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--sub); font-size: 13px; background: var(--card); box-shadow: -1px 0 0 var(--line); z-index: 5; }
+  .rec-ph .ms { font-size: 34px; opacity: .5; }
+  .rec-rail { position: fixed; top: 0; bottom: 0; right: 0; width: var(--railW); padding: calc(12px + var(--safe-top)) env(safe-area-inset-right, 0px) calc(12px + var(--safe-bottom)) 0; display: flex; flex-direction: column; align-items: center; gap: 8px; background: rgba(255,255,255,.96); box-shadow: -1px 0 0 var(--line); z-index: 9; }
+  .rr-btn { width: 52px; min-height: 44px; border: 0; border-radius: 14px; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; position: relative; font: inherit; font-size: 10px; }
+  .rr-btn:disabled { opacity: .35; }
+  .rr-btn .ms { font-size: 24px; }
+  .rr-f b { position: absolute; top: 4px; right: 6px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 10px; line-height: 16px; }
+  .rr-mid { width: 60px; border: 0; border-radius: 14px; background: var(--accent); color: #fff; font: inherit; font-size: 12px; font-weight: 700; line-height: 1.2; padding: 10px 4px; }
+  .rr-sep { width: 32px; height: 1px; background: var(--line); margin: 4px 0; }
+  .rr-add { margin-top: auto; width: 52px; height: 52px; border: 0; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(52,120,246,.35); }
+  .rr-add .ms { font-size: 28px; }
+  #app:has(.dash-cols) { padding-bottom: 0; }
+  .dash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding-bottom: 0; height: calc(100dvh - var(--hdr, 110px)); }
+  .dash-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: calc(16px + var(--safe-bottom)); scrollbar-width: none; }
+  .dash-col::-webkit-scrollbar { display: none; }
+}
 .legend-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 8px; padding: 0; }
 .legend { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; border: 0; background: none; padding: 0 4px; border-radius: 7px; font-size: 13px; color: var(--text); }
 .legend .n { white-space: nowrap; text-align: left; }
@@ -365,7 +393,7 @@ input.row-select { direction: ltr; }
 .rec-page { padding-bottom: 150px; }
 .rec-sum { padding: 0 4px; }
 .day.row-between { font-weight: 600; }
-.rec-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; max-width: 560px; margin: 0 auto; background: rgba(255,255,255,.96); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border-radius: 18px 18px 0 0; box-shadow: 0 -4px 20px rgba(0,0,0,.08); padding: 4px 16px calc(12px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 6px; }
+.rec-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; max-width: 640px; margin: 0 auto; background: rgba(255,255,255,.96); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border-radius: 18px 18px 0 0; box-shadow: 0 -4px 20px rgba(0,0,0,.08); padding: 4px 16px calc(12px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 6px; }
 .dock-grab { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 2px; }
 .dock-grab .grab { width: 40px; height: 5px; border-radius: 3px; background: #D5D9E0; }
 .period-pill { display: flex; align-items: center; background: var(--accent); border-radius: 999px; padding: 4px; }
@@ -652,7 +680,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '16.6';
+const APP_VERSION = '16.9';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -671,6 +699,9 @@ const DEFAULT_PERIOD = { cashflow: 'this_month', detail: 'this_year', structure:
 try { if (!localStorage.getItem('periodDefaults2')) { ['cashflow', 'detail', 'structure'].forEach((c) => localStorage.removeItem('period:' + c)); localStorage.setItem('periodDefaults2', '1'); } } catch { /* storage off */ }
 
 // ---------- helpers ----------
+// Wide screen (iPhone Duo opened sideways ≈ 890, iPad, computer): two-column layouts; phone / cover screen / upright inner screen: one column
+const WIDE = window.matchMedia('(min-width: 800px)');
+WIDE.addEventListener?.('change', () => { closeSheet?.(); render(); });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money = (n, sign = false) => `${n < 0 ? '-' : sign && n > 0 ? '+' : ''}$${fmt.format(Math.abs(n))}`;
@@ -1097,12 +1128,16 @@ function render() {
   const focusId = document.activeElement?.id; const caret = document.activeElement?.selectionStart;
   const views = { dash: viewDash, tx: () => viewTx(r.params), cats: viewCats, cat: () => viewCat(r.id), labels: viewLabels, filters: viewFilters, rules: viewRules, tbills: viewTbills, conns: viewConns, conn: () => viewConn(r.id) };
   const main = !views[r.name] || MAIN.includes(r.name);
+  const colScroll = S.lastRouteName === r.name ? [...document.querySelectorAll('.dash-col')].map((c) => c.scrollTop) : [];
+  S.lastRouteName = r.name;
+  document.body.classList.toggle('rec-wide', WIDE.matches && r.name === 'tx');
   const body = (views[r.name] || viewAccounts)();
   $('app').innerHTML = (main ? headerMain(r.name) : headerSub(r)) + body
-    + (r.name === 'tx' ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
+    + (r.name === 'tx' && !WIDE.matches ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
   const hdr = document.querySelector('.top'); if (hdr) document.documentElement.style.setProperty('--hdr', hdr.offsetHeight + 'px');
   const rs = document.querySelector('.rec-search'); if (rs) document.documentElement.style.setProperty('--rsh', rs.offsetHeight + 'px');
   window.scrollTo(0, y);
+  document.querySelectorAll('.dash-col').forEach((c, i) => { if (colScroll[i]) c.scrollTop = colScroll[i]; });
   if (focusId && $(focusId)) { const f = $(focusId); f.focus(); if (caret != null && f.setSelectionRange) f.setSelectionRange(caret, caret); }
   if ($('sq-results')) refreshSearchSheet(); // keep the search sheet in step with edits
   if ($('rec-pop-list') && S.recPop) { // same for the records popup opened from a card, keeping its scroll
@@ -1234,7 +1269,7 @@ function accColor(a) {
 function isBusiness(a) { return !!a && (a.business ?? /\bbusiness\b/i.test(`${a.name || ''} ${a.officialName || ''} ${a.customName || ''}`)); }
 // Net Worth = Personal + Business. Each: Cash (checking, savings, manual cash) − credit cards − loans (+ investments).
 // Hidden accounts are left out. Rows fold open to list their accounts.
-function netWorthCard(accs) {
+function netWorthCard(accs, part) {
   const groups = { per: {}, biz: {} };
   accs.forEach((a) => {
     const b = accountBalance(a); const g = groups[isBusiness(a) ? 'biz' : 'per'];
@@ -1270,6 +1305,8 @@ function netWorthCard(accs) {
   const section = (gk, title, keys) => `<div class="nw-sec"><span>${title}</span><span class="num" style="${col(tot(groups[gk]))}">${money(tot(groups[gk]))}</span></div>
     ${keys.filter((k) => ['cash', 'credit'].includes(k) || groups[gk][k]).map((k) => row(gk, k)).join('')}`;
   const hasBiz = Object.keys(groups.biz).length > 0;
+  if (part === 'biz') return hasBiz ? `<div class="card nw-card">${section('biz', 'Business', ['cash', 'credit', 'loan', 'invest'])}</div>` : '';
+  if (part === 'per' && hasBiz) return `<div class="card nw-card"><div class="meta">Net Worth</div><div class="nw-total num">${money(tot(groups.per) + tot(groups.biz))}</div><div class="meta" style="margin-top:-6px">${lastSyncText()}</div>${section('per', 'Personal', ['cash', 'credit', 'loan', 'invest'])}</div>`;
   return `<div class="card nw-card"><div class="meta">Net Worth</div><div class="nw-total num">${money(tot(groups.per) + tot(groups.biz))}</div><div class="meta" style="margin-top:-6px">${lastSyncText()}</div>
     ${hasBiz ? section('per', 'Personal', ['cash', 'credit', 'loan', 'invest']) + section('biz', 'Business', ['cash', 'credit', 'loan', 'invest'])
       : ['cash', 'credit', 'loan', 'invest'].filter((k) => ['cash', 'credit', 'invest'].includes(k) || groups.per[k]).map((k) => row('per', k)).join('')}</div>`;
@@ -1297,6 +1334,7 @@ function viewAccounts() {
     return `<div class="page"><div class="empty">${icon('account_balance')}<div>No bank accounts connected yet</div>
       <button class="pill-btn primary" data-act="link">Connect your first bank</button></div></div>`;
   }
+  if (WIDE.matches && netWorthCard(accs, 'biz')) return `<div class="page dash-page dash-cols"><div class="dash-col">${banners}${netWorthCard(accs, 'per')}</div><div class="dash-col">${netWorthCard(accs, 'biz')}</div></div>`;
   return `<div class="page">
     ${netWorthCard(accs)}
     ${banners}
@@ -1321,8 +1359,15 @@ function cardHidden() { try { return new Set(JSON.parse(localStorage.getItem('ca
 function viewDash() {
   const fns = { cashflow: cardCash, detail: cardDetail, structure: cardStructure, trend: cardTrend, invest: cardInvest, tbills: cardTbills };
   const hidden = cardHidden();
-  const cards = cardOrder().filter((k) => !hidden.has(k)).map((k) => fns[k]()).join('');
-  return `<div class="page">${cards || '<div class="empty">All cards are hidden</div>'}
+  const list = cardOrder().filter((k) => !hidden.has(k)).map((k) => fns[k]());
+  const reorder = `<div class="center"><button class="pill-btn small" data-act="reorder">${icon('swap_vert')}Reorder cards</button></div>`;
+  // Wide screen (e.g. iPhone Duo opened sideways): two columns that scroll on their own, cards 1,3,5… left and 2,4,6… right
+  if (WIDE.matches && list.length > 1) {
+    const L = list.filter((_, i) => i % 2 === 0).join(''); const R = list.filter((_, i) => i % 2 === 1).join('');
+    return `<div class="page dash-page dash-cols"><div class="dash-col" id="dcol-l">${L}${reorder}</div><div class="dash-col" id="dcol-r">${R}</div></div>`;
+  }
+  const cards = list.join('');
+  return `<div class="page dash-page">${cards || '<div class="empty">All cards are hidden</div>'}
     <div class="center"><button class="pill-btn small" data-act="reorder">${icon('swap_vert')}Reorder cards</button></div></div>`;
 }
 function cardCash() {
@@ -1643,8 +1688,25 @@ function cardTbills() {
     <div class="tb-list">${open.map((t) => tbRow(t)).join('') || '<div class="meta">Nothing open right now</div>'}</div></section>`;
 }
 function viewTbills() {
-  const open = tbOpen(); const done = tbDone(); const tab = S.tbTab === 'done' ? 'done' : 'open';
-  const importBox = !tbList().length && S.tbLoaded ? `<div class="card"><p class="h2">Import from your Excel</p><div class="meta" style="margin:4px 0 10px">${TB_SEED.length} T-bills from T-bills.xlsx (${TB_SEED.filter((r) => r[5] == null).length} still open). No income records are created for them; you already entered that interest.</div><button class="pill-btn primary" data-act="tb-import">${icon('download')}Import ${TB_SEED.length}</button></div>` : '';
+  const open = tbOpen(); const done = tbDone();
+  if (WIDE.matches) {
+    const o = tbPart('open'); const d = tbPart('done');
+    return `<div class="page dash-page dash-cols">${tbImportBox()}
+      <div class="dash-col"><div class="row-between"><span class="chip" aria-pressed="true">Open ${open.length}</span><button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></div>${o.list}</div>
+      <div class="dash-col"><div class="row-between"><span class="chip" aria-pressed="true">Matured ${done.length}</span><button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button></div>${d.total}${d.list}</div></div>`;
+  }
+  const tab = S.tbTab === 'done' ? 'done' : 'open'; const p = tbPart(tab);
+  return `<div class="page">${tbImportBox()}
+    <div class="row-between"><div class="chips"><button class="chip" data-act="tb-tab" data-v="open" aria-pressed="${tab === 'open'}">Open ${open.length}</button><button class="chip" data-act="tb-tab" data-v="done" aria-pressed="${tab === 'done'}">Matured ${done.length}</button></div>
+      <span class="tb-tools">${tab === 'done' ? `<button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button>` : ''}<button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></span></div>
+    ${p.total}${p.list}</div>`;
+}
+function tbImportBox() {
+  return !tbList().length && S.tbLoaded ? `<div class="card"><p class="h2">Import from your Excel</p><div class="meta" style="margin:4px 0 10px">${TB_SEED.length} T-bills from T-bills.xlsx (${TB_SEED.filter((r) => r[5] == null).length} still open). No income records are created for them; you already entered that interest.</div><button class="pill-btn primary" data-act="tb-import">${icon('download')}Import ${TB_SEED.length}</button></div>` : '';
+}
+// One list (Open or Matured), grouped; used by the single-column page and by each wide-screen column
+function tbPart(tab) {
+  const open = tbOpen(); const done = tbDone();
   // Matured: period filter + group by account or by month (≡ menu); Open: always by account
   const per = localStorage.getItem('tbPer') || 'year'; const by = tab === 'done' ? (localStorage.getItem('tbBy') || 'account') : 'account';
   const y0 = new Date().getFullYear();
@@ -1667,10 +1729,7 @@ function viewTbills() {
   const PER = { year: 'This year', last: 'Last year', all: 'All' };
   const total = tab === 'done' && rows.length ? `<div class="meta tb-sum">${PER[per]} · ${rows.length} matured · <span class="num" style="color:var(--good)">+${money(rows.reduce((n, t) => n + t.gotBack - t.amount, 0))}</span> · grouped by ${by === 'date' ? 'month' : 'account'}</div>` : '';
   const list = body ? `<div class="card tb-list">${body}</div>` : `<div class="card"><div class="empty">${tab === 'open' ? 'Nothing open' : 'Nothing matured in this period'}</div></div>`;
-  return `<div class="page">${importBox}
-    <div class="row-between"><div class="chips"><button class="chip" data-act="tb-tab" data-v="open" aria-pressed="${tab === 'open'}">Open ${open.length}</button><button class="chip" data-act="tb-tab" data-v="done" aria-pressed="${tab === 'done'}">Matured ${done.length}</button></div>
-      <span class="tb-tools">${tab === 'done' ? `<button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button>` : ''}<button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></span></div>
-    ${total}${list}</div>`;
+  return { total, list };
 }
 // Accounts page: one line under an investment account about its next maturity
 function tbNextLine(a) {
@@ -2210,7 +2269,15 @@ function viewTx(params) {
   const total = list.reduce((n, t) => n + signed(t), 0);
   const searchBar = `<div class="rec-search"><div class="searchbar">${icon('search')}<input id="txsearch" type="search" placeholder="Search merchant, note, category, amount" value="${esc(S.search)}" autocomplete="off" aria-label="Search records"><span id="search-clear-slot">${searchClearBtn()}</span></div></div>`;
   const nf = recFilterCount(); const p = recPeriod();
-  const dock = `<div class="rec-dock">
+  const rail = `<nav class="rec-rail" aria-label="Period and filters">
+    <button class="rr-btn" data-act="rec-shift" data-dir="-1" aria-label="Previous period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_left')}</button>
+    <button class="rr-mid" data-act="rec-kind">${esc(recLabel())}</button>
+    <button class="rr-btn" data-act="rec-shift" data-dir="1" aria-label="Next period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_right')}</button>
+    <span class="rr-sep"></span>
+    <button class="rr-btn rr-f" data-act="rec-panel" aria-label="Accounts, categories and filter">${icon('tune')}${nf ? `<b>${nf}</b>` : ''}<span>Filter</span></button>
+    <button class="rr-add" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></nav>
+    <div class="rec-ph">${icon('receipt_long')}<div>Tap a record to see it here</div></div>`;
+  const dock = WIDE.matches ? rail : `<div class="rec-dock">
     <button class="dock-grab" data-act="rec-panel" aria-label="Accounts, categories and filter"><span class="grab"></span><span class="meta">${nf ? `${nf} filter${nf > 1 ? 's' : ''} on · ` : ''}Accounts · Categories · Filter</span></button>
     <div class="period-pill">
       <button class="pp-arrow" data-act="rec-shift" data-dir="-1" aria-label="Previous period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_left')}</button>
