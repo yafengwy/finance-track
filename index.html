@@ -82,6 +82,9 @@ button { cursor: pointer; }
 .card { background: var(--card); border: 0; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .card-head { display: flex; align-items: flex-start; gap: 8px; }
 .card-head > div { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.card-head:has(> .card-upd) { position: relative; }
+.card-head > .card-upd { position: absolute; right: 52px; top: 6px; font-size: 11px; color: var(--sub); white-space: nowrap; } /* "Updated …" left of the ⋯ button, on the title's line; the subtitle can run under it */
+.hdr-upd { font-size: 11px; color: var(--sub); white-space: nowrap; align-self: center; padding-right: 4px; }
 .card-head .icon-btn { color: var(--sub); margin: -8px -10px 0 0; }
 .big { font-size: 32px; font-weight: 600; letter-spacing: -0.5px; }
 .bar-row { display: flex; flex-direction: column; gap: 6px; }
@@ -727,7 +730,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '20.1';
+const APP_VERSION = '20.2';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1228,7 +1231,7 @@ function headerSub(r) {
   if (r.name === 'conn') { title = S.items[r.id]?.institutionName || 'Bank connection'; back = '#/conns'; }
   return `<header class="top sub"><div class="bar">
     <a class="icon-btn round" href="${back}" data-act="nav-up" aria-label="Back">${icon('chevron_left')}</a>
-    <h1>${title}</h1><span style="width:44px"></span></div></header>`;
+    <h1>${title}</h1>${r.name === 'tbills' && updatedText(tbAccs()) ? `<span class="card-upd hdr-upd">${updatedText(tbAccs())}</span>` : '<span style="width:44px"></span>'}</div></header>`;
 }
 
 // ---------- bank connections (Menu → Accounts) ----------
@@ -1237,6 +1240,16 @@ const TRIAL_ITEMS = 10;
 function bankIcon(i) {
   return i?.logo ? `<span class="ci bank-logo"><img src="data:image/png;base64,${i.logo}" alt=""></span>` : glyph('account_balance', i?.brandColor || '#0A7AFF');
 }
+// "Updated …": the bank sync time of the given accounts (the oldest one, so everything shown is at least this fresh)
+function updatedText(accs) {
+  const ts = [...new Set(accs.map((a) => a?.itemId).filter(Boolean))].map((id) => S.items[id]?.lastSyncAt?.toDate?.()).filter(Boolean);
+  if (!ts.length) return '';
+  const d = new Date(Math.min(...ts)); const today = new Date();
+  const same = d.toDateString() === today.toDateString(); const tm = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return same ? `Updated ${tm}` : `Updated ${d.getMonth() + 1}/${d.getDate()} ${tm}`;
+}
+function tbAccs() { return [...new Set(tbList().map((t) => t.accountId))].map((id) => S.accounts[id]).filter(Boolean); }
+const updSpan = (txt) => (txt ? `<span class="card-upd">${txt}</span>` : '');
 function fmtWhen(ts) { const d = ts?.toDate?.(); return d ? d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'; }
 function connAccounts(itemId) { return Object.values(S.accounts).filter((a) => a.itemId === itemId).sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
 function connStatus(i) {
@@ -1744,7 +1757,7 @@ function reimbLine() {
 function cardTbills() {
   const open = tbOpen(); const st = tbYearStats();
   const head = `<div class="card-head"><div><button class="link-plain" data-act="go-tbills"><p class="h2">T-Bills & CDs</p></button><div class="meta">${open.length} open · ${money(open.reduce((n, t) => n + t.amount, 0))} invested</div></div>
-    <button class="icon-btn" data-act="tb-menu" aria-label="T-Bills options">${icon('more_horiz')}</button></div>`;
+    ${updSpan(updatedText(tbAccs()))}<button class="icon-btn" data-act="tb-menu" aria-label="T-Bills options">${icon('more_horiz')}</button></div>`;
   if (!tbList().length) return `<section class="card">${head}<div class="meta" style="margin:6px 0 10px">Track each T-bill or CD: when it matures, what came back, the real APY.</div><button class="pill-btn" data-act="go-tbills">${icon('savings')}Get started</button></section>`;
   return `<section class="card">${head}
     <div class="tb-stats"><div><span class="meta">Interest this year</span><b class="num" style="color:var(--good)">+${money(st.interest)}</b></div><div><span class="meta">Avg actual APY</span><b class="num">${st.apy == null ? '—' : st.apy.toFixed(2) + '%'}</b></div></div>
@@ -2087,7 +2100,7 @@ function cardInvest() {
   if (!S.balHist) { loadBalHist(); }
   const accs = invAccounts(); const k = invPeriod();
   const head = `<div class="card-head"><div><p class="h2">Investments</p><div class="meta">${INV_PERIODS[k]}</div></div>
-    <button class="icon-btn" data-act="inv-settings" aria-label="Investments settings">${icon('more_horiz')}</button></div>`;
+    ${updSpan(updatedText(accs))}<button class="icon-btn" data-act="inv-settings" aria-label="Investments settings">${icon('more_horiz')}</button></div>`;
   if (!accs.length) return `<section class="card">${head}<div class="meta">No investment accounts. Turn on Investment for an account on the Accounts page.</div></section>`;
   const sel = invSelected(); const all = sel.length === accs.length;
   const chips = `<div class="chips inv-chips"><button class="chip" data-act="inv-acc" data-id="" aria-pressed="${all}">All</button>${accs.map((a) => `<button class="chip" data-act="inv-acc" data-id="${a.id}" aria-pressed="${!all && sel.includes(a.id)}"><span class="nw-st" style="background:${esc(accColor(a))}"></span>${esc(accName(a))}</button>`).join('')}</div>`;
