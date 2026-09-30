@@ -736,7 +736,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '20.5';
+const APP_VERSION = '20.6';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2111,7 +2111,7 @@ function cardInvest() {
   const sel = invSelected(); const all = sel.length === accs.length;
   const chips = `<div class="chips inv-chips"><button class="chip" data-act="inv-acc" data-id="" aria-pressed="${all}">All</button>${accs.map((a) => `<button class="chip" data-act="inv-acc" data-id="${a.id}" aria-pressed="${!all && sel.includes(a.id)}"><span class="nw-st" style="background:${esc(accColor(a))}"></span>${esc(accName(a))}</button>`).join('')}</div>`;
   if (!S.balHist) return `<section class="card">${head}${chips}<div class="meta">Loading…</div></section>`;
-  const pts = invSeries(sel, k); const first = pts[0]; const lastP = pts[pts.length - 1];
+  const pts = invSeries(all ? invAccountsAll().map((a) => a.id) : sel, k); // All = every investment account, also ones now at $0 const first = pts[0]; const lastP = pts[pts.length - 1];
   const chg = lastP.v - first.v; const pct = first.v ? (chg / Math.abs(first.v)) * 100 : 0; const up = chg >= 0;
   const color = up ? '#34C759' : '#FF3B30';
   const since = shortDate(first.d).replace(new RegExp(`, ${new Date().getFullYear()}$`), '');
@@ -2173,36 +2173,43 @@ function nwPeriod() { const k = localStorage.getItem('nwPeriod'); return INV_PER
 // the step is placed on the day the matching transfer shows up in a bank account (same size, ±3% or $500).
 // Without a match the old reading holds until the next one. This keeps money that moved CD → checking from being counted twice.
 function invValueFn() {
-  const hist = S.balHist || []; const first = firstReadings(); const cache = {};
+  const hist = S.balHist || []; const cache = {};
   const bankTx = (S.raw || []).filter((t) => !t.pending && !t.manual && t.date && S.accounts[t.accountId] && !isInvest(S.accounts[t.accountId]));
   const readings = (id) => cache[id] || (cache[id] = hist.filter((h) => typeof h.balances[id] === 'number').map((h) => ({ d: h.date, v: h.balances[id] })));
-  const steps = {};
+  // The day money of this size left (delta < 0 → came into a bank) or reached (delta > 0 → left a bank) the account, between two dates:
+  // one bank record of that size (transfers first), else transfers on one day that add up to it (e.g. 11,077.66 + 5,533.53).
+  // Tolerance max($100, 2.5%) covers the interest earned in between; a looser one would catch unrelated records.
+  const moveDate = (delta, from, to) => {
+    const tol = Math.max(100, Math.abs(delta) * 0.025); const off = (x) => Math.abs(Math.abs(x) - Math.abs(delta));
+    const win = bankTx.filter((t) => t.date > from && t.date <= to && Math.sign(t.amount) === Math.sign(delta));
+    const m = win.filter((t) => off(t.amount) <= tol).sort((a, b) => (b.isTransfer ? 1 : 0) - (a.isTransfer ? 1 : 0) || off(a.amount) - off(b.amount))[0];
+    if (m) return m.date;
+    const byDay = {}; win.filter((t) => t.isTransfer).forEach((t) => { byDay[t.date] = (byDay[t.date] || 0) + t.amount; });
+    const day = Object.entries(byDay).filter(([, sum]) => off(sum) <= tol).sort((a, b) => off(a[1]) - off(b[1]))[0];
+    return day ? day[0] : null;
+  };
+  const steps = {}; const opened = {};
   const stepDates = (id) => {
     if (steps[id]) return steps[id];
     const r = readings(id); const out = [];
     for (let i = 1; i < r.length; i++) {
-      const delta = r[i].v - r[i - 1].v; let at = r[i].d;
-      if (Math.abs(delta) >= 1000) {
-        const tol = Math.max(500, Math.abs(delta) * 0.03);
-        const win = bankTx.filter((t) => t.date > r[i - 1].d && t.date <= r[i].d && Math.sign(t.amount) === Math.sign(delta));
-        const off = (x) => Math.abs(Math.abs(x) - Math.abs(delta));
-        // 1) one record of that size (transfers first)
-        const m = win.filter((t) => off(t.amount) <= tol).sort((a, b) => (b.isTransfer ? 1 : 0) - (a.isTransfer ? 1 : 0) || off(a.amount) - off(b.amount))[0];
-        if (m) at = m.date;
-        else {
-          // 2) the money came or went in pieces: transfers on one day that add up to it (e.g. 11,077.66 + 5,533.53)
-          const byDay = {}; win.filter((t) => t.isTransfer).forEach((t) => { byDay[t.date] = (byDay[t.date] || 0) + t.amount; });
-          const day = Object.entries(byDay).filter(([, sum]) => off(sum) <= tol).sort((a, b) => off(a[1]) - off(b[1]))[0];
-          if (day) at = day[0];
-        }
-      }
+      const delta = r[i].v - r[i - 1].v;
+      // without a matching bank record the old reading holds until the next one (the money went somewhere outside your banks)
+      const at = Math.abs(delta) >= 1000 ? moveDate(delta, r[i - 1].d, r[i].d) || r[i].d : r[i].d;
       out.push({ from: r[i - 1], to: r[i], at });
     }
     return (steps[id] = out);
   };
+  // Before the first reading: if a bank transfer of about that amount went in earlier, the account was empty before that day
+  // (otherwise that money would count in both the bank and here); if not, the first reading is used.
+  const openedOn = (id) => {
+    if (id in opened) return opened[id];
+    const r0 = readings(id)[0];
+    return (opened[id] = r0 && r0.v >= 1000 ? moveDate(r0.v, '0000-00-00', r0.d) : null);
+  };
   return (id, d) => {
     const r = readings(id); if (!r.length) return S.accounts[id]?.balanceCurrent ?? 0;
-    if (d < r[0].d) return first[id] ?? r[0].v;
+    if (d < r[0].d) { const o = openedOn(id); return o && d < o ? 0 : r[0].v; }
     for (const st of stepDates(id)) { if (d >= st.from.d && d < st.to.d) return d >= st.at ? st.to.v : st.from.v; }
     return r[r.length - 1].v;
   };
