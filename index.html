@@ -141,6 +141,7 @@ button { cursor: pointer; }
 .nw-hist > .meta:not(.inv-tip) { margin-top: 8px; }
 .nw-pick-per { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; font-weight: 600; margin-bottom: 8px; }
 .nw-pick-per .pill-btn { margin: 0; flex: none; }
+.nw-pick-note { color: var(--text); opacity: .75; margin-top: 1px; overflow-wrap: anywhere; }
 .nw-pick-type { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nw-pick-type[aria-pressed="true"] { color: var(--accent); }
 #rbc-list .set-item .n { min-width: 0; }
@@ -745,7 +746,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '20.9';
+const APP_VERSION = '21.0';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2321,7 +2322,7 @@ function sheetNwPick() {
   const from = invStart(nwPeriod()); const to = ymd(new Date());
   const types = S.nwPickTypes || null; const inclTr = S.nwPickTypesTr !== false; // Type (top right), same choices as the Records Type filter
   const list = S.txs.filter((t) => (t.date >= from && t.date <= to && (!types || recTypeOk(t, types, inclTr))) || sel.has(t.id)).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
-  const rows = list.map((t) => `<label class="msel-row" data-bcl="${esc(`${txTitle(t)} ${t.isTransfer ? 'transfer' : txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}"><input type="checkbox" data-nwsel="${t.id}" ${sel.has(t.id) ? 'checked' : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${t.isTransfer ? 'Transfer · ' : ''}${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span>${nwPickAmt(t)}</label>`).join('');
+  const rows = list.map((t) => `<label class="msel-row" data-bcl="${esc(`${txTitle(t)} ${t.note || ''} ${t.isTransfer ? 'transfer' : txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}"><input type="checkbox" data-nwsel="${t.id}" ${sel.has(t.id) ? 'checked' : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${t.isTransfer ? 'Transfer · ' : ''}${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div>${t.note && t.note !== txTitle(t) ? `<div class="meta nw-pick-note">${esc(t.note)}</div>` : ''}</span>${nwPickAmt(t)}</label>`).join('');
   const q = $('rbq')?.value ?? S.nwPickQ ?? ''; S.nwPickQ = null;
   const typeTxt = !types ? 'All types' : types.map((k) => REC_TYPES[k][0]).join(', ') + (!inclTr && types.some((k) => k !== 'transfer') ? ' (no transfers)' : '');
   openSheet(`<h3>Choose records</h3>
