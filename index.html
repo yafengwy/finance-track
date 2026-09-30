@@ -741,7 +741,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '20.7';
+const APP_VERSION = '20.8';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2060,7 +2060,7 @@ function firstReadings() {
   const f = {}; for (const h of S.balHist || []) for (const [id, v] of Object.entries(h.balances)) if (!(id in f) && typeof v === 'number') f[id] = v;
   return f;
 }
-// Points like Net Worth: every day for "This month", otherwise the 1st, 15th and last day of each month, then today (live balances).
+// Points like Net Worth: every day for "This month", otherwise every Sunday, then today (live balances).
 // Readings are still saved every day; a date without one uses the latest reading before it.
 function invSeries(ids, k) {
   const today = ymd(new Date()); const hist = S.balHist || []; const invAt = invValueFn();
@@ -2165,7 +2165,7 @@ function invScrub(e) {
   let best = c.pts[0]; c.pts.forEach((p) => { if (Math.abs(c.X(p.d) - x) < Math.abs(c.X(best.d) - x)) best = p; });
   const px = c.X(best.d); const py = c.Y(best.v);
   $(`${k}-mark`).style.display = ''; $(`${k}-mline`).setAttribute('x1', px); $(`${k}-mline`).setAttribute('x2', px); $(`${k}-mdot`).setAttribute('cx', px); $(`${k}-mdot`).setAttribute('cy', py);
-  // Change from the previous point (1st / 15th / month end, or the day before in "This month")
+  // Change from the previous point (the Sunday before, or the day before in "This month")
   const i = c.pts.indexOf(best); const base = c.pts[i - 1];
   if (!base || base === best) { $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span>`; if (k === 'nw') nwBreakdown(null); return; }
   const d = best.v - base.v; const pc = base.v ? (d / Math.abs(base.v)) * 100 : 0;
@@ -2180,7 +2180,7 @@ const NW_SCOPES = { all: 'All', per: 'Personal', biz: 'Business' };
 function nwScope() { const k = localStorage.getItem('nwScope'); return NW_SCOPES[k] ? k : 'all'; }
 function nwPeriod() { const k = localStorage.getItem('nwPeriod'); return INV_PERIODS[k] ? k : 'year'; }
 // Same sign as the Net Worth card: credit cards and loans count negative; manual accounts are summed from their records
-// Net worth on fixed dates: every day for "This month"; otherwise the 1st, the 15th and the last day of each month; the last point is today.
+// Net worth on fixed dates: every day for "This month"; otherwise every Sunday; the last point is today.
 // Bank and card accounts are worked out backwards from today's balance through their records (so every date has a value);
 // investment accounts (CDs, T-bills) have no records, so they use the saved balance readings (month-end imports and daily snapshots).
 // Investment balance on a date. Most readings are month-end only, so when money moved out (or in) between two readings,
@@ -2228,18 +2228,13 @@ function invValueFn() {
     return r[r.length - 1].v;
   };
 }
+// Chart dates: every day for "This month"; otherwise every Sunday (week end); always the period start and today
 function nwDates(start, today, daily) {
-  const out = []; const d = parseYmd(start); const end = parseYmd(today);
-  if (daily) { for (; d <= end; d.setDate(d.getDate() + 1)) out.push(ymd(d)); }
-  else {
-    for (let m = new Date(d.getFullYear(), d.getMonth(), 1); m <= end; m.setMonth(m.getMonth() + 1)) {
-      const y = m.getFullYear(); const mo = m.getMonth();
-      [ymd(new Date(y, mo, 1)), ymd(new Date(y, mo, 15)), ymd(new Date(y, mo + 1, 0))].forEach((x) => { if (x >= start && x < today) out.push(x); });
-    }
-  }
-  if (!out.includes(start) && start < today) out.unshift(start);
+  const out = [start]; const d = parseYmd(start); const end = parseYmd(today);
+  if (daily) d.setDate(d.getDate() + 1); else d.setDate(d.getDate() + (7 - d.getDay()) % 7 || 7); // next day, or next Sunday
+  for (; d < end; d.setDate(d.getDate() + (daily ? 1 : 7))) out.push(ymd(d));
   if (out[out.length - 1] !== today) out.push(today);
-  return [...new Set(out)].sort();
+  return [...new Set(out)];
 }
 function nwSeries(accs, k) {
   const today = ymd(new Date());
