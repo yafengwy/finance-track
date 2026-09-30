@@ -746,7 +746,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '21.0';
+const APP_VERSION = '21.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2123,7 +2123,8 @@ function cardInvest() {
   const sel = invSelected(); const all = sel.length === accs.length;
   const chips = `<div class="chips inv-chips"><button class="chip" data-act="inv-acc" data-id="" aria-pressed="${all}">All</button>${accs.map((a) => `<button class="chip" data-act="inv-acc" data-id="${a.id}" aria-pressed="${!all && sel.includes(a.id)}"><span class="nw-st" style="background:${esc(accColor(a))}"></span>${esc(accName(a))}</button>`).join('')}</div>`;
   if (!S.balHist) return `<section class="card">${head}${chips}<div class="meta">Loading…</div></section>`;
-  const pts = invSeries(all ? invAccountsAll().map((a) => a.id) : sel, k); // All = every investment account, also ones now at $0 const first = pts[0]; const lastP = pts[pts.length - 1];
+  // All = every investment account, also ones now at $0 (their past balances still count)
+  const pts = invSeries(all ? invAccountsAll().map((a) => a.id) : sel, k); const first = pts[0]; const lastP = pts[pts.length - 1];
   const chg = lastP.v - first.v; const pct = first.v ? (chg / Math.abs(first.v)) * 100 : 0; const up = chg >= 0;
   const color = up ? '#34C759' : '#FF3B30';
   const since = shortDate(first.d).replace(new RegExp(`, ${new Date().getFullYear()}$`), '');
