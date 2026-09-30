@@ -382,6 +382,20 @@ input.row-select { direction: ltr; }
    Narrower (phone, cover screen 466, inner screen upright 626) keep the single column. */
 /* landscape: keep clear of the rounded corners / camera on the sides */
 #app { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+/* iPhone Duo cover screen: the right strip holds the system camera/clock (top) and the app's buttons; content keeps the rest */
+.duo-cover { --duo-w: max(56px, env(safe-area-inset-right, 0px)); }
+.duo-cover #app { padding-right: var(--duo-w); max-width: none; margin: 0; padding-bottom: calc(24px + var(--safe-bottom)); }
+.duo-cover header.top:not(.sub) { display: none; }
+.duo-cover #app > .page:first-of-type, .duo-cover #app > .rec-page { padding-top: calc(var(--safe-top) + 12px); }
+.duo-strip { position: fixed; top: 0; right: 0; bottom: 0; width: var(--duo-w); z-index: 8; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: calc(var(--safe-top) + 104px) 0 calc(var(--safe-bottom) + 14px); background: #E6E6EB; }
+.ds-btn { width: 40px; height: 40px; flex: none; border: 0; border-radius: 50%; background: #fff; color: var(--text); display: flex; align-items: center; justify-content: center; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.ds-btn .ms { font-size: 21px; }
+.ds-btn.on { background: var(--accent); color: #fff; }
+.ds-btn.lit { color: var(--accent); }
+.ds-btn.ds-add { background: #2563EB; color: #fff; }
+.ds-gap { flex: 1; }
+.duo-cover .sheet, .duo-cover .scrim { right: var(--duo-w); }
+.duo-cover .sheet { margin: 0; max-width: none; }
 @media (min-width: 800px) {
   #app:has(.dash-page) { max-width: 1120px; }
   /* Records: list on the left, the record you tap on the right, period + filter on a rail at the far right */
@@ -746,7 +760,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '21.1';
+const APP_VERSION = '21.3';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -774,7 +788,37 @@ function measureVars() {
   const hdr = document.querySelector('.top'); if (hdr) root.setProperty('--hdr', hdr.offsetHeight + 'px');
   const rs = document.querySelector('.rec-search'); if (rs) root.setProperty('--rsh', rs.offsetHeight + 'px');
 }
+// ---- iPhone Duo cover screen: content on the left, the app's buttons in the strip on the right (next to the camera and clock) ----
+// Detected when the screen is upright and either iOS reports a right-side safe area (the cover screen's status strip),
+// or, on an iPhone, the shape matches it (squat portrait, ~466×678 CSS px: ratio ≥ 0.64, 420–600 wide). Normal phones (ratio ~0.46),
+// Flip inner screens (~0.43), the Duo inner screen (~626 wide) and iPad mini (744) don't match.
+// Menu → Cover layout switches Auto / On / Off, for testing on the real phone.
+const DUO = { on: false };
+function duoCheck() {
+  let pr = document.getElementById('sa-probe');
+  if (!pr) { pr = document.createElement('div'); pr.id = 'sa-probe'; pr.style.cssText = 'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)'; document.body.appendChild(pr); }
+  const cs = getComputedStyle(pr); const w = window.innerWidth; const h = window.innerHeight;
+  const sa = { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+  // Shape alone only counts on an iPhone: Samsung Fold cover screens are also squat (1248×1972 ≈ 0.63) but square-cornered, with no side strip
+  const iPhone = /iPhone/.test(navigator.userAgent);
+  const auto = h > w && w < 600 && (sa.r >= 20 || (iPhone && w / h >= 0.64 && w >= 420));
+  const force = localStorage.getItem('duoForce');
+  const on = force === 'on' ? true : force === 'off' ? false : auto;
+  S.screen = { w, h, sa, auto, on, iPhone };
+  if (on === DUO.on) return false;
+  DUO.on = on; document.body.classList.toggle('duo-cover', on); return true;
+}
+function duoStrip(r) {
+  const cur = MAIN.includes(r.name) ? r.name : '';
+  const tab = (k, ic, l) => `<a class="ds-btn${cur === k ? ' on' : ''}" href="#/${k}" data-act="tab" aria-label="${l}">${icon(ic)}</a>`;
+  const b = (act, ic, l, on) => `<button class="ds-btn${on ? ' lit' : ''}" data-act="${act}" aria-label="${l}">${icon(ic)}</button>`;
+  const acts = r.name === 'tx'
+    ? `<button class="ds-btn ds-add" data-act="add-tx" aria-label="Add a record">${icon('add')}</button>${b('rec-kind', 'calendar_month', 'Choose period')}${b('rec-panel', 'filter_alt', 'Accounts, type, categories and filter', recFilterCount() > 0)}`
+    : b('sync', 'sync', 'Sync now');
+  return `<nav class="duo-strip" aria-label="Pages and actions">${tab('accounts', 'account_balance', 'Accounts')}${tab('dash', 'dashboard', 'Dashboard')}${tab('tx', 'receipt_long', 'Records')}<span class="ds-gap"></span>${acts}${b('drawer', 'menu', 'Menu')}</nav>`;
+}
 function settleVars() {
+  if (duoCheck()) render();
   measureVars();
   requestAnimationFrame(() => { measureVars(); requestAnimationFrame(measureVars); });
   [120, 350, 700].forEach((ms) => setTimeout(measureVars, ms));
@@ -1204,6 +1248,7 @@ const SUB_TITLES = { cats: 'Categories', labels: 'Labels', filters: 'Filters', r
 // ---------- render ----------
 function render() {
   if (!S.user) return;
+  duoCheck();
   const r = route();
   const y = window.scrollY;
   const focusId = document.activeElement?.id; const caret = document.activeElement?.selectionStart;
@@ -1214,7 +1259,8 @@ function render() {
   document.body.classList.toggle('rec-wide', WIDE.matches && r.name === 'tx');
   const body = (views[r.name] || viewAccounts)();
   $('app').innerHTML = (main ? headerMain(r.name) : headerSub(r)) + body
-    + (r.name === 'tx' && !WIDE.matches ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
+    + (DUO.on ? duoStrip(r) : '')
+    + (r.name === 'tx' && !WIDE.matches && !DUO.on ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
   measureVars();
   window.scrollTo(0, y);
   document.querySelectorAll('.dash-col').forEach((c, i) => { if (colScroll[i]) c.scrollTop = colScroll[i]; });
@@ -2683,7 +2729,7 @@ function viewTx(params) {
     ${railBtn('rf-cat', 'category', 'Categories', !!(rf.cats || rf.labels))}
     ${railBtn('rf-filter', 'filter_alt', 'Filter', !!rf.filter)}</nav>
     <div class="rec-ph">${icon('receipt_long')}<div>Tap a record to see it here</div></div>`;
-  const dock = WIDE.matches ? rail : `<div class="rec-dock">
+  const dock = WIDE.matches ? rail : DUO.on ? '' : `<div class="rec-dock">
     <button class="dock-grab" data-act="rec-panel" aria-label="Accounts, categories and filter"><span class="grab"></span><span class="meta">${nf ? `${nf} filter${nf > 1 ? 's' : ''} on · ` : ''}Accounts · Type · Categories · Filter</span></button>
     <div class="period-pill">
       <button class="pp-arrow" data-act="rec-shift" data-dir="-1" aria-label="Previous period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_left')}</button>
@@ -2866,7 +2912,8 @@ function openDrawer() {
     <div class="drawer-sep"></div>
     <button data-act="logout">${icon('logout')}Sign out</button>
     <button data-act="check-update">${icon('system_update')}Check for updates</button>
-    <div class="meta" style="padding:12px;margin-top:auto">Version ${APP_VERSION}</div></nav>`;
+    <button data-act="duo-mode">${icon('side_navigation')}Cover layout: ${({ on: 'On', off: 'Off' })[localStorage.getItem('duoForce')] || `Auto (${S.screen?.auto ? 'on' : 'off'})`}</button>
+    <div class="meta" style="padding:12px;margin-top:auto">Version ${APP_VERSION}${S.screen ? `<br>Screen ${Math.round(S.screen.w)}×${Math.round(S.screen.h)} · Ratio ${(S.screen.w / S.screen.h).toFixed(2)}<br>Safe area T ${S.screen.sa.t} · R ${S.screen.sa.r} · B ${S.screen.sa.b} · L ${S.screen.sa.l}` : ''}</div></nav>`;
 }
 function closeDrawer() { $('drawer').innerHTML = ''; }
 function openSheet(html, opts = {}) {
@@ -4030,6 +4077,7 @@ document.addEventListener('click', async (e) => {
         S.recP = { kind: 'custom', unit: 'custom', from, to }; if (from < loadedSince()) setLoadAll(true); closeSheet(); render(); break;
       }
       case 'rec-panel': sheetRecPanel(); break;
+      case 'duo-mode': { const v = localStorage.getItem('duoForce'); const nx = !v ? 'on' : v === 'on' ? 'off' : ''; if (nx) localStorage.setItem('duoForce', nx); else localStorage.removeItem('duoForce'); closeDrawer(); render(); settleVars(); break; }
       case 'rf-acc': sheetRecAccounts(); break;
       case 'rf-type': sheetRecTypes(); break;
       case 'rf-type-save': { const ks = [...document.querySelectorAll('[data-typesel]:checked')].map((x) => x.dataset.typesel); recFilterState().typesTr = $('type-tr') ? $('type-tr').checked : true; recFilterState().types = !ks.length || ks.length === Object.keys(REC_TYPES).length ? null : ks; (WIDE.matches ? closeSheet() : sheetRecPanel()); render(); break; }
