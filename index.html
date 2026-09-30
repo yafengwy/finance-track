@@ -97,7 +97,7 @@ button { cursor: pointer; }
 .cat-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 0; border: 0; background: none; text-align: left; }
 .cat-btn .n { flex: 1; font-weight: 400; display: flex; align-items: center; gap: 2px; min-width: 0; }
 .cat-btn .a { font-weight: 600; flex: none; white-space: nowrap; } /* amount keeps its width; a long name wraps instead of running under it */
-.cat-btn .n, .sub .n { overflow-wrap: anywhere; }
+.cat-btn .n, .sub .n { overflow-wrap: break-word; } /* wrap between words; only a single over-long word is broken */
 .cat-btn .p { flex: none; width: 52px; text-align: right; font-size: 13px; font-weight: 600; }
 .chev { font-size: 20px; color: var(--sub); transition: transform .15s; }
 .cat-row.open > .cat-line .chev, .pick.open .chev { transform: rotate(180deg); }
@@ -402,6 +402,13 @@ input.row-select { direction: ltr; }
 .ds-gap { flex: 1; }
 .duo-cover .sheet, .duo-cover .scrim { right: var(--duo-w); }
 .duo-cover .sheet { margin: 0; max-width: none; }
+/* Cover screen: everything one size smaller, and cards run edge to edge up to the button strip (no grey margins) */
+.duo-cover #app > .page, .duo-cover #app > header { zoom: .92; }
+.duo-cover #app .page { padding-left: 0; padding-right: 0; }
+.duo-cover #app .card { border-radius: 0; }
+.duo-cover .rec-search { margin-left: 0; margin-right: 0; padding-left: 12px; padding-right: 12px; }
+.duo-cover #app .page > .chips, .duo-cover #app .page > .row-between, .duo-cover #app .page > .meta, .duo-cover #app .rec-sum, .duo-cover #app .day, .duo-cover #app .yr-head, .duo-cover .tb-sum { padding-left: 12px; padding-right: 12px; }
+.duo-cover #app .list { border-radius: 0; }
 @media (min-width: 800px) {
   #app:has(.dash-page) { max-width: 1120px; }
   /* Records: list on the left, the record you tap on the right, period + filter on a rail at the far right */
@@ -767,7 +774,7 @@ const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
 const APP_VERSION = '21.4';
-const APP_BUILD = '202609301041'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_BUILD = '202609301046'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
