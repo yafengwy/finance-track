@@ -82,10 +82,6 @@ button { cursor: pointer; }
 .card { background: var(--card); border: 0; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .card-head { display: flex; align-items: flex-start; gap: 8px; }
 .card-head > div { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.card-head:has(> .card-upd) { position: relative; }
-.card-head > .card-upd { position: absolute; right: 0; top: 22px; font-size: 12px; color: var(--sub); white-space: nowrap; } /* "Updated …" at the right end of the grey subtitle line */
-.card-head:has(> .card-upd) > div > .meta { padding-right: 52px; } /* a long subtitle wraps before it reaches "Updated …" */
-.hdr-upd { font-size: 11px; color: var(--sub); white-space: nowrap; align-self: center; padding-right: 4px; }
 .card-head .icon-btn { color: var(--sub); margin: -8px -10px 0 0; }
 .big { font-size: 32px; font-weight: 600; letter-spacing: -0.5px; }
 .bar-row { display: flex; flex-direction: column; gap: 6px; }
@@ -141,23 +137,8 @@ button { cursor: pointer; }
 .nw-hist > .meta:not(.inv-tip) { margin-top: 8px; }
 .nw-pick-per { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; font-weight: 600; margin-bottom: 8px; }
 .nw-pick-per .pill-btn { margin: 0; flex: none; }
-.nw-pick-note { font-size: 11px; font-style: italic; color: var(--text); opacity: .75; margin-top: 1px; overflow-wrap: anywhere; }
-.nw-pick-type { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nw-pick-type[aria-pressed="true"] { color: var(--accent); }
 #rbc-list .set-item .n { min-width: 0; }
 .nw-pick-t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; } /* long bank descriptions: two lines at most */
-.nw-brk:not(:empty) { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
-.nw-brk-h { margin-bottom: 4px; }
-.nw-brk-r { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
-.nw-brk-r .nw-st { flex: none; width: 3px; height: 14px; border-radius: 2px; }
-button.nw-brk-r { width: 100%; border: 0; background: none; font: inherit; font-size: 13px; color: var(--text); text-align: left; }
-button.nw-brk-r > .ms { font-size: 16px; color: var(--sub); margin-left: -4px; }
-.nw-brk-g { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 0; border: 0; background: none; font: inherit; font-size: 14px; color: var(--text); text-align: left; }
-.nw-brk-g > .ms { font-size: 18px; color: var(--sub); width: 20px; text-align: center; }
-.nw-brk-g .n { flex: 1; display: flex; align-items: center; gap: 4px; }
-.nw-brk-g .n .ms { font-size: 18px; color: var(--sub); }
-.nw-brk-list { padding: 0 0 4px 28px; }
-.nw-brk-r .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nw-tiprow { display: flex; align-items: center; gap: 4px; }
 .nw-tipbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 5.5px 10px; border: 0; border-radius: 10px; background: var(--bg); font: inherit; font-size: 13px; line-height: 1.35; text-align: left; color: var(--text); }
 .nw-tipbtn .nw-n { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
@@ -382,20 +363,6 @@ input.row-select { direction: ltr; }
    Narrower (phone, cover screen 466, inner screen upright 626) keep the single column. */
 /* landscape: keep clear of the rounded corners / camera on the sides */
 #app { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
-/* iPhone Duo cover screen: the right strip holds the system camera/clock (top) and the app's buttons; content keeps the rest */
-.duo-cover { --duo-w: max(56px, env(safe-area-inset-right, 0px)); }
-.duo-cover #app { padding-right: var(--duo-w); max-width: none; margin: 0; padding-bottom: calc(24px + var(--safe-bottom)); }
-.duo-cover header.top:not(.sub) { display: none; }
-.duo-cover #app > .page:first-of-type, .duo-cover #app > .rec-page { padding-top: calc(var(--safe-top) + 12px); }
-.duo-strip { position: fixed; top: 0; right: 0; bottom: 0; width: var(--duo-w); z-index: 8; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: calc(var(--safe-top) + 104px) 0 calc(var(--safe-bottom) + 14px); background: #E6E6EB; }
-.ds-btn { width: 40px; height: 40px; flex: none; border: 0; border-radius: 50%; background: #fff; color: var(--text); display: flex; align-items: center; justify-content: center; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.ds-btn .ms { font-size: 21px; }
-.ds-btn.on { background: var(--accent); color: #fff; }
-.ds-btn.lit { color: var(--accent); }
-.ds-btn.ds-add { background: #2563EB; color: #fff; }
-.ds-gap { flex: 1; }
-.duo-cover .sheet, .duo-cover .scrim { right: var(--duo-w); }
-.duo-cover .sheet { margin: 0; max-width: none; }
 @media (min-width: 800px) {
   #app:has(.dash-page) { max-width: 1120px; }
   /* Records: list on the left, the record you tap on the right, period + filter on a rail at the far right */
@@ -760,7 +727,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '21.3';
+const APP_VERSION = '20.1';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -788,37 +755,7 @@ function measureVars() {
   const hdr = document.querySelector('.top'); if (hdr) root.setProperty('--hdr', hdr.offsetHeight + 'px');
   const rs = document.querySelector('.rec-search'); if (rs) root.setProperty('--rsh', rs.offsetHeight + 'px');
 }
-// ---- iPhone Duo cover screen: content on the left, the app's buttons in the strip on the right (next to the camera and clock) ----
-// Detected when the screen is upright and either iOS reports a right-side safe area (the cover screen's status strip),
-// or, on an iPhone, the shape matches it (squat portrait, ~466×678 CSS px: ratio ≥ 0.64, 420–600 wide). Normal phones (ratio ~0.46),
-// Flip inner screens (~0.43), the Duo inner screen (~626 wide) and iPad mini (744) don't match.
-// Menu → Cover layout switches Auto / On / Off, for testing on the real phone.
-const DUO = { on: false };
-function duoCheck() {
-  let pr = document.getElementById('sa-probe');
-  if (!pr) { pr = document.createElement('div'); pr.id = 'sa-probe'; pr.style.cssText = 'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)'; document.body.appendChild(pr); }
-  const cs = getComputedStyle(pr); const w = window.innerWidth; const h = window.innerHeight;
-  const sa = { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
-  // Shape alone only counts on an iPhone: Samsung Fold cover screens are also squat (1248×1972 ≈ 0.63) but square-cornered, with no side strip
-  const iPhone = /iPhone/.test(navigator.userAgent);
-  const auto = h > w && w < 600 && (sa.r >= 20 || (iPhone && w / h >= 0.64 && w >= 420));
-  const force = localStorage.getItem('duoForce');
-  const on = force === 'on' ? true : force === 'off' ? false : auto;
-  S.screen = { w, h, sa, auto, on, iPhone };
-  if (on === DUO.on) return false;
-  DUO.on = on; document.body.classList.toggle('duo-cover', on); return true;
-}
-function duoStrip(r) {
-  const cur = MAIN.includes(r.name) ? r.name : '';
-  const tab = (k, ic, l) => `<a class="ds-btn${cur === k ? ' on' : ''}" href="#/${k}" data-act="tab" aria-label="${l}">${icon(ic)}</a>`;
-  const b = (act, ic, l, on) => `<button class="ds-btn${on ? ' lit' : ''}" data-act="${act}" aria-label="${l}">${icon(ic)}</button>`;
-  const acts = r.name === 'tx'
-    ? `<button class="ds-btn ds-add" data-act="add-tx" aria-label="Add a record">${icon('add')}</button>${b('rec-kind', 'calendar_month', 'Choose period')}${b('rec-panel', 'filter_alt', 'Accounts, type, categories and filter', recFilterCount() > 0)}`
-    : b('sync', 'sync', 'Sync now');
-  return `<nav class="duo-strip" aria-label="Pages and actions">${tab('accounts', 'account_balance', 'Accounts')}${tab('dash', 'dashboard', 'Dashboard')}${tab('tx', 'receipt_long', 'Records')}<span class="ds-gap"></span>${acts}${b('drawer', 'menu', 'Menu')}</nav>`;
-}
 function settleVars() {
-  if (duoCheck()) render();
   measureVars();
   requestAnimationFrame(() => { measureVars(); requestAnimationFrame(measureVars); });
   [120, 350, 700].forEach((ms) => setTimeout(measureVars, ms));
@@ -1248,7 +1185,6 @@ const SUB_TITLES = { cats: 'Categories', labels: 'Labels', filters: 'Filters', r
 // ---------- render ----------
 function render() {
   if (!S.user) return;
-  duoCheck();
   const r = route();
   const y = window.scrollY;
   const focusId = document.activeElement?.id; const caret = document.activeElement?.selectionStart;
@@ -1259,8 +1195,7 @@ function render() {
   document.body.classList.toggle('rec-wide', WIDE.matches && r.name === 'tx');
   const body = (views[r.name] || viewAccounts)();
   $('app').innerHTML = (main ? headerMain(r.name) : headerSub(r)) + body
-    + (DUO.on ? duoStrip(r) : '')
-    + (r.name === 'tx' && !WIDE.matches && !DUO.on ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
+    + (r.name === 'tx' && !WIDE.matches ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
   measureVars();
   window.scrollTo(0, y);
   document.querySelectorAll('.dash-col').forEach((c, i) => { if (colScroll[i]) c.scrollTop = colScroll[i]; });
@@ -1293,7 +1228,7 @@ function headerSub(r) {
   if (r.name === 'conn') { title = S.items[r.id]?.institutionName || 'Bank connection'; back = '#/conns'; }
   return `<header class="top sub"><div class="bar">
     <a class="icon-btn round" href="${back}" data-act="nav-up" aria-label="Back">${icon('chevron_left')}</a>
-    <h1>${title}</h1>${r.name === 'tbills' && updatedText(tbAccs()) ? `<span class="card-upd hdr-upd">${updatedText(tbAccs())}</span>` : '<span style="width:44px"></span>'}</div></header>`;
+    <h1>${title}</h1><span style="width:44px"></span></div></header>`;
 }
 
 // ---------- bank connections (Menu → Accounts) ----------
@@ -1302,16 +1237,6 @@ const TRIAL_ITEMS = 10;
 function bankIcon(i) {
   return i?.logo ? `<span class="ci bank-logo"><img src="data:image/png;base64,${i.logo}" alt=""></span>` : glyph('account_balance', i?.brandColor || '#0A7AFF');
 }
-// "Updated …": the bank sync time of the given accounts (the oldest one, so everything shown is at least this fresh)
-function updatedText(accs) {
-  const ts = [...new Set(accs.map((a) => a?.itemId).filter(Boolean))].map((id) => S.items[id]?.lastSyncAt?.toDate?.()).filter(Boolean);
-  if (!ts.length) return '';
-  const d = new Date(Math.min(...ts)); const today = new Date();
-  const same = d.toDateString() === today.toDateString(); const tm = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  return same ? `Updated ${tm}` : `Updated ${d.getMonth() + 1}/${d.getDate()}`; // today: the time; earlier: the date
-}
-function tbAccs() { return [...new Set(tbList().map((t) => t.accountId))].map((id) => S.accounts[id]).filter(Boolean); }
-const updSpan = (txt) => (txt ? `<span class="card-upd">${txt}</span>` : '');
 function fmtWhen(ts) { const d = ts?.toDate?.(); return d ? d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'; }
 function connAccounts(itemId) { return Object.values(S.accounts).filter((a) => a.itemId === itemId).sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
 function connStatus(i) {
@@ -1643,7 +1568,7 @@ function sheetRecords(pop) {
   const p = S.recPop; if (!p) return;
   const txs = p.ids.map((id) => S.txById[id]).filter(Boolean);
   // Amount sorts are signed: in an expense list refunds (+) come after all spending; in an income list the reverse
-  const val = (t) => (p.side === 'abs' ? Math.abs(t.amount) : p.side === 'income' ? -t.amount : t.amount); // 'abs': by size, + and − together
+  const val = (t) => (p.side === 'income' ? -t.amount : t.amount);
   const cmp = { date_desc: (a, b) => b.date.localeCompare(a.date), date_asc: (a, b) => a.date.localeCompare(b.date), amt_desc: (a, b) => val(b) - val(a), amt_asc: (a, b) => val(a) - val(b) }[p.sort];
   txs.sort(cmp);
   const total = txs.reduce((n, t) => n + t.amount, 0);
@@ -1661,7 +1586,7 @@ function sheetRecords(pop) {
   }).join('');
   openSheet(`<div class="row-between rec-head"><h3>${esc(p.title)}</h3>
       <button class="pill-btn small" data-act="rec-sort" aria-label="Sort records">${icon('sort')}Sort</button></div>
-    <div class="meta">${esc(p.period)} · ${txs.length} record${txs.length === 1 ? '' : 's'} · ${p.side === 'abs' ? money(-total, true) : money(Math.abs(total))} · ${esc(SORTS[p.sort])}</div>
+    <div class="meta">${esc(p.period)} · ${txs.length} record${txs.length === 1 ? '' : 's'} · ${money(Math.abs(total))} · ${esc(SORTS[p.sort])}</div>
     <div class="list" id="rec-pop-list">${rows || '<div class="empty">No records</div>'}</div>`, { noClose: true, short: true });
 }
 // After editing a record opened from a records popup, go back to that popup
@@ -1773,10 +1698,8 @@ function tbRow(t, grouped = false) {
 function tbYearStats() {
   const y = String(new Date().getFullYear()); const done = tbDone().filter((t) => t.maturity.startsWith(y));
   const interest = done.reduce((n, t) => n + (t.gotBack - t.amount), 0);
-  // Average APY weighted by money × days (a $100k bill for 3 months counts far more than a $2k one for 2 weeks)
-  const w = done.map((t) => ({ a: tbApy(t), w: t.amount * tbDays(t) })).filter((x) => x.a != null);
-  const wSum = w.reduce((n, x) => n + x.w, 0);
-  return { interest, apy: wSum ? w.reduce((n, x) => n + x.a * x.w, 0) / wSum : null };
+  const apys = done.map((t) => tbApy(t)).filter((v) => v != null);
+  return { interest, apy: apys.length ? apys.reduce((a, b) => a + b, 0) / apys.length : null };
 }
 // ---- Reimbursements: money you paid for someone and are waiting to get back. All time, not per period. ----
 // Paying out is +amount (money out), getting it back is −amount, so what's still owed = the sum of amounts.
@@ -1821,7 +1744,7 @@ function reimbLine() {
 function cardTbills() {
   const open = tbOpen(); const st = tbYearStats();
   const head = `<div class="card-head"><div><button class="link-plain" data-act="go-tbills"><p class="h2">T-Bills & CDs</p></button><div class="meta">${open.length} open · ${money(open.reduce((n, t) => n + t.amount, 0))} invested</div></div>
-    ${updSpan(updatedText(tbAccs()))}<button class="icon-btn" data-act="tb-menu" aria-label="T-Bills options">${icon('more_horiz')}</button></div>`;
+    <button class="icon-btn" data-act="tb-menu" aria-label="T-Bills options">${icon('more_horiz')}</button></div>`;
   if (!tbList().length) return `<section class="card">${head}<div class="meta" style="margin:6px 0 10px">Track each T-bill or CD: when it matures, what came back, the real APY.</div><button class="pill-btn" data-act="go-tbills">${icon('savings')}Get started</button></section>`;
   return `<section class="card">${head}
     <div class="tb-stats"><div><span class="meta">Interest this year</span><b class="num" style="color:var(--good)">+${money(st.interest)}</b></div><div><span class="meta">Avg actual APY</span><b class="num">${st.apy == null ? '—' : st.apy.toFixed(2) + '%'}</b></div></div>
@@ -2113,7 +2036,7 @@ function firstReadings() {
   const f = {}; for (const h of S.balHist || []) for (const [id, v] of Object.entries(h.balances)) if (!(id in f) && typeof v === 'number') f[id] = v;
   return f;
 }
-// Points like Net Worth: every day for "This month", otherwise every Sunday, then today (live balances).
+// Points like Net Worth: every day for "This month", otherwise the 1st, 15th and last day of each month, then today (live balances).
 // Readings are still saved every day; a date without one uses the latest reading before it.
 function invSeries(ids, k) {
   const today = ymd(new Date()); const hist = S.balHist || []; const invAt = invValueFn();
@@ -2164,13 +2087,12 @@ function cardInvest() {
   if (!S.balHist) { loadBalHist(); }
   const accs = invAccounts(); const k = invPeriod();
   const head = `<div class="card-head"><div><p class="h2">Investments</p><div class="meta">${INV_PERIODS[k]}</div></div>
-    ${updSpan(updatedText(accs))}<button class="icon-btn" data-act="inv-settings" aria-label="Investments settings">${icon('more_horiz')}</button></div>`;
+    <button class="icon-btn" data-act="inv-settings" aria-label="Investments settings">${icon('more_horiz')}</button></div>`;
   if (!accs.length) return `<section class="card">${head}<div class="meta">No investment accounts. Turn on Investment for an account on the Accounts page.</div></section>`;
   const sel = invSelected(); const all = sel.length === accs.length;
   const chips = `<div class="chips inv-chips"><button class="chip" data-act="inv-acc" data-id="" aria-pressed="${all}">All</button>${accs.map((a) => `<button class="chip" data-act="inv-acc" data-id="${a.id}" aria-pressed="${!all && sel.includes(a.id)}"><span class="nw-st" style="background:${esc(accColor(a))}"></span>${esc(accName(a))}</button>`).join('')}</div>`;
   if (!S.balHist) return `<section class="card">${head}${chips}<div class="meta">Loading…</div></section>`;
-  // All = every investment account, also ones now at $0 (their past balances still count)
-  const pts = invSeries(all ? invAccountsAll().map((a) => a.id) : sel, k); const first = pts[0]; const lastP = pts[pts.length - 1];
+  const pts = invSeries(sel, k); const first = pts[0]; const lastP = pts[pts.length - 1];
   const chg = lastP.v - first.v; const pct = first.v ? (chg / Math.abs(first.v)) * 100 : 0; const up = chg >= 0;
   const color = up ? '#34C759' : '#FF3B30';
   const since = shortDate(first.d).replace(new RegExp(`, ${new Date().getFullYear()}$`), '');
@@ -2184,36 +2106,6 @@ function cardInvest() {
     <div class="meta" style="margin-top:6px">Change in balance, including any deposits or withdrawals.</div></section>`;
 }
 // Scrubbing the chart: a dashed line and the date's balance and change from the start
-// Under the Net Worth chart: change from the previous point by group (Cash, Investments, Credit cards, Loans — same grouping as the Net Worth card);
-// tap a group to see its accounts, biggest change first
-const NW_GROUPS = [['cash', 'Cash', 'account_balance'], ['invest', 'Investments', 'bar_chart'], ['credit', 'Credit cards', 'credit_card'], ['loan', 'Loans', 'request_quote']];
-function nwGroupOf(a) { return isInvest(a) ? 'invest' : a.type === 'credit' ? 'credit' : a.type === 'loan' ? 'loan' : 'cash'; }
-// Tapping an account under the chart: its records between the two points (after the earlier one, up to the tapped one), largest first.
-// Bank and card accounts: the records their balance change is made of (posted, from the bank). Investment accounts: only records you added (their balance comes from readings).
-function nwAccRecords(id) {
-  const [p, base] = S.nwBrkLast || []; const a = S.accounts[id]; if (!p || !base || !a) return;
-  const inv = isInvest(a);
-  const ids = S.txs.filter((t) => t.accountId === id && t.date > base.d && t.date <= p.d && !t.pending && (a.manual || inv || !t.manual)).map((t) => t.id);
-  const from = addDays(parseYmd(base.d), 1); const sd = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const period = `${sd(from)} – ${sd(parseYmd(p.d))}, ${parseYmd(p.d).getFullYear()}${inv ? ' · Balance from the bank; only records you added are listed' : ''}`;
-  sheetRecords({ title: `${accName(a)}${a.mask ? ' ··' + a.mask : ''}`, period, ids, sort: 'amt_desc', side: 'abs' });
-}
-function nwBreakdown(p, base) {
-  const box = $('nw-brk'); if (!box) return;
-  if (!p || !base || !p.acc || !base.acc) { box.innerHTML = ''; S.nwBrkLast = null; return; }
-  S.nwBrkLast = [p, base]; const open = (S.nwBrkOpen ||= new Set());
-  const rows = Object.keys(p.acc).map((id) => ({ a: S.accounts[id], d: p.acc[id] - (base.acc[id] || 0) })).filter((x) => x.a);
-  const md = (x) => esc(parseYmd(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-  const col = (d) => (Math.abs(d) < 0.005 ? 'var(--sub)' : d > 0 ? 'var(--good)' : 'var(--bad)');
-  const html = NW_GROUPS.map(([g, label, ic]) => {
-    const list = rows.filter((x) => nwGroupOf(x.a) === g); if (!list.length) return '';
-    const sum = list.reduce((n, x) => n + x.d, 0); const on = open.has(g);
-    const moved = list.filter((x) => Math.abs(x.d) >= 0.005).sort((x, y) => Math.abs(y.d) - Math.abs(x.d));
-    return `<button class="nw-brk-g" data-act="nw-brk-fold" data-g="${g}" aria-expanded="${on}">${icon(ic)}<span class="n">${label} <span class="meta">${list.length}</span>${icon(on ? 'expand_less' : 'expand_more')}</span><span class="num" style="color:${col(sum)}">${money(sum, true)}</span></button>`
-      + (on ? `<div class="nw-brk-list">${moved.map((x) => `<button class="nw-brk-r" data-act="nw-brk-acc" data-id="${x.a.id}"><span class="nw-st" style="background:${esc(accColor(x.a))}"></span><span class="n">${esc(accName(x.a))}${x.a.mask ? ` <span class="meta">··${esc(x.a.mask)}</span>` : ''}</span><span class="num" style="color:${col(x.d)}">${money(x.d, true)}</span>${icon('chevron_right')}</button>`).join('') || '<div class="nw-brk-r meta">No change</div>'}</div>` : '');
-  }).join('');
-  box.innerHTML = `<div class="nw-brk-h meta">${md(base.d)} → ${md(p.d)}</div>${html}`;
-}
 function invScrub(e) {
   const svg = e.target.closest?.('.bal-chart'); if (!svg) return; const k = svg.dataset.k; const c = S.charts?.[k]; if (!c) return;
   const r = svg.getBoundingClientRect(); const x = ((e.clientX - r.left) / r.width) * c.W; const y = ((e.clientY - r.top) / r.height) * (r.height / r.width) * c.W;
@@ -2221,7 +2113,7 @@ function invScrub(e) {
   if (mk || (e.type === 'pointermove' && S.nwSel && k === 'nw' && !e.buttons)) {
     if (!mk) return;
     if (e.type !== 'pointerdown') return;
-    const n = S.chartNotes?.[mk.id]; S.nwSel = mk.id; $(`${k}-mark`).style.display = 'none'; nwBreakdown(null);
+    const n = S.chartNotes?.[mk.id]; S.nwSel = mk.id; $(`${k}-mark`).style.display = 'none';
     $(`${k}-tip`).innerHTML = `<span class="nw-tiprow"><button class="nw-tipbtn" data-act="nw-tip-open"><span class="nw-n">${mk.n}</span><span class="nw-tiptx"><b>${esc(shortDate(mk.d))}</b> · ${esc(n?.text || '')}${n?.amount ? ` · <span class="num">${money(n.amount)}</span>` : ''}</span></button><button class="icon-btn nw-edit" data-act="nw-note" data-id="${mk.id}" aria-label="Edit note">${icon('edit')}</button></span>`;
     return;
   }
@@ -2229,13 +2121,12 @@ function invScrub(e) {
   let best = c.pts[0]; c.pts.forEach((p) => { if (Math.abs(c.X(p.d) - x) < Math.abs(c.X(best.d) - x)) best = p; });
   const px = c.X(best.d); const py = c.Y(best.v);
   $(`${k}-mark`).style.display = ''; $(`${k}-mline`).setAttribute('x1', px); $(`${k}-mline`).setAttribute('x2', px); $(`${k}-mdot`).setAttribute('cx', px); $(`${k}-mdot`).setAttribute('cy', py);
-  // Change from the previous point (the Sunday before, or the day before in "This month")
+  // Change from the previous point (1st / 15th / month end, or the day before in "This month")
   const i = c.pts.indexOf(best); const base = c.pts[i - 1];
-  if (!base || base === best) { $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span>`; if (k === 'nw') nwBreakdown(null); return; }
+  if (!base || base === best) { $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span>`; return; }
   const d = best.v - base.v; const pc = base.v ? (d / Math.abs(base.v)) * 100 : 0;
   const vs = ` <span class="meta">vs ${esc(parseYmd(base.d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</span>`;
   $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span> · <span style="color:${d >= 0 ? '#34C759' : '#FF3B30'}">${money(d, true)} (${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%)</span>${vs}`;
-  if (k === 'nw') nwBreakdown(best, base);
 }
 document.addEventListener('pointerdown', invScrub);
 document.addEventListener('pointermove', invScrub);
@@ -2244,61 +2135,52 @@ const NW_SCOPES = { all: 'All', per: 'Personal', biz: 'Business' };
 function nwScope() { const k = localStorage.getItem('nwScope'); return NW_SCOPES[k] ? k : 'all'; }
 function nwPeriod() { const k = localStorage.getItem('nwPeriod'); return INV_PERIODS[k] ? k : 'year'; }
 // Same sign as the Net Worth card: credit cards and loans count negative; manual accounts are summed from their records
-// Net worth on fixed dates: every day for "This month"; otherwise every Sunday; the last point is today.
+// Net worth on fixed dates: every day for "This month"; otherwise the 1st, the 15th and the last day of each month; the last point is today.
 // Bank and card accounts are worked out backwards from today's balance through their records (so every date has a value);
 // investment accounts (CDs, T-bills) have no records, so they use the saved balance readings (month-end imports and daily snapshots).
 // Investment balance on a date. Most readings are month-end only, so when money moved out (or in) between two readings,
 // the step is placed on the day the matching transfer shows up in a bank account (same size, ±3% or $500).
 // Without a match the old reading holds until the next one. This keeps money that moved CD → checking from being counted twice.
 function invValueFn() {
-  const hist = S.balHist || []; const cache = {};
+  const hist = S.balHist || []; const first = firstReadings(); const cache = {};
   const bankTx = (S.raw || []).filter((t) => !t.pending && !t.manual && t.date && S.accounts[t.accountId] && !isInvest(S.accounts[t.accountId]));
   const readings = (id) => cache[id] || (cache[id] = hist.filter((h) => typeof h.balances[id] === 'number').map((h) => ({ d: h.date, v: h.balances[id] })));
-  // The day money of this size left (delta < 0 → came into a bank) or reached (delta > 0 → left a bank) the account, between two dates:
-  // one bank record of that size (transfers first), else transfers on one day that add up to it (e.g. 11,077.66 + 5,533.53).
-  // Tolerance max($100, 2.5%) covers the interest earned in between; a looser one would catch unrelated records.
-  const moveDate = (delta, from, to) => {
-    const tol = Math.max(100, Math.abs(delta) * 0.025); const off = (x) => Math.abs(Math.abs(x) - Math.abs(delta));
-    const win = bankTx.filter((t) => t.date > from && t.date <= to && Math.sign(t.amount) === Math.sign(delta));
-    const m = win.filter((t) => off(t.amount) <= tol).sort((a, b) => (b.isTransfer ? 1 : 0) - (a.isTransfer ? 1 : 0) || off(a.amount) - off(b.amount))[0];
-    if (m) return m.date;
-    const byDay = {}; win.filter((t) => t.isTransfer).forEach((t) => { byDay[t.date] = (byDay[t.date] || 0) + t.amount; });
-    const day = Object.entries(byDay).filter(([, sum]) => off(sum) <= tol).sort((a, b) => off(a[1]) - off(b[1]))[0];
-    return day ? day[0] : null;
-  };
-  const steps = {}; const opened = {};
+  const steps = {};
   const stepDates = (id) => {
     if (steps[id]) return steps[id];
     const r = readings(id); const out = [];
     for (let i = 1; i < r.length; i++) {
-      const delta = r[i].v - r[i - 1].v;
-      // without a matching bank record the old reading holds until the next one (the money went somewhere outside your banks)
-      const at = Math.abs(delta) >= 1000 ? moveDate(delta, r[i - 1].d, r[i].d) || r[i].d : r[i].d;
+      const delta = r[i].v - r[i - 1].v; let at = r[i].d;
+      if (Math.abs(delta) >= 1000) {
+        const tol = Math.max(500, Math.abs(delta) * 0.03);
+        // transfers first, then any bank record of that size
+        const m = bankTx.filter((t) => t.date > r[i - 1].d && t.date <= r[i].d && Math.sign(t.amount) === Math.sign(delta) && Math.abs(Math.abs(t.amount) - Math.abs(delta)) <= tol)
+          .sort((a, b) => (b.isTransfer ? 1 : 0) - (a.isTransfer ? 1 : 0) || Math.abs(Math.abs(a.amount) - Math.abs(delta)) - Math.abs(Math.abs(b.amount) - Math.abs(delta)))[0];
+        if (m) at = m.date;
+      }
       out.push({ from: r[i - 1], to: r[i], at });
     }
     return (steps[id] = out);
   };
-  // Before the first reading: if a bank transfer of about that amount went in earlier, the account was empty before that day
-  // (otherwise that money would count in both the bank and here); if not, the first reading is used.
-  const openedOn = (id) => {
-    if (id in opened) return opened[id];
-    const r0 = readings(id)[0];
-    return (opened[id] = r0 && r0.v >= 1000 ? moveDate(r0.v, '0000-00-00', r0.d) : null);
-  };
   return (id, d) => {
     const r = readings(id); if (!r.length) return S.accounts[id]?.balanceCurrent ?? 0;
-    if (d < r[0].d) { const o = openedOn(id); return o && d < o ? 0 : r[0].v; }
+    if (d < r[0].d) return first[id] ?? r[0].v;
     for (const st of stepDates(id)) { if (d >= st.from.d && d < st.to.d) return d >= st.at ? st.to.v : st.from.v; }
     return r[r.length - 1].v;
   };
 }
-// Chart dates: every day for "This month"; otherwise every Sunday (week end); always the period start and today
 function nwDates(start, today, daily) {
-  const out = [start]; const d = parseYmd(start); const end = parseYmd(today);
-  if (daily) d.setDate(d.getDate() + 1); else d.setDate(d.getDate() + (7 - d.getDay()) % 7 || 7); // next day, or next Sunday
-  for (; d < end; d.setDate(d.getDate() + (daily ? 1 : 7))) out.push(ymd(d));
+  const out = []; const d = parseYmd(start); const end = parseYmd(today);
+  if (daily) { for (; d <= end; d.setDate(d.getDate() + 1)) out.push(ymd(d)); }
+  else {
+    for (let m = new Date(d.getFullYear(), d.getMonth(), 1); m <= end; m.setMonth(m.getMonth() + 1)) {
+      const y = m.getFullYear(); const mo = m.getMonth();
+      [ymd(new Date(y, mo, 1)), ymd(new Date(y, mo, 15)), ymd(new Date(y, mo + 1, 0))].forEach((x) => { if (x >= start && x < today) out.push(x); });
+    }
+  }
+  if (!out.includes(start) && start < today) out.unshift(start);
   if (out[out.length - 1] !== today) out.push(today);
-  return [...new Set(out)];
+  return [...new Set(out)].sort();
 }
 function nwSeries(accs, k) {
   const today = ymd(new Date());
@@ -2315,21 +2197,18 @@ function nwSeries(accs, k) {
   const invAt = invValueFn();
   const hist = S.balHist || [];
   const bankIds = new Set(bank.map((a) => a.id)); const manIds = new Set(manual.map((a) => a.id));
+  const bankNow = bank.reduce((n, a) => n + accountBalance(a), 0);
   return dates.map((d) => {
-    // per account, so tapping a point can show which accounts moved
-    const acc = {};
-    if (d === today) { accs.forEach((a) => { acc[a.id] = accountBalance(a); }); } // today = the live balances
-    else {
-      // banks and cards: today's balance + the records after that date put back (a payment out is +, money in is −)
-      bank.forEach((a) => { acc[a.id] = accountBalance(a); }); manual.forEach((a) => { acc[a.id] = 0; });
-      for (const t of raw) {
-        if (bankIds.has(t.accountId) && !t.manual && t.date > d) acc[t.accountId] += t.amount; // records you added by hand are not in the bank's balance
-        else if (manIds.has(t.accountId) && t.date <= d) acc[t.accountId] -= t.amount;
-      }
-      // investments: their balance readings, with steps on the day the money actually moved (see invValueFn)
-      inv.forEach((a) => { acc[a.id] = (['credit', 'loan'].includes(a.type) ? -1 : 1) * invAt(a.id, d); });
+    if (d === today) return { d, v: accs.reduce((n, a) => n + accountBalance(a), 0) }; // today = the live balances
+    // banks and cards: today's balance + the records after that date put back (a payment out is +, money in is −)
+    let v = bankNow; let man = 0;
+    for (const t of raw) {
+      if (bankIds.has(t.accountId) && !t.manual && t.date > d) v += t.amount; // records you added by hand are not in the bank's balance
+      else if (manIds.has(t.accountId) && t.date <= d) man -= t.amount;
     }
-    return { d, v: Object.values(acc).reduce((n, x) => n + x, 0), acc };
+    // investments: their balance readings, with steps on the day the money actually moved (see invValueFn)
+    const iv = inv.reduce((n, a) => n + (['credit', 'loan'].includes(a.type) ? -1 : 1) * invAt(a.id, d), 0);
+    return { d, v: v + man + iv };
   });
 }
 // A note can point at one or more records (the car purchase, two tax payments): the amount is their total, and tapping the note opens them
@@ -2344,7 +2223,7 @@ function sheetNwNote(id, fromTx) {
   }
   const d = S.nwDraft; const txs = nwNoteTxs(d); const n = d.txIds.length;
   const rec = !n ? '<span class="meta">Optional</span>'
-    : n === 1 ? (txs[0] ? `${esc(txTitle(txs[0]))}<div class="meta">${esc(shortDate(txs[0].date))} · ${txs[0].amount < 0 ? '+' : '-'}${money(Math.abs(txs[0].amount))}</div>` : '<span class="meta">Record deleted or not loaded</span>')
+    : n === 1 ? (txs[0] ? `${esc(txTitle(txs[0]))}<div class="meta">${esc(shortDate(txs[0].date))} · ${money(Math.abs(txs[0].amount))}</div>` : '<span class="meta">Record deleted or not loaded</span>')
     : `${n} records<div class="meta">Total ${money(txs.reduce((m, t) => m + Math.abs(t.amount), 0))}</div>`;
   openSheet(`<h3>${id ? 'Edit note' : 'New note'}</h3>
     <div class="set-list"><button class="set-item" data-act="nw-pick-open">${glyph('receipt_long', '#3478F6')}<span class="n">${n > 1 ? 'Records' : 'Record'}</span><span class="v" style="text-align:right">${rec}</span>${icon('chevron_right')}</button></div>
@@ -2360,37 +2239,22 @@ function sheetNwNote(id, fromTx) {
 }
 function nwCapture() { const d = S.nwDraft; if (!d || !$('nwn-date')) return; d.date = $('nwn-date').value; d.text = $('nwn-text').value; d.amount = $('nwn-amt').value; }
 // Choose records (tick one or more): biggest amounts first, with a search box; Done puts their total in Amount and the earliest date in Date
-// Amount with its sign, same colors as Records: + money in (green), − money out; transfers grey
-function nwPickAmt(t) { const inflow = t.amount < 0; return `<span class="v num" style="flex:none;color:${t.isTransfer ? 'var(--sub)' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span>`; }
 function nwPickLabel() { const n = S.nwPickSel?.size || 0; return n ? `Done · ${n} selected` : 'Done'; }
 function sheetNwPick() {
   nwCapture();
   const sel = S.nwPickSel;
   const from = invStart(nwPeriod()); const to = ymd(new Date());
-  const types = S.nwPickTypes || null; const inclTr = S.nwPickTypesTr !== false; // Type (top right), same choices as the Records Type filter
-  const list = S.txs.filter((t) => (t.date >= from && t.date <= to && (!types || recTypeOk(t, types, inclTr))) || sel.has(t.id)).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
-  const rows = list.map((t) => `<label class="msel-row" data-bcl="${esc(`${txTitle(t)} ${t.note || ''} ${t.isTransfer ? 'transfer' : txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}"><input type="checkbox" data-nwsel="${t.id}" ${sel.has(t.id) ? 'checked' : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${t.isTransfer ? 'Transfer · ' : ''}${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div>${t.note && t.note !== txTitle(t) ? `<div class="meta nw-pick-note">${esc(t.note)}</div>` : ''}</span>${nwPickAmt(t)}</label>`).join('');
-  const q = $('rbq')?.value ?? S.nwPickQ ?? ''; S.nwPickQ = null;
-  const typeTxt = !types ? 'All types' : types.map((k) => REC_TYPES[k][0]).join(', ') + (!inclTr && types.some((k) => k !== 'transfer') ? ' (no transfers)' : '');
+  const withTr = S.nwPickTr !== false; // transfers are listed unless switched off
+  const list = S.txs.filter((t) => (t.date >= from && t.date <= to && (withTr || !t.isTransfer)) || sel.has(t.id)).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 400);
+  const rows = list.map((t) => `<label class="msel-row" data-bcl="${esc(`${txTitle(t)} ${t.isTransfer ? 'transfer' : txCatName(S.cats[t.categoryId])} ${accName(S.accounts[t.accountId])} ${Math.abs(t.amount).toFixed(2)} ${t.date}`.toLowerCase())}"><input type="checkbox" data-nwsel="${t.id}" ${sel.has(t.id) ? 'checked' : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[t.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(t))}</span><div class="meta">${t.isTransfer ? 'Transfer · ' : ''}${esc(shortDate(t.date))} · ${esc(accName(S.accounts[t.accountId]))}</div></span><span class="v num" style="flex:none">${money(Math.abs(t.amount))}</span></label>`).join('');
+  const q = $('rbq')?.value || '';
   openSheet(`<h3>Choose records</h3>
-    <div class="nw-pick-per"><span>${INV_PERIODS[nwPeriod()]}</span><button class="pill-btn small nw-pick-type" data-act="nw-pick-type" aria-pressed="${!!types}">${icon('swap_vert')}${esc(typeTxt)}</button></div>
+    <div class="nw-pick-per"><span>${INV_PERIODS[nwPeriod()]}</span><button class="pill-btn small" data-act="nw-pick-tr" aria-pressed="${withTr}">${icon(withTr ? 'check_circle' : 'radio_button_unchecked')}Transfers</button></div>
     <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search name, amount or date" autocomplete="off" aria-label="Search records"></div>
     <div class="set-list" id="rbc-list">${rows || '<div class="empty">No records loaded</div>'}</div>
     <div class="sticky-save"><button class="pill-btn primary" data-act="nw-pick-done" id="nw-pick-done">${nwPickLabel()}</button></div>`);
   if (q && $('rbq')) { $('rbq').value = q; $('rbq').dispatchEvent(new Event('input', { bubbles: true })); }
   S.sheetBack = () => sheetNwNote(S.nwDraft?.id || null);
-}
-// Type for the record chooser: Money in / Money out / Transfers, and whether in and out include transfers (like Records → Type)
-function sheetNwPickTypes() {
-  S.nwPickQ = $('rbq')?.value || '';
-  const types = S.nwPickTypes || null;
-  openSheet(`<h3>Type</h3>
-    <div class="set-list"><label class="msel-row sel-all"><input type="checkbox" id="type-all" ${types ? '' : 'checked'}><span class="ci unknown">${icon('done_all')}</span><span class="n">Select all</span></label>
-    ${Object.entries(REC_TYPES).map(([k, [l, ic, c]]) => `<label class="msel-row"><input type="checkbox" data-typesel="${k}" ${!types || types.includes(k) ? 'checked' : ''}>${glyph(ic, c)}<span class="n">${l}</span></label>`).join('')}</div>
-    <div class="set-list" style="margin-top:10px"><label class="set-item">${glyph('swap_horiz', '#8E8E93')}<span class="n">Include transfers in Money in and Money out</span><input type="checkbox" class="switch" id="type-tr" ${S.nwPickTypesTr === false ? '' : 'checked'}></label></div>
-    <div class="meta" style="padding:0 4px">Money in = records with +, Money out = records with −. Transfers = transfers only.</div>
-    ${saveBar('nw-pick-type-save', 'Done')}`, { short: true });
-  S.sheetBack = sheetNwPick;
 }
 function nwPickDone() {
   const d = S.nwDraft; if (!d) return;
@@ -2445,7 +2309,7 @@ function cardNetWorthChart(accs) {
   return `<section class="card nw-hist">${head}${chips}
     <div class="big num">${money(lastP.v)}</div>
     <div class="inv-chg" style="color:${pts.length > 1 ? color : 'var(--sub)'}">${pts.length > 1 ? `${money(chg, true)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)` : '—'} <span class="meta">since ${esc(since)}</span></div>
-    ${body}${list}<div id="nw-brk" class="nw-brk"></div></section>`;
+    ${body}${list}</section>`;
 }
 function cardTrend() {
   const spec = cardSpec('trend').spec; const ok = specMatcher(spec);
@@ -2724,12 +2588,12 @@ function viewTx(params) {
     <span class="rr-gap"></span>
     <button class="rr-add" data-act="add-tx" aria-label="Add a record">${icon('add')}</button>
     <button class="rr-mid" data-act="rec-kind" aria-label="Choose period">${icon('calendar_month')}<span>${esc(recLabel())}</span></button>
-    ${railBtn('rf-type', 'swap_vert', 'Type', !!rf.types)}
     ${railBtn('rf-acc', 'account_balance_wallet', 'Accounts', !!rf.accounts)}
+    ${railBtn('rf-type', 'swap_vert', 'Type', !!rf.types)}
     ${railBtn('rf-cat', 'category', 'Categories', !!(rf.cats || rf.labels))}
     ${railBtn('rf-filter', 'filter_alt', 'Filter', !!rf.filter)}</nav>
     <div class="rec-ph">${icon('receipt_long')}<div>Tap a record to see it here</div></div>`;
-  const dock = WIDE.matches ? rail : DUO.on ? '' : `<div class="rec-dock">
+  const dock = WIDE.matches ? rail : `<div class="rec-dock">
     <button class="dock-grab" data-act="rec-panel" aria-label="Accounts, categories and filter"><span class="grab"></span><span class="meta">${nf ? `${nf} filter${nf > 1 ? 's' : ''} on · ` : ''}Accounts · Type · Categories · Filter</span></button>
     <div class="period-pill">
       <button class="pp-arrow" data-act="rec-shift" data-dir="-1" aria-label="Previous period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_left')}</button>
@@ -2912,8 +2776,7 @@ function openDrawer() {
     <div class="drawer-sep"></div>
     <button data-act="logout">${icon('logout')}Sign out</button>
     <button data-act="check-update">${icon('system_update')}Check for updates</button>
-    <button data-act="duo-mode">${icon('side_navigation')}Cover layout: ${({ on: 'On', off: 'Off' })[localStorage.getItem('duoForce')] || `Auto (${S.screen?.auto ? 'on' : 'off'})`}</button>
-    <div class="meta" style="padding:12px;margin-top:auto">Version ${APP_VERSION}${S.screen ? `<br>Screen ${Math.round(S.screen.w)}×${Math.round(S.screen.h)} · Ratio ${(S.screen.w / S.screen.h).toFixed(2)}<br>Safe area T ${S.screen.sa.t} · R ${S.screen.sa.r} · B ${S.screen.sa.b} · L ${S.screen.sa.l}` : ''}</div></nav>`;
+    <div class="meta" style="padding:12px;margin-top:auto">Version ${APP_VERSION}</div></nav>`;
 }
 function closeDrawer() { $('drawer').innerHTML = ''; }
 function openSheet(html, opts = {}) {
@@ -3976,8 +3839,6 @@ document.addEventListener('click', async (e) => {
       case 'tb-import': await tbImport(); break;
       case 'inv-hist-import': await invHistImport(); break;
       case 'inv-settings': openOptions('Investments period', Object.entries(INV_PERIODS).map(([v, l]) => ({ value: v, label: l, iconHtml: glyph('date_range', '#3478F6') })), invPeriod(), (v) => { localStorage.setItem('invPeriod', v); closeSheet(); render(); }); break;
-      case 'nw-brk-acc': nwAccRecords(id); break;
-      case 'nw-brk-fold': { const o = (S.nwBrkOpen ||= new Set()); o.has(el.dataset.g) ? o.delete(el.dataset.g) : o.add(el.dataset.g); if (S.nwBrkLast) nwBreakdown(...S.nwBrkLast); break; }
       case 'nw-note': S.nwDraft = null; S.nwFromEdit = false; sheetNwNote(el.dataset.id || null); break;
       case 'nw-note-tx': {
         captureEdit(); const tid = S.edit?.txId; if (!tid) break;
@@ -3987,8 +3848,7 @@ document.addEventListener('click', async (e) => {
       case 'nw-open': nwOpenNote(id); break;
       case 'nw-tip-open': if (S.nwSel) nwOpenNote(S.nwSel); break;
       case 'nw-pick-open': S.nwPickSel = new Set(S.nwDraft?.txIds || []); sheetNwPick(); break;
-      case 'nw-pick-type': sheetNwPickTypes(); break;
-      case 'nw-pick-type-save': { const ks = [...document.querySelectorAll('[data-typesel]:checked')].map((x) => x.dataset.typesel); S.nwPickTypesTr = $('type-tr') ? $('type-tr').checked : true; S.nwPickTypes = !ks.length || ks.length === Object.keys(REC_TYPES).length ? null : ks; sheetNwPick(); break; }
+      case 'nw-pick-tr': S.nwPickTr = S.nwPickTr === false; sheetNwPick(); break;
       case 'nw-pick-done': nwPickDone(); break;
       case 'nw-unlink': nwCapture(); if (S.nwDraft) S.nwDraft.txIds = []; sheetNwNote(S.nwDraft?.id || null); break;
       case 'nw-note-save': await nwNoteSave(); break;
@@ -4077,7 +3937,6 @@ document.addEventListener('click', async (e) => {
         S.recP = { kind: 'custom', unit: 'custom', from, to }; if (from < loadedSince()) setLoadAll(true); closeSheet(); render(); break;
       }
       case 'rec-panel': sheetRecPanel(); break;
-      case 'duo-mode': { const v = localStorage.getItem('duoForce'); const nx = !v ? 'on' : v === 'on' ? 'off' : ''; if (nx) localStorage.setItem('duoForce', nx); else localStorage.removeItem('duoForce'); closeDrawer(); render(); settleVars(); break; }
       case 'rf-acc': sheetRecAccounts(); break;
       case 'rf-type': sheetRecTypes(); break;
       case 'rf-type-save': { const ks = [...document.querySelectorAll('[data-typesel]:checked')].map((x) => x.dataset.typesel); recFilterState().typesTr = $('type-tr') ? $('type-tr').checked : true; recFilterState().types = !ks.length || ks.length === Object.keys(REC_TYPES).length ? null : ks; (WIDE.matches ? closeSheet() : sheetRecPanel()); render(); break; }
