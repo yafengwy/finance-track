@@ -741,7 +741,7 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '20.8';
+const APP_VERSION = '20.9';
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1722,8 +1722,10 @@ function tbRow(t, grouped = false) {
 function tbYearStats() {
   const y = String(new Date().getFullYear()); const done = tbDone().filter((t) => t.maturity.startsWith(y));
   const interest = done.reduce((n, t) => n + (t.gotBack - t.amount), 0);
-  const apys = done.map((t) => tbApy(t)).filter((v) => v != null);
-  return { interest, apy: apys.length ? apys.reduce((a, b) => a + b, 0) / apys.length : null };
+  // Average APY weighted by money × days (a $100k bill for 3 months counts far more than a $2k one for 2 weeks)
+  const w = done.map((t) => ({ a: tbApy(t), w: t.amount * tbDays(t) })).filter((x) => x.a != null);
+  const wSum = w.reduce((n, x) => n + x.w, 0);
+  return { interest, apy: wSum ? w.reduce((n, x) => n + x.a * x.w, 0) / wSum : null };
 }
 // ---- Reimbursements: money you paid for someone and are waiting to get back. All time, not per period. ----
 // Paying out is +amount (money out), getting it back is −amount, so what's still owed = the sum of amounts.
