@@ -96,14 +96,16 @@ button { cursor: pointer; }
 .cat-row { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .cat-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 0; border: 0; background: none; text-align: left; }
 .cat-btn .n { flex: 1; font-weight: 400; display: flex; align-items: center; gap: 2px; min-width: 0; }
-.cat-btn .a { font-weight: 600; }
-.cat-btn .p { width: 52px; text-align: right; font-size: 13px; font-weight: 600; }
+.cat-btn .a { font-weight: 600; flex: none; white-space: nowrap; } /* amount keeps its width; a long name wraps instead of running under it */
+.cat-btn .n, .sub .n { overflow-wrap: anywhere; }
+.cat-btn .p { flex: none; width: 52px; text-align: right; font-size: 13px; font-weight: 600; }
 .chev { font-size: 20px; color: var(--sub); transition: transform .15s; }
 .cat-row.open > .cat-line .chev, .pick.open .chev { transform: rotate(180deg); }
 .subs { padding: 0 0 6px 44px; }
 .sub { display: flex; align-items: center; gap: 12px; min-height: 40px; border-top: 1px dashed var(--line); font-size: 14px; color: var(--sub); }
-.sub .n { flex: 1; }
-.sub .p { width: 52px; text-align: right; font-size: 12px; }
+.sub .n { flex: 1; min-width: 0; }
+.sub .a, .sub .num { flex: none; white-space: nowrap; }
+.sub .p { flex: none; width: 52px; text-align: right; font-size: 12px; }
 .ci { width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; }
 .ci .ms { font-size: 18px; font-variation-settings: 'FILL' 1, 'wght' 500; }
 .ci.unknown { background: #9AA0A8; }
@@ -765,7 +767,7 @@ const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
 const APP_VERSION = '21.4';
-const APP_BUILD = '202609301029'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_BUILD = '202609301041'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
