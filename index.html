@@ -200,6 +200,9 @@ button.nw-brk-r > .ms { font-size: 16px; color: var(--sub); margin-left: -4px; }
 .tb-list .tb-line:has(.nw-st) { padding-left: 0; }
 .tb-tools { display: inline-flex; align-items: center; gap: 6px; }
 .tb-sum { padding: 8px 4px 0; }
+.tb-colhead { flex: none; min-height: 44px; }
+.tb-colhead .chip { display: inline-flex; align-items: center; flex: none; }
+
 .reimb-line { margin-top: -6px; line-height: 1.5; }
 .rb-amt { white-space: nowrap; }
 .rb-tag { font-size: 12px; font-weight: 400; color: var(--sub); }
@@ -374,6 +377,8 @@ input.row-select { direction: ltr; }
 .lchip[aria-pressed="true"] { background: var(--lc); border-color: var(--lc); color: #fff; }
 .lchip { border-color: var(--lc); color: var(--lc); }
 .bare-input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 16px; height: 40px; }
+.ed-bank { margin-left: auto; font-size: 12px; }
+.ed-bank + .row-date { margin-left: 8px; }
 .row-date { margin-left: auto; border: 0; background: none; font-size: 16px; color: var(--sub); height: 36px; }
 .set-item .v .lbl { vertical-align: middle; }
 .sheet .set-item .v { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -773,8 +778,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '21.4';
-const APP_BUILD = '202609301046'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '21.5';
+const APP_BUILD = '202609302150'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1049,7 +1054,9 @@ function rebuildTxs() {
   S.txs = []; S.txById = {};
   for (const t of S.raw || []) {
     if (isInvest(S.accounts[t.accountId]) && !t.manual) continue; // investment accounts: bank records stay out; ones you add (e.g. T-bill interest) count
-    for (const x of expandTx(t)) { S.txs.push(x); S.txById[x.id] = x; }
+    // A bank record you moved to another date (dateShow): cards and Records use your date; balances and net worth keep the bank date (S.raw)
+    const src = t.dateShow && !t.manual && !t.pending && t.dateShow !== t.date ? { ...t, date: t.dateShow, postDate: t.date } : t;
+    for (const x of expandTx(src)) { S.txs.push(x); S.txById[x.id] = x; }
   }
 }
 function expandTx(t) {
@@ -1599,10 +1606,11 @@ function barChart(bs, values, color, opts = {}) {
   return `<svg viewBox="0 0 ${W} ${H}" class="trend" role="img" aria-label="${opts.aria || 'Spending over time'}">${parts}</svg>`;
 }
 // A record's date: "Mar 5" this year, "Mar 5, 2025" otherwise
+function movedTag(t) { return t.postDate ? ` <span class="tag">Bank ${esc(rowDate(t.postDate))}</span>` : ''; }
 function rowDate(d) { return String(d).slice(0, 4) === String(new Date().getFullYear()) ? shortDate(d).replace(/, \d{4}$/, '') : shortDate(d); }
 function txRowHtml(t, cls = 'top-row', back = '') {
   const c = S.cats[t.categoryId];
-  return `<button class="${cls}" data-act="tx" data-id="${t.id}"${back ? ` data-back="${back}"` : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${rowDate(t.date)}</span></span></button>`;
+  return `<button class="${cls}" data-act="tx" data-id="${t.id}"${back ? ` data-back="${back}"` : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${movedTag(t)}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${rowDate(t.date)}</span></span></button>`;
 }
 function cardStructure() {
   const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
@@ -1669,7 +1677,7 @@ function sheetRecords(pop) {
     const desc = t.manual ? (t.name && t.name !== t.note ? t.name : '') : [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i && v !== t.note).join(' - ');
     return `<div class="more-row"><button class="tx-ico" data-act="tx-cat" data-id="${t.id}" data-back="rec" aria-label="Choose category">${ic}</button>
       <button class="more-main" data-act="tx" data-id="${t.id}" data-back="rec"><span class="mid"><span class="row-between"><span class="n">${esc(nm)}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
-      <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}</span><span class="meta">${rowDate(t.date)}</span></span>
+      <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}${movedTag(t)}</span><span class="meta">${rowDate(t.date)}</span></span>
       ${t.note ? `<span class="desc">${esc(t.note)}</span>` : ''}${desc ? `<span class="desc">“${esc(desc)}”</span>` : ''}
       ${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span></button></div>`;
   }).join('');
@@ -1845,9 +1853,10 @@ function viewTbills() {
   const open = tbOpen(); const done = tbDone();
   if (WIDE.matches) {
     const o = tbPart('open'); const d = tbPart('done');
+    const oTot = open.length ? `<div class="meta tb-sum">${open.length} open · <span class="num">≈ $${Math.round(open.reduce((n, t) => n + tbValueNow(t), 0)).toLocaleString('en-US')}</span> · Grouped by account</div>` : '';
     return `<div class="page dash-page dash-cols">${tbImportBox()}
-      <div class="dash-col"><div class="row-between"><span class="chip" aria-pressed="true">Open ${open.length}</span><button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></div>${o.list}</div>
-      <div class="dash-col"><div class="row-between"><span class="chip" aria-pressed="true">Matured ${done.length}</span><button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button></div>${d.total}${d.list}</div></div>`;
+      <div class="dash-col"><div class="row-between tb-colhead"><span class="chip" aria-pressed="true">Open ${open.length}</span><button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></div>${oTot}${o.list}</div>
+      <div class="dash-col"><div class="row-between tb-colhead"><span class="chip" aria-pressed="true">Matured ${done.length}</span><button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button></div>${d.total}${d.list}</div></div>`;
   }
   const tab = S.tbTab === 'done' ? 'done' : 'open'; const p = tbPart(tab);
   return `<div class="page">${tbImportBox()}
@@ -2207,7 +2216,7 @@ function nwGroupOf(a) { return isInvest(a) ? 'invest' : a.type === 'credit' ? 'c
 function nwAccRecords(id) {
   const [p, base] = S.nwBrkLast || []; const a = S.accounts[id]; if (!p || !base || !a) return;
   const inv = isInvest(a);
-  const ids = S.txs.filter((t) => t.accountId === id && t.date > base.d && t.date <= p.d && !t.pending && (a.manual || inv || !t.manual)).map((t) => t.id);
+  const ids = S.txs.filter((t) => t.accountId === id && (t.postDate || t.date) > base.d && (t.postDate || t.date) <= p.d && !t.pending && (a.manual || inv || !t.manual)).map((t) => t.id);
   const from = addDays(parseYmd(base.d), 1); const sd = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const period = `${sd(from)} – ${sd(parseYmd(p.d))}, ${parseYmd(p.d).getFullYear()}${inv ? ' · Balance from the bank; only records you added are listed' : ''}`;
   sheetRecords({ title: `${accName(a)}${a.mask ? ' ··' + a.mask : ''}`, period, ids, sort: 'amt_desc', side: 'abs' });
@@ -2413,7 +2422,7 @@ function nwPickDone() {
   d.txIds = ids;
   if (changed && txs.length) {
     d.amount = Math.round(txs.reduce((m, t) => m + Math.abs(t.amount), 0) * 100) / 100;
-    d.date = txs.map((t) => t.date).sort()[0];
+    d.date = txs.map((t) => t.postDate || t.date).sort()[0];
     if (!String(d.text || '').trim() && txs.length === 1) d.text = txTitle(txs[0]);
   }
   sheetNwNote(d.id || null);
@@ -2724,7 +2733,7 @@ function viewTx(params) {
     html += `<div class="tx${t.isTransfer ? ' transfer' : ''}">
       <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${((ic) => conf.has(t.id) ? warnIcon(ic) : ic)(t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c))}</button>
       <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(txTitle(t))}</span>
-      <span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(acc))}${bySize ? ` · ${esc(shortDate(t.date))}` : ''}${t.pending ? ' <span class="tag">Pending</span>' : ''}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
+      <span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(acc))}${bySize ? ` · ${esc(shortDate(t.date))}` : ''}${t.pending ? ' <span class="tag">Pending</span>' : ''}${movedTag(t)}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
       <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
@@ -3326,7 +3335,7 @@ function bankDetails(t) {
     ['Website', t.website],
     ['Counterparties', (t.counterparties || []).map((c) => c.name + (c.type ? ` (${titleCase(c.type)})` : '')).join(', ')],
     ['Authorized', when(t.authorizedDatetime, t.authorizedDate)],
-    ['Posted', t.pending ? 'Pending' : when(t.datetime, t.date)],
+    ['Posted', t.pending ? 'Pending' : when(t.datetime, t.postDate || t.date)],
     ['Check number', t.checkNumber],
     ['Account', acc ? `${acc.officialName || acc.name}${acc.mask ? ' ••' + acc.mask : ''}` : ''],
   ].filter(([, v]) => v);
@@ -3343,8 +3352,8 @@ function captureEdit() {
   if ($('same-merchant')) S.sameMerchant = $('same-merchant').checked;
   if (e.manual) {
     const v = Math.abs(parseFloat(($('ed-amt').value || '').replace(/[$,]/g, ''))); e.amount = v || 0;
-    e.date = $('ed-date').value || e.date;
   }
+  if ($('ed-date')) e.date = $('ed-date').value || e.date;
 }
 function labelColor(l) { return l?.color || '#8E8E93'; }
 function labelPill(l) { return `<span class="lbl" style="background:${esc(labelColor(l))}">${esc(l.name)}</span>`; }
@@ -3352,6 +3361,8 @@ function labelChips(selected, txId) {
   return `<div class="chips wrap" id="lblbox">${sortedLabels().map((l) => `<button class="chip lchip" data-act="toggle-label" data-id="${l.id}" data-tx="${txId || ''}" aria-pressed="${selected.includes(l.id)}" style="--lc:${esc(labelColor(l))}">${esc(l.name)}</button>`).join('')}
     <button class="chip" data-act="new-label" data-tx="${txId || ''}">${icon('add')} New label</button></div>`;
 }
+// A posted bank record (not a split part) can be counted on another date, e.g. income paid early next month that belongs to this month
+function dateMovable(t, e) { return !!t && !t.manual && !t.pending && !t.parentId && !e.part; }
 function renderEdit() {
   const e = S.edit; const t = e.txId ? S.txById[e.txId] : null;
   const inflow = t ? t.amount < 0 : false;
@@ -3372,7 +3383,7 @@ function renderEdit() {
       ${e.manual ? valueRow('ed-acc', accIcon, 'Account', esc(e.accountId === 'cash' ? 'Cash' : accName(acc)))
         : `<div class="set-item">${accIcon}<span class="n">Account</span><span class="v">${esc(accName(acc))}</span></div>`}
       <div class="set-item">${glyph('calendar_today', '#FF3B30')}<span class="n">Date</span>
-        ${e.manual ? `<input id="ed-date" type="date" class="row-date" value="${e.date}">` : `<span class="v">${shortDate(e.date)}${t.pending ? ' (pending)' : ''}</span>`}</div>
+        ${e.manual || dateMovable(t, e) ? `${t?.postDate || (t && !e.manual && e.date !== t.date) ? `<span class="meta ed-bank">Bank ${esc(shortDate(t.postDate || t.date))}</span>` : ''}<input id="ed-date" type="date" class="row-date" value="${e.date}" aria-label="Date">` : `<span class="v">${shortDate(e.date)}${t.pending ? ' (pending)' : ''}</span>`}</div>
       ${t ? valueRow('ed-split', glyph('call_split', '#5856D6'), 'Split', t.parentId ? `Part ${t.splitIdx + 1} of ${t.splitN}` : 'None') : ''}
       ${t && !t.manual ? (() => { const n = ruleList().filter((r) => ruleMatches(r, t)).length; return valueRow('ed-rule', glyph('bolt', '#FF9500'), 'Create rule', esc(n ? `${n} rule${n === 1 ? '' : 's'} match` : `Auto-sort “${kwSuggest(t)[0] || 'this merchant'}”`)); })() : ''}
     </div>
@@ -3397,6 +3408,12 @@ async function saveEdit() {
   const upd = { isTransfer: e.type === 'transfer', labels: e.labels, note: e.note.trim() };
   upd.categoryId = e.type === 'transfer' ? (t?.categoryId || null) : (e.categoryId || null);
   if (t && !e.manual && !t.parentId && (upd.categoryId || upd.isTransfer)) upd.conflictOk = true; // saved by you: no longer a conflict
+  if (t && dateMovable(t, e) && e.date && e.date !== t.date) { // you changed the date of a bank record
+    const bank = t.postDate || t.date;
+    if (e.date === bank) upd.dateShow = deleteField();
+    else if (!confirm(`Count this record on ${shortDate(e.date)}?\n\nThe bank posted it on ${shortDate(bank)}. Cards and Records will use ${shortDate(e.date)}; account balances and Net Worth keep the bank date.`)) { e.date = t.date; renderEdit(); return; }
+    else upd.dateShow = e.date;
+  }
   if (t?.parentId) { const b = writeBatch(db); partOps([t], () => upd).forEach((op) => op(b)); await b.commit(); closeSheet(); toast('Saved'); backToPopup(); return; }
   if (e.manual) {
     upd.amount = e.type === 'income' ? -e.amount : e.type === 'expense' ? e.amount : (t && t.amount < 0 ? -e.amount : e.amount);
