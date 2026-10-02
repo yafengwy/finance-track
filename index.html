@@ -778,8 +778,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '21.7';
-const APP_BUILD = '202609302345'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '21.9';
+const APP_BUILD = '202610012320'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1021,7 +1021,10 @@ function listen() {
   }, onErr));
   // Categories are never created automatically: an empty list stays empty until you add some yourself
   watch('categories', 'cats', () => { S.catsLoaded = true; });
-  watch('accounts', 'accounts', () => { rebuildTxs(); saveBalanceSnapshot(); });
+  watch('accounts', 'accounts', () => {
+    Object.values(S.accounts).forEach((a) => { if (a.mergedInto) delete S.accounts[a.id]; }); // an old card merged into its replacement
+    rebuildTxs(); saveBalanceSnapshot();
+  });
   watch('labels', 'labels');
   watch('tbills', 'tbills', () => { S.tbLoaded = true; });
   watch('chartNotes', 'chartNotes');
@@ -1452,7 +1455,7 @@ function netWorthCard(accs, part) {
       const gAll = x.list.filter((y) => instOf(y.a) === g.bank); const st = worst(gAll.map((y) => accStatus(y.a)));
       const badItem = st === 'bad' ? gAll.map((y) => y.a.itemId).find((iid) => accStatus({ itemId: iid }) === 'bad') : null;
       const dot = badItem ? `<button class="sdot-btn" data-act="reconnect" data-id="${badItem}" aria-label="Reconnect ${esc(g.bank)}">${sDot('bad')}</button>` : sDot(st);
-      return `<div class="nw-bank"><span>${esc(g.bank)}${dot} <span class="meta">· ${g.all}</span></span><span class="num" style="${col(g.sum)}">${money(g.sum)}</span></div>
+      return `<div class="nw-bank"><span>${esc(g.bank)}${dot} <span class="meta">· ${g.ys.length}</span></span><span class="num" style="${col(g.sum)}">${money(g.sum)}</span></div>
       ${g.ys.sort((p, q) => Math.abs(q.b) - Math.abs(p.b)).map(({ a, b }) => `<button class="nw-acc" data-act="acc" data-id="${a.id}"><span class="nw-st" style="background:${esc(accColor(a))}"></span><span class="n">${esc(accName(a))}${a.mask ? ` <span class="meta">••${esc(a.mask)}</span>` : ''}${sDot(accStatus(a))}${tbNextLine(a)}</span><span class="num" style="${col(b)}">${money(b)}</span></button>`).join('')}`;
     }).join('')
       + (zero ? `<button class="nw-zero" data-act="nw-zero" data-id="${id}">${showZero ? 'Hide' : `+ ${zero}`} account${zero === 1 ? '' : 's'} with $0 balance</button>` : '');
@@ -3533,6 +3536,8 @@ async function ensureCash(accountId) {
 }
 
 // ---- other sheets ----
+// Accounts that can be merged into a: other bank accounts of the same kind (card into card, checking into checking…)
+function mergeCands(a) { return a.manual ? [] : Object.values(S.accounts).filter((x) => x.id !== a.id && !x.manual && nwGroupOf(x) === nwGroupOf(a)); }
 function sheetAccount(id) {
   const a = S.accounts[id]; if (!a) return;
   openSheet(`<h3>Edit account</h3>
@@ -3542,6 +3547,7 @@ function sheetAccount(id) {
     <label class="check"><input type="checkbox" id="ah" ${a.hidden ? 'checked' : ''}>Hide on the Accounts page</label>
     <div class="set-list"><label class="set-item">${glyph('business_center', '#8E5B2E')}<span class="n">Business account<div class="meta">Counted under Business in Net Worth.</div></span><input type="checkbox" class="switch" id="abiz" ${isBusiness(a) ? 'checked' : ''}></label>
       <label class="set-item">${glyph('trending_up', '#34C759')}<span class="n">Investment account<div class="meta">Only its balance counts, in Net Worth → Investments. Its records stay out of Records and charts.${a.type === 'investment' ? ' Detected as an investment account.' : ''}</div></span><input type="checkbox" class="switch" id="ainv" ${isInvest(a) ? 'checked' : ''}></label></div>
+    ${mergeCands(a).length ? `<div class="sec-head">Replaced card</div><div class="set-list">${valueRow('acc-merge', glyph('merge', '#5856D6'), 'Merge an old account into this one', '', ` data-id="${id}"`)}</div><div class="meta" style="padding:0 4px">For a lost or replaced card with a new number: the old account's records, settings and history move here, and the old account disappears.</div>` : ''}
     ${saveBar('save-acc', 'Save', ` data-id="${id}"`)}`);
   $('sheet').dataset.color = a.color || '';
 }
@@ -4002,6 +4008,20 @@ document.addEventListener('click', async (e) => {
       case 'tb-edit': S.tbDraft = null; sheetTbEdit(id); break;
       case 'tb-e-acc': tbCaptureEdit(); openOptions('Account', [...invAccountsAll().map((a) => ({ value: a.id, label: accName(a), sub: a.mask ? '••' + a.mask : '', iconHtml: `<span class="nw-st" style="background:${esc(accColor(a))}"></span>` })), { value: '', label: 'No account', iconHtml: glyph('block', '#C7C7CC') }], S.tbDraft.accountId || '', (v) => { S.tbDraft.accountId = v; sheetTbEdit(S.tbDraft.id); }); break;
       case 'tb-e-save': await tbEditSave(); break;
+      case 'acc-merge': {
+        const a = S.accounts[id]; if (!a) break;
+        const inst = (x) => (S.items[x.itemId] || {}).institutionName || x.institution || '';
+        openOptions('Merge into this account', mergeCands(a).map((x) => ({ value: x.id, label: accName(x), sub: [x.mask && '••' + x.mask, inst(x)].filter(Boolean).join(' · '), iconHtml: `<span class="nw-st" style="background:${esc(accColor(x))}"></span>` })), '', async (v) => {
+          const o = S.accounts[v]; if (!o) return;
+          const nm = (x) => `${accName(x)}${x.mask ? ' ••' + x.mask : ''}`;
+          if (!confirm(`Merge “${nm(o)}” into “${nm(a)}”?\n\nAll of its records, settings and history move to “${nm(a)}”, and “${nm(o)}” disappears. This can’t be undone.`)) { sheetAccount(id); return; }
+          closeSheet(); toast('Merging…', 60000);
+          try { const { data } = await call('mergeAccounts')({ fromId: v, toId: id }); toast(`Merged. ${data.moved + data.matched} record${data.moved + data.matched === 1 ? '' : 's'} moved.`); }
+          catch (e) { toast('Could not merge: ' + errMsg(e)); }
+        });
+        S.sheetBack = () => sheetAccount(id);
+        break;
+      }
       case 'tb-del': if (confirm('Delete this T-bill? Its income record (if any) stays.')) { await deleteDoc(doc(db, 'tbills', id)); S.tbDraft = null; closeSheet(); toast('Deleted'); } break;
       case 'tb-cal': tbCalendar(id); break;
       case 'tb-mature': S.tbMat = null; sheetTbMature(id); break;
