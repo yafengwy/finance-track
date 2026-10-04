@@ -778,8 +778,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '21.9';
-const APP_BUILD = '202610012320'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '22.0';
+const APP_BUILD = '202610031707'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2803,9 +2803,10 @@ function sheetRecPanel() {
 function sheetRecAccounts() {
   const r = recFilterState(); const sel = new Set(r.accounts || []);
   const accs = Object.values(S.accounts).filter((a) => (!a.hidden || sel.has(a.id)) && (!isInvest(a) || hasOwnRecords(a)));
-  openSheet(`<h3>Accounts</h3>
-    <div class="set-list"><label class="msel-row sel-all"><input type="checkbox" id="acc-all" ${r.accounts ? '' : 'checked'}><span class="ci unknown">${icon('done_all')}</span><span class="n">Select all</span></label></div>
-    ${bankGroups(accs, (a) => `<label class="msel-row"><input type="checkbox" data-accsel="${a.id}" ${!r.accounts || sel.has(a.id) ? 'checked' : ''}><span class="ci sq" style="background:${esc(accColor(a))}">${icon(a.type === 'depository' ? 'account_balance' : 'credit_card')}</span><span class="n">${esc(accName(a))}<div class="meta">${esc([S.items[a.itemId]?.institutionName || a.institution, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</div></span></label>`)}
+  // Opens with nothing ticked when all accounts are shown, so you tap just the ones you want (nothing ticked = all)
+  openSheet(`<h3>Accounts</h3><div class="meta">Nothing selected = all accounts.</div>
+    <div class="set-list"><label class="msel-row sel-all"><input type="checkbox" id="acc-all"><span class="ci unknown">${icon('done_all')}</span><span class="n">Select all</span></label></div>
+    ${bankGroups(accs, (a) => `<label class="msel-row"><input type="checkbox" data-accsel="${a.id}" ${sel.has(a.id) ? 'checked' : ''}><span class="ci sq" style="background:${esc(accColor(a))}">${icon(a.type === 'depository' ? 'account_balance' : 'credit_card')}</span><span class="n">${esc(accName(a))}<div class="meta">${esc([S.items[a.itemId]?.institutionName || a.institution, a.mask && '••' + a.mask].filter(Boolean).join(' '))}</div></span></label>`)}
     ${saveBar('rf-acc-save', 'Done')}`);
 }
 function sheetRecTypes() {
