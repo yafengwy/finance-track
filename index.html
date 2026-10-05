@@ -778,8 +778,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '22.0';
-const APP_BUILD = '202610031707'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '22.1';
+const APP_BUILD = '202610051151'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -4365,7 +4365,8 @@ function fitKeyboard() {
 }
 if (window.visualViewport) { visualViewport.addEventListener('resize', fitKeyboard); visualViewport.addEventListener('scroll', fitKeyboard); fitKeyboard(); }
 document.addEventListener('focusin', (e) => {
-  if (!e.target.closest?.('.sheet') || !e.target.matches('input, textarea')) return;
+  // Only fields that bring up the keyboard; tapping a checkbox, switch or date must not move the list under your finger
+  if (!e.target.closest?.('.sheet') || !e.target.matches('textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=date]):not([type=button])')) return;
   setTimeout(() => { fitKeyboard(); e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 300);
 });
 
