@@ -173,6 +173,9 @@ button.nw-brk-r > .ms { font-size: 16px; color: var(--sub); margin-left: -4px; }
 .inv-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .inv-grid.v { stroke-dasharray: 2 3; }
 .inv-ax { font-size: 10px; fill: var(--sub); }
+.tb-warn { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 6px; border-radius: 50%; background: #FF9500; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; vertical-align: 2px; flex: none; font-family: -apple-system, system-ui, sans-serif; }
+.pill-btn .tb-warn { margin: 0 2px 0 0; vertical-align: 0; }
+.tb-skip { align-self: center; border: 0; background: none; color: var(--accent); font: inherit; font-size: 14px; padding: 4px 8px; }
 .tb-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; color: var(--text); text-align: left; }
 .tb-list > .tb-row:first-child, .day + .tb-row, .tb-gh + .tb-row { border-top: 0; }
 .tb-gh { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; }
@@ -778,8 +781,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '22.1';
-const APP_BUILD = '202610051151'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '22.2';
+const APP_BUILD = '202610072323'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1761,6 +1764,10 @@ const mdy = (d) => { if (!d) return ''; const [y, m, dd] = d.split('-'); return 
 function tbList() { return Object.values(S.tbills || {}); }
 function tbOpen() { return tbList().filter((t) => t.gotBack == null).sort((a, b) => a.maturity.localeCompare(b.maturity)); }
 function tbDone() { return tbList().filter((t) => t.gotBack != null).sort((a, b) => b.maturity.localeCompare(a.maturity)); }
+// Matured with interest, but the interest was never recorded as income (imported ones were entered before; "Already recorded" hides it)
+function tbNeedsIncome(t) { return t.gotBack != null && !t.imported && !t.incomeTxId && !t.incomeSkip && t.gotBack > t.amount; }
+const TB_WARN = '<span class="tb-warn" title="Interest not recorded as income" aria-label="Interest not recorded as income">!</span>';
+function tbWarnChip() { return tbDone().some(tbNeedsIncome) ? TB_WARN : ''; }
 function tbDays(t) { return Math.max(1, Math.round((parseYmd(t.maturity) - parseYmd(t.buyDate)) / 864e5)); }
 function tbApy(t, back = t.gotBack) { if (!(back > 0) || !(t.amount > 0)) return null; return ((back / t.amount) ** (365 / tbDays(t)) - 1) * 100; }
 function tbAccName(t) { const a = S.accounts[t.accountId]; return a ? accName(a) : 'No account'; }
@@ -1786,7 +1793,7 @@ function tbRow(t, grouped = false) {
     const sub = [grouped === 'date' ? esc(tbAccName(t)) : '', open ? `Bought ${mdy(t.buyDate)}` : `${mdy(t.buyDate)} – ${mdy(t.maturity)}`].filter(Boolean).join(' · ');
     const right = open ? `<div class="num tb-due">${mdy(t.maturity)}</div><div class="meta">${tbDue(t) === 0 ? '<span class="tb-pill">Today</span>' : tbDue(t) < 0 ? `<span style="color:var(--bad)">${-tbDue(t)} days ago</span>` : `In ${tbDue(t)} days`}</div>`
       : `<div class="num tb-due" style="color:var(--good)">+${money(t.gotBack - t.amount)}</div><div class="meta num" style="color:${tbApyColor(t)}">${tbApy(t)?.toFixed(2) ?? '—'}%</div>`;
-    return `<button class="tb-line" data-act="tb-open" data-id="${t.id}">${grouped === 'date' ? `<span class="nw-st" style="background:${esc(tbColor(t))}"></span>` : ''}<span class="tb-main"><span class="num tb-amt2">${money(t.amount)}</span><span class="meta tb-note">${sub}</span>${t.notes ? `<span class="meta tb-notes">Notes: ${esc(t.notes)}</span>` : ''}</span><span class="tb-r">${right}</span></button>`;
+    return `<button class="tb-line" data-act="tb-open" data-id="${t.id}">${grouped === 'date' ? `<span class="nw-st" style="background:${esc(tbColor(t))}"></span>` : ''}<span class="tb-main"><span class="num tb-amt2">${money(t.amount)}${tbNeedsIncome(t) ? TB_WARN : ''}</span><span class="meta tb-note">${sub}</span>${t.notes ? `<span class="meta tb-notes">Notes: ${esc(t.notes)}</span>` : ''}</span><span class="tb-r">${right}</span></button>`;
   }
 
 
@@ -1794,7 +1801,7 @@ function tbRow(t, grouped = false) {
   const right = open ? `<div class="num">${mdy(t.maturity)}</div>${tbWhen(t)}`
     : `<div class="num" style="color:var(--good)">+${money(t.gotBack - t.amount)}</div><div class="meta">${mdy(t.maturity)} · <span style="color:${tbApyColor(t)}">${tbApy(t)?.toFixed(2) ?? '—'}%</span></div>`;
   return `<button class="tb-row" data-act="tb-open" data-id="${t.id}"><span class="nw-st" style="background:${esc(tbColor(t))}"></span>
-    <span class="mid"><span class="n">${esc(tbAccName(t))}</span><span class="tb-amt num">${money(t.amount)}</span>${t.notes ? `<span class="meta tb-note">Notes: ${esc(t.notes)}</span>` : ''}</span>
+    <span class="mid"><span class="n">${esc(tbAccName(t))}</span><span class="tb-amt num">${money(t.amount)}${tbNeedsIncome(t) ? TB_WARN : ''}</span>${t.notes ? `<span class="meta tb-note">Notes: ${esc(t.notes)}</span>` : ''}</span>
     <span class="r">${right}</span></button>`;
 }
 function tbYearStats() {
@@ -1861,11 +1868,11 @@ function viewTbills() {
     const oTot = open.length ? `<div class="meta tb-sum">${open.length} open · <span class="num">≈ $${Math.round(open.reduce((n, t) => n + tbValueNow(t), 0)).toLocaleString('en-US')}</span> · Grouped by account</div>` : '';
     return `<div class="page dash-page dash-cols">${tbImportBox()}
       <div class="dash-col"><div class="row-between tb-colhead"><span class="chip" aria-pressed="true">Open ${open.length}</span><button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></div>${oTot}${o.list}</div>
-      <div class="dash-col"><div class="row-between tb-colhead"><span class="chip" aria-pressed="true">Matured ${done.length}</span><button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button></div>${d.total}${d.list}</div></div>`;
+      <div class="dash-col"><div class="row-between tb-colhead"><span class="chip" aria-pressed="true">Matured ${done.length}${tbWarnChip()}</span><button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button></div>${d.total}${d.list}</div></div>`;
   }
   const tab = S.tbTab === 'done' ? 'done' : 'open'; const p = tbPart(tab);
   return `<div class="page">${tbImportBox()}
-    <div class="row-between"><div class="chips"><button class="chip" data-act="tb-tab" data-v="open" aria-pressed="${tab === 'open'}">Open ${open.length}</button><button class="chip" data-act="tb-tab" data-v="done" aria-pressed="${tab === 'done'}">Matured ${done.length}</button></div>
+    <div class="row-between"><div class="chips"><button class="chip" data-act="tb-tab" data-v="open" aria-pressed="${tab === 'open'}">Open ${open.length}</button><button class="chip" data-act="tb-tab" data-v="done" aria-pressed="${tab === 'done'}">Matured ${done.length}${tbWarnChip()}</button></div>
       <span class="tb-tools">${tab === 'done' ? `<button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button>` : ''}<button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></span></div>
     ${p.total}${p.list}</div>`;
 }
@@ -1934,7 +1941,8 @@ function sheetTbill(id) {
       ${t.notes ? `<div class="set-item tb-kv-notes">${glyph('edit_note', '#AF52DE')}<span class="n">Notes<span class="tb-notes-full">${esc(t.notes)}</span></span></div>` : ''}
     </div>
     ${!open && t.incomeTxId ? (S.rawById?.[t.incomeTxId] ? `<div class="set-list"><button class="set-item" data-act="tx" data-id="${t.incomeTxId}">${glyph('check', '#34C759')}<span class="n">Recorded as income</span><span class="v">${esc(tbCatLabel(S.rawById[t.incomeTxId].categoryId))}</span>${icon('chevron_right')}</button></div>` : `<div class="set-list"><div class="set-item">${glyph('check', '#34C759')}<span class="n">Recorded as income</span></div></div>`) : ''}
-    ${!open && !t.incomeTxId && t.gotBack > t.amount ? `<button class="pill-btn wide" data-act="tb-mature" data-id="${id}">${icon('receipt_long')}Record +${money(t.gotBack - t.amount)} as income</button>` : ''}
+    ${!open && !t.incomeTxId && t.gotBack > t.amount ? `<button class="pill-btn wide" data-act="tb-mature" data-id="${id}">${tbNeedsIncome(t) ? TB_WARN : icon('receipt_long')}Record +${money(t.gotBack - t.amount)} as income</button>` : ''}
+    ${tbNeedsIncome(t) ? `<button class="tb-skip" data-act="tb-skip" data-id="${id}">Already recorded elsewhere</button>` : ''}
     ${open ? `<button class="pill-btn wide" data-act="tb-cal" data-id="${id}">${icon('event_available')}Add to calendar</button>` : ''}
     <button class="pill-btn wide" data-act="tb-edit" data-id="${id}">${icon('edit')}Edit</button>
     ${open ? saveBar('tb-mature', 'Enter amount back', ` data-id="${id}"`) : ''}`, { short: true });
@@ -4026,6 +4034,7 @@ document.addEventListener('click', async (e) => {
       case 'tb-del': if (confirm('Delete this T-bill? Its income record (if any) stays.')) { await deleteDoc(doc(db, 'tbills', id)); S.tbDraft = null; closeSheet(); toast('Deleted'); } break;
       case 'tb-cal': tbCalendar(id); break;
       case 'tb-mature': S.tbMat = null; sheetTbMature(id); break;
+      case 'tb-skip': await updateDoc(doc(db, 'tbills', id), { incomeSkip: true }); if (S.tbills[id]) S.tbills[id].incomeSkip = true; toast('Marked as recorded'); sheetTbill(id); render(); break;
       case 'tb-mature-save': await tbMatureSave(id); break;
       case 'tb-income-save': await tbIncomeSave(id); break;
       case 'tb-cat': { tbCaptureMat(); const mid = S.tbMat.id; const cats = Object.values(S.cats).filter((c) => !c.hidden).sort((a, b) => tbCatLabel(a.id).localeCompare(tbCatLabel(b.id)));
