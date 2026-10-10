@@ -781,8 +781,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '22.2';
-const APP_BUILD = '202610072323'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '22.3';
+const APP_BUILD = '202610091901'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1766,8 +1766,14 @@ function tbOpen() { return tbList().filter((t) => t.gotBack == null).sort((a, b)
 function tbDone() { return tbList().filter((t) => t.gotBack != null).sort((a, b) => b.maturity.localeCompare(a.maturity)); }
 // Matured with interest, but the interest was never recorded as income (imported ones were entered before; "Already recorded" hides it)
 function tbNeedsIncome(t) { return t.gotBack != null && !t.imported && !t.incomeTxId && !t.incomeSkip && t.gotBack > t.amount; }
-const TB_WARN = '<span class="tb-warn" title="Interest not recorded as income" aria-label="Interest not recorded as income">!</span>';
+// Open, and "Add to calendar" never tapped for it (the app can't read your calendar, only whether you tapped the button)
+function tbNeedsCal(t) { return t.gotBack == null && !t.calAdded; }
+const TB_WARN = '<span class="tb-warn" aria-hidden="true">!</span>';
+function tbWarn(t) { return tbNeedsIncome(t) || tbNeedsCal(t) ? TB_WARN : ''; }
 function tbWarnChip() { return tbDone().some(tbNeedsIncome) ? TB_WARN : ''; }
+function tbWarnOpenChip() { return tbOpen().some(tbNeedsCal) ? TB_WARN : ''; }
+// Matured list view: by month, this year — every time the app opens; the ≡ menu changes it until then
+function tbView(k) { return (S.tbView ||= { tbBy: 'date', tbPer: 'year' })[k]; }
 function tbDays(t) { return Math.max(1, Math.round((parseYmd(t.maturity) - parseYmd(t.buyDate)) / 864e5)); }
 function tbApy(t, back = t.gotBack) { if (!(back > 0) || !(t.amount > 0)) return null; return ((back / t.amount) ** (365 / tbDays(t)) - 1) * 100; }
 function tbAccName(t) { const a = S.accounts[t.accountId]; return a ? accName(a) : 'No account'; }
@@ -1793,7 +1799,7 @@ function tbRow(t, grouped = false) {
     const sub = [grouped === 'date' ? esc(tbAccName(t)) : '', open ? `Bought ${mdy(t.buyDate)}` : `${mdy(t.buyDate)} – ${mdy(t.maturity)}`].filter(Boolean).join(' · ');
     const right = open ? `<div class="num tb-due">${mdy(t.maturity)}</div><div class="meta">${tbDue(t) === 0 ? '<span class="tb-pill">Today</span>' : tbDue(t) < 0 ? `<span style="color:var(--bad)">${-tbDue(t)} days ago</span>` : `In ${tbDue(t)} days`}</div>`
       : `<div class="num tb-due" style="color:var(--good)">+${money(t.gotBack - t.amount)}</div><div class="meta num" style="color:${tbApyColor(t)}">${tbApy(t)?.toFixed(2) ?? '—'}%</div>`;
-    return `<button class="tb-line" data-act="tb-open" data-id="${t.id}">${grouped === 'date' ? `<span class="nw-st" style="background:${esc(tbColor(t))}"></span>` : ''}<span class="tb-main"><span class="num tb-amt2">${money(t.amount)}${tbNeedsIncome(t) ? TB_WARN : ''}</span><span class="meta tb-note">${sub}</span>${t.notes ? `<span class="meta tb-notes">Notes: ${esc(t.notes)}</span>` : ''}</span><span class="tb-r">${right}</span></button>`;
+    return `<button class="tb-line" data-act="tb-open" data-id="${t.id}">${grouped === 'date' ? `<span class="nw-st" style="background:${esc(tbColor(t))}"></span>` : ''}<span class="tb-main"><span class="num tb-amt2">${money(t.amount)}${tbWarn(t)}</span><span class="meta tb-note">${sub}</span>${t.notes ? `<span class="meta tb-notes">Notes: ${esc(t.notes)}</span>` : ''}</span><span class="tb-r">${right}</span></button>`;
   }
 
 
@@ -1801,7 +1807,7 @@ function tbRow(t, grouped = false) {
   const right = open ? `<div class="num">${mdy(t.maturity)}</div>${tbWhen(t)}`
     : `<div class="num" style="color:var(--good)">+${money(t.gotBack - t.amount)}</div><div class="meta">${mdy(t.maturity)} · <span style="color:${tbApyColor(t)}">${tbApy(t)?.toFixed(2) ?? '—'}%</span></div>`;
   return `<button class="tb-row" data-act="tb-open" data-id="${t.id}"><span class="nw-st" style="background:${esc(tbColor(t))}"></span>
-    <span class="mid"><span class="n">${esc(tbAccName(t))}</span><span class="tb-amt num">${money(t.amount)}${tbNeedsIncome(t) ? TB_WARN : ''}</span>${t.notes ? `<span class="meta tb-note">Notes: ${esc(t.notes)}</span>` : ''}</span>
+    <span class="mid"><span class="n">${esc(tbAccName(t))}</span><span class="tb-amt num">${money(t.amount)}${tbWarn(t)}</span>${t.notes ? `<span class="meta tb-note">Notes: ${esc(t.notes)}</span>` : ''}</span>
     <span class="r">${right}</span></button>`;
 }
 function tbYearStats() {
@@ -1867,12 +1873,12 @@ function viewTbills() {
     const o = tbPart('open'); const d = tbPart('done');
     const oTot = open.length ? `<div class="meta tb-sum">${open.length} open · <span class="num">≈ $${Math.round(open.reduce((n, t) => n + tbValueNow(t), 0)).toLocaleString('en-US')}</span> · Grouped by account</div>` : '';
     return `<div class="page dash-page dash-cols">${tbImportBox()}
-      <div class="dash-col"><div class="row-between tb-colhead"><span class="chip" aria-pressed="true">Open ${open.length}</span><button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></div>${oTot}${o.list}</div>
+      <div class="dash-col"><div class="row-between tb-colhead"><span class="chip" aria-pressed="true">Open ${open.length}${tbWarnOpenChip()}</span><button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></div>${oTot}${o.list}</div>
       <div class="dash-col"><div class="row-between tb-colhead"><span class="chip" aria-pressed="true">Matured ${done.length}${tbWarnChip()}</span><button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button></div>${d.total}${d.list}</div></div>`;
   }
   const tab = S.tbTab === 'done' ? 'done' : 'open'; const p = tbPart(tab);
   return `<div class="page">${tbImportBox()}
-    <div class="row-between"><div class="chips"><button class="chip" data-act="tb-tab" data-v="open" aria-pressed="${tab === 'open'}">Open ${open.length}</button><button class="chip" data-act="tb-tab" data-v="done" aria-pressed="${tab === 'done'}">Matured ${done.length}${tbWarnChip()}</button></div>
+    <div class="row-between"><div class="chips"><button class="chip" data-act="tb-tab" data-v="open" aria-pressed="${tab === 'open'}">Open ${open.length}${tbWarnOpenChip()}</button><button class="chip" data-act="tb-tab" data-v="done" aria-pressed="${tab === 'done'}">Matured ${done.length}${tbWarnChip()}</button></div>
       <span class="tb-tools">${tab === 'done' ? `<button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button>` : ''}<button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></span></div>
     ${p.total}${p.list}</div>`;
 }
@@ -1883,7 +1889,7 @@ function tbImportBox() {
 function tbPart(tab) {
   const open = tbOpen(); const done = tbDone();
   // Matured: period filter + group by account or by month (≡ menu); Open: always by account
-  const per = localStorage.getItem('tbPer') || 'year'; const by = tab === 'done' ? (localStorage.getItem('tbBy') || 'account') : 'account';
+  const per = tbView('tbPer'); const by = tab === 'done' ? tbView('tbBy') : 'account';
   const y0 = new Date().getFullYear();
   let rows = tab === 'open' ? open : done;
   if (tab === 'done' && per !== 'all') rows = rows.filter((t) => t.maturity.startsWith(String(per === 'year' ? y0 : y0 - 1)));
@@ -1919,7 +1925,7 @@ function tbNextLine(a) {
 }
 // ---- detail ----
 function sheetTbView() {
-  const per = localStorage.getItem('tbPer') || 'year'; const by = localStorage.getItem('tbBy') || 'account';
+  const per = tbView('tbPer'); const by = tbView('tbBy');
   const opt = (k, v, cur, label, ic) => `<button class="set-item opt-row" data-act="tb-view-set" data-k="${k}" data-v="${v}" aria-pressed="${cur === v}">${glyph(ic, '#3478F6')}<span class="n">${label}</span>${cur === v ? '<span class="ms check-ico" aria-hidden="true">check</span>' : ''}</button>`;
   openSheet(`<h3>Matured</h3>
     <div class="sec-head">Group by</div><div class="set-list">${opt('tbBy', 'account', by, 'Account', 'account_balance')}${opt('tbBy', 'date', by, 'Date (month)', 'calendar_month')}</div>
@@ -1943,7 +1949,7 @@ function sheetTbill(id) {
     ${!open && t.incomeTxId ? (S.rawById?.[t.incomeTxId] ? `<div class="set-list"><button class="set-item" data-act="tx" data-id="${t.incomeTxId}">${glyph('check', '#34C759')}<span class="n">Recorded as income</span><span class="v">${esc(tbCatLabel(S.rawById[t.incomeTxId].categoryId))}</span>${icon('chevron_right')}</button></div>` : `<div class="set-list"><div class="set-item">${glyph('check', '#34C759')}<span class="n">Recorded as income</span></div></div>`) : ''}
     ${!open && !t.incomeTxId && t.gotBack > t.amount ? `<button class="pill-btn wide" data-act="tb-mature" data-id="${id}">${tbNeedsIncome(t) ? TB_WARN : icon('receipt_long')}Record +${money(t.gotBack - t.amount)} as income</button>` : ''}
     ${tbNeedsIncome(t) ? `<button class="tb-skip" data-act="tb-skip" data-id="${id}">Already recorded elsewhere</button>` : ''}
-    ${open ? `<button class="pill-btn wide" data-act="tb-cal" data-id="${id}">${icon('event_available')}Add to calendar</button>` : ''}
+    ${open ? `<button class="pill-btn wide" data-act="tb-cal" data-id="${id}">${tbNeedsCal(t) ? TB_WARN : icon('event_available')}Add to calendar</button>` : ''}
     <button class="pill-btn wide" data-act="tb-edit" data-id="${id}">${icon('edit')}Edit</button>
     ${open ? saveBar('tb-mature', 'Enter amount back', ` data-id="${id}"`) : ''}`, { short: true });
 }
@@ -4009,7 +4015,7 @@ document.addEventListener('click', async (e) => {
       case 'reimb-open': { if (id.startsWith('all:')) { const top = S.cats[id.slice(4)]; const ids = new Set([top.id, ...descendants(top.id)]); const txs = S.txs.filter((t) => ids.has(t.categoryId) && t.date >= REIMB_START); sheetRecords({ title: top.name, period: `Not back ${money(txs.reduce((n, t) => n + t.amount, 0))} · Since ${mdy(REIMB_START)}`, ids: txs.map((t) => t.id), sort: 'date_desc' }); break; }
         const g = reimbGroups().find((x) => x.id === id); if (g) sheetRecords({ title: g.name, period: `Not back ${money(g.owed)} · Since ${mdy(REIMB_START)}`, ids: g.txs.map((t) => t.id), sort: 'date_desc' }); break; }
       case 'tb-view': sheetTbView(); break;
-      case 'tb-view-set': localStorage.setItem(el.dataset.k, el.dataset.v); render(); sheetTbView(); break;
+      case 'tb-view-set': tbView('tbBy'); S.tbView[el.dataset.k] = el.dataset.v; render(); sheetTbView(); break;
       case 'tb-tab': S.tbTab = el.dataset.v; render(); break;
       case 'tb-open': { const t = S.tbills[id]; if (t && t.gotBack == null && tbDue(t) <= 0) { S.tbMat = null; sheetTbMature(id); } else sheetTbill(id); break; }
       case 'tb-menu': openOptions('T-Bills & CDs', [{ value: 'new', label: 'Add T-bill / CD', iconHtml: glyph('add', '#3478F6') }, { value: 'all', label: 'See all', iconHtml: glyph('list', '#8E8E93') }], null, (v) => { closeSheet(); if (v === 'new') { S.tbDraft = null; sheetTbEdit(null); } else go('#/tbills'); }); break;
@@ -4032,7 +4038,7 @@ document.addEventListener('click', async (e) => {
         break;
       }
       case 'tb-del': if (confirm('Delete this T-bill? Its income record (if any) stays.')) { await deleteDoc(doc(db, 'tbills', id)); S.tbDraft = null; closeSheet(); toast('Deleted'); } break;
-      case 'tb-cal': tbCalendar(id); break;
+      case 'tb-cal': tbCalendar(id); if (S.tbills[id] && !S.tbills[id].calAdded) { S.tbills[id].calAdded = true; updateDoc(doc(db, 'tbills', id), { calAdded: true }).catch((e) => toast('Could not save: ' + errMsg(e))); sheetTbill(id); render(); } break;
       case 'tb-mature': S.tbMat = null; sheetTbMature(id); break;
       case 'tb-skip': await updateDoc(doc(db, 'tbills', id), { incomeSkip: true }); if (S.tbills[id]) S.tbills[id].incomeSkip = true; toast('Marked as recorded'); sheetTbill(id); render(); break;
       case 'tb-mature-save': await tbMatureSave(id); break;
