@@ -489,6 +489,8 @@ input.row-select { direction: ltr; }
 .subs3 { padding-left: 36px; }
 .rec-page { padding-bottom: 150px; }
 .rec-sum { padding: 0 4px; }
+.rec-sum:has(.rec-io) { flex-wrap: wrap; row-gap: 2px; }
+.rec-io { flex-basis: 100%; text-align: right; font-size: 12px; white-space: nowrap; }
 #rec-results > .rec-sum:has(+ div > .yr-sec) { margin-bottom: -12px; }
 .rec-search + #rec-results { margin-top: -11px; } /* half the space between the search box and the chips */ /* half the space above the first day header */
 .day.row-between { font-weight: 600; }
@@ -781,8 +783,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '22.3';
-const APP_BUILD = '202610091901'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '22.4';
+const APP_BUILD = '202610101948'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2759,6 +2761,9 @@ function viewTx(params) {
   if (yr) html += '</section>';
   if (!shown.length) html = `<div class="empty">${f === 'unknown' && !q ? 'Everything is categorized' : f === 'conflict' && !q ? 'No conflicts' : 'No records'}</div>`;
   const total = list.reduce((n, t) => n + signed(t), 0);
+  // Money in and money out behind Σ (same rule as Σ: transfers and reimbursable left out, so In + Out = Σ); shown when there are both
+  const inSum = list.reduce((n, t) => n + Math.max(0, signed(t)), 0); const outSum = total - inSum;
+  const io = Math.round(inSum * 100) && Math.round(outSum * 100) ? `<span class="meta rec-io">In <span class="num" style="color:var(--inc)">${money(inSum, true)}</span> · Out <span class="num">${money(outSum)}</span></span>` : '';
   const searchBar = `<div class="rec-search"><div class="searchbar">${icon('search')}<input id="txsearch" type="search" placeholder="Search merchant, note, category, amount" value="${esc(S.search)}" autocomplete="off" aria-label="Search records"><span id="search-clear-slot">${searchClearBtn()}</span></div></div>`;
   const nf = recFilterCount(); const p = recPeriod();
   const rf = recFilterState();
@@ -2782,7 +2787,7 @@ function viewTx(params) {
   return `<div class="page rec-page">${title}${searchBar}<div id="rec-results" class="page" style="padding:0">
     ${catKey ? '' : `<div class="chips">${chip('all', 'All')}${chip('unknown', `Uncategorized ${unknownCount}`)}${chip('conflict', `Conflicts ${conf.size}`)}</div>`}
     ${!catKey && f === 'conflict' && conf.size ? `<div class="meta" style="padding:0 4px">These records match rules that give different categories. Tap an icon to choose. ${[...conf].some((x) => S.txById[x]?.categoryId) ? `<button class="pill-btn small" data-act="conflict-ok-all" style="margin-top:6px">${icon('done_all')}Keep current categories</button>` : ''}</div>` : ''}
-    <div class="row-between rec-sum"><span class="meta">${esc(recLabel())} · ${list.length} record${list.length === 1 ? '' : 's'} · <button class="rec-sortlink" data-act="rec-page-sort" aria-label="Sort records">${REC_SORTS[sortK][1]}${icon('expand_more')}</button></span><span class="num">Σ ${money(total, true)}</span></div>
+    <div class="row-between rec-sum"><span class="meta">${esc(recLabel())} · ${list.length} record${list.length === 1 ? '' : 's'} · <button class="rec-sortlink" data-act="rec-page-sort" aria-label="Sort records">${REC_SORTS[sortK][1]}${icon('expand_more')}</button></span><span class="num">Σ ${money(total, true)}</span>${io}</div>
     <div>${html}</div>${list.length > 500 ? '<div class="meta">Showing the latest 500. Narrow the period or search.</div>' : ''}</div></div>${dock}`;
 }
 function sheetRecCustom() {
