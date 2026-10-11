@@ -789,8 +789,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '22.5';
-const APP_BUILD = '202610102000'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '22.6';
+const APP_BUILD = '202610102021'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -896,8 +896,35 @@ function txCatName(c) { return !c ? 'Uncategorized' : subsOf(c.id).length ? `Gen
 // txNoteLine: the note under the title (bank records only, so a manual note is not shown twice)
 function txTitle(t) { return t.manual ? (t.name || txCatName(S.cats[t.categoryId])) : (t.merchant || t.name || t.note || ''); }
 // ---- Linked records: e.g. a vet bill and the insurance money paid back for it ----
-// transactions/{id}.links = [ids], kept on both records; whole records only (not split parts). Amounts and totals don't change.
-function txLinks(t) { return t ? (S.rawById?.[t.id]?.links || []).map((id) => S.txById[id]).filter((x) => x && x.id !== t.id) : []; }
+// transactions/{id}.links = [ids], kept on both records. A split part keeps its own in splits[i].links and is linked as "<id>~<i>".
+// Amounts and totals don't change.
+function linkIds(id) {
+  if (!id) return [];
+  if (id.includes('~')) { const [p, i] = id.split('~'); return S.rawById?.[p]?.splits?.[+i]?.links || []; }
+  return S.rawById?.[id]?.links || [];
+}
+function txLinks(t) { return t ? [...new Set(linkIds(t.id))].map((id) => S.txById[id]).filter((x) => x && x.id !== t.id) : []; }
+// Write new link lists ({ id: [ids] }) into batch b, grouping split parts by their record; also updates the local copies
+function linkWrite(b, changes, splitsOverride = {}) {
+  const byParent = {};
+  Object.entries(changes).forEach(([id, arr]) => {
+    const links = [...new Set(arr)].filter((x) => x !== id);
+    if (!id.includes('~')) { if (!S.rawById[id]) return; b.update(doc(db, 'transactions', id), { links }); S.rawById[id].links = links; return; }
+    const [p, i] = id.split('~'); const raw = S.rawById[p]; if (!raw) return;
+    const sp = byParent[p] ||= (splitsOverride[p] || raw.splits || []).map((x) => ({ ...x }));
+    if (sp[+i]) sp[+i].links = links;
+  });
+  Object.entries(byParent).forEach(([p, sp]) => { if (!splitsOverride[p]) b.update(doc(db, 'transactions', p), { splits: sp }); S.rawById[p].splits = sp; });
+}
+// Records linked to the ones in map (old id → new id, or null = gone) point to the new id instead
+function linkSwap(map, skipPrefix) {
+  const changes = {};
+  Object.keys(map).forEach((old) => linkIds(old).forEach((pid) => {
+    if (skipPrefix && (pid === skipPrefix || pid.startsWith(skipPrefix + '~'))) return;
+    changes[pid] = (changes[pid] || linkIds(pid)).map((x) => (x in map ? map[x] : x)).filter(Boolean);
+  }));
+  return changes;
+}
 // Money back for an outflow from the inflows linked to it; an inflow linked to several outflows is shared by their amounts
 function linkBack(e) {
   if (!e || !(e.amount > 0)) return 0;
@@ -3424,10 +3451,10 @@ function linkSection(t) {
 // Choose the records linked to this one (suggested: the other direction of money, within 90 days, same category or label)
 function sheetLink(id) {
   const t = S.txById[id]; if (!t) return;
-  if (S.linkFor !== id || !S.linkSel) { S.linkFor = id; S.linkSel = new Set((S.rawById[id]?.links || []).filter((x) => S.txById[x])); }
+  if (S.linkFor !== id || !S.linkSel) { S.linkFor = id; S.linkSel = new Set(linkIds(id).filter((x) => S.txById[x] && x !== id)); }
   const sel = S.linkSel; const top = (x) => topOf(S.cats[x.categoryId])?.id;
   const near = (x) => Math.abs(parseYmd(x.date) - parseYmd(t.date)) / 864e5;
-  const pool = S.txs.filter((x) => x.id !== id && !x.parentId);
+  const pool = S.txs.filter((x) => x.id !== id && !(t.parentId && x.parentId === t.parentId)); // any record or split part, except other parts of the same record
   const sug = (x) => sel.has(x.id) || (Math.sign(x.amount) === -Math.sign(t.amount) && near(x) <= 90 && ((t.categoryId && top(x) === top(t)) || (x.labels || []).some((l) => (t.labels || []).includes(l))));
   const a = pool.filter(sug).sort((p, q) => sel.has(q.id) - sel.has(p.id) || near(p) - near(q));
   const b = pool.filter((x) => !sug(x)).sort((p, q) => near(p) - near(q)).slice(0, 300);
@@ -3441,16 +3468,13 @@ function sheetLink(id) {
 }
 function linkLabel() { const n = S.linkSel?.size || 0; return n ? `Save · ${n} linked` : 'Save'; }
 async function linkSave() {
-  const id = S.linkFor; const cur = new Set(S.rawById[id]?.links || []); const sel = S.linkSel; if (!id || !sel) return;
-  const b = writeBatch(db);
-  b.update(doc(db, 'transactions', id), { links: [...sel] });
-  sel.forEach((x) => { if (!cur.has(x)) b.update(doc(db, 'transactions', x), { links: arrayUnion(id) }); });
-  cur.forEach((x) => { if (!sel.has(x) && S.rawById[x]) b.update(doc(db, 'transactions', x), { links: arrayRemove(id) }); });
-  try { await b.commit(); } catch (e) { toast('Could not save: ' + errMsg(e)); return; }
-  // update the local copies so the record shows the links right away (the snapshot follows)
-  if (S.rawById[id]) S.rawById[id].links = [...sel];
-  sel.forEach((x) => { const r = S.rawById[x]; if (r) r.links = [...new Set([...(r.links || []), id])]; });
-  cur.forEach((x) => { const r = S.rawById[x]; if (r && !sel.has(x)) r.links = (r.links || []).filter((y) => y !== id); });
+  const id = S.linkFor; const cur = new Set(linkIds(id)); const sel = S.linkSel; if (!id || !sel) return;
+  const changes = { [id]: [...sel] };
+  sel.forEach((x) => { if (!cur.has(x)) changes[x] = [...linkIds(x), id]; });
+  cur.forEach((x) => { if (!sel.has(x) && S.txById[x]) changes[x] = linkIds(x).filter((y) => y !== id); });
+  const before = JSON.parse(JSON.stringify(Object.fromEntries(Object.keys(changes).map((x) => [x.split('~')[0], S.rawById[x.split('~')[0]]]).filter(([, r]) => r).map(([k, r]) => [k, { links: r.links, splits: r.splits }]))));
+  const b = writeBatch(db); linkWrite(b, changes); // also updates the local copies so the record shows the links right away
+  try { await b.commit(); } catch (e) { Object.entries(before).forEach(([k, v]) => Object.assign(S.rawById[k], v)); toast('Could not save: ' + errMsg(e)); return; }
   S.linkSel = null; toast(sel.size ? `Linked ${sel.size} record${sel.size === 1 ? '' : 's'}` : 'Links removed'); renderEdit(); render();
 }
 function renderEdit() {
@@ -3478,7 +3502,7 @@ function renderEdit() {
       ${t && !t.manual ? (() => { const n = ruleList().filter((r) => ruleMatches(r, t)).length; return valueRow('ed-rule', glyph('bolt', '#FF9500'), 'Create rule', esc(n ? `${n} rule${n === 1 ? '' : 's'} match` : `Auto-sort “${kwSuggest(t)[0] || 'this merchant'}”`)); })() : ''}
     </div>
     ${t && !e.manual && !e.part && e.type !== 'transfer' ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply the category to other uncategorized records from this merchant</label>` : ''}
-    ${t && !t.parentId ? linkSection(t) : ''}
+    ${t ? linkSection(t) : ''}
     <div class="sec-head">Labels</div>${labelChips(e.labels, '')}
     ${e.manual ? `<div class="sec-head">Name</div><input class="input" id="ed-name" value="${esc(e.name || '')}" placeholder="e.g. Animal Hospital" autocomplete="off" aria-label="Name">` : ''}
     <div class="sec-head">Note</div><input class="input" id="ed-note" value="${esc(e.note)}" placeholder="${esc(t ? (t.merchant || t.name || '') : 'Add a note')}" autocomplete="off" aria-label="Note">
@@ -3597,7 +3621,7 @@ async function saveSplit() {
   spCapture(); const sp = S.split; const t = S.rawById[sp.txId]; if (!t) { closeSheet(); return; }
   if (sp.parts.length < 2) {
     const f = sp.parts[0] || {};
-    if (t.splits?.length > 1) await updateDoc(doc(db, 'transactions', t.id), { splits: deleteField(), splitMode: deleteField(), categoryId: f.categoryId || null, isTransfer: !!f.isTransfer, note: (f.note || '').trim(), labels: f.labels || [] });
+    if (t.splits?.length > 1) await unsplitWrite(t, { categoryId: f.categoryId || null, isTransfer: !!f.isTransfer, note: (f.note || '').trim(), labels: f.labels || [] });
     S.split = null; closeSheet(); toast(t.splits?.length > 1 ? 'Split removed' : 'Not split'); backToPopup(); return;
   }
   const c = spCents();
@@ -3606,16 +3630,35 @@ async function saveSplit() {
   const splits = sp.parts.map((pt, i) => {
     const o = { amount: sgn * c[i] / 100, categoryId: pt.isTransfer ? (pt.categoryId || null) : (pt.categoryId || null), isTransfer: !!pt.isTransfer, note: (pt.note || '').trim(), labels: pt.labels };
     if (sp.mode === 'pct') o.pct = i === 0 ? spPct0() : (parseFloat(pt.pct) || 0);
+    const kept = t.splits?.length > 1 ? t.splits[i]?.links : i === 0 ? t.links : null; // links stay with their part; a whole record's go to part 1
+    if (kept?.length) o.links = kept;
     return o;
   });
-  await updateDoc(doc(db, 'transactions', t.id), { splits, splitMode: sp.mode, categoryId: splits[0].categoryId, isTransfer: false });
+  // records linked to this one now point to the right part; parts that are gone are unlinked
+  const map = {};
+  if (t.splits?.length > 1) t.splits.forEach((x, i) => { if (i >= splits.length) map[`${t.id}~${i}`] = null; });
+  else map[t.id] = `${t.id}~0`;
+  const b = writeBatch(db);
+  b.update(doc(db, 'transactions', t.id), { splits, splitMode: sp.mode, categoryId: splits[0].categoryId, isTransfer: false, ...(t.links?.length && !(t.splits?.length > 1) ? { links: deleteField() } : {}) });
+  linkWrite(b, linkSwap(map, t.id));
+  await b.commit();
   S.split = null; closeSheet(); toast(`Split into ${splits.length} parts`); backToPopup();
 }
 async function removeSplit() {
   const t = S.rawById[S.split?.txId]; if (!t || !confirm('Merge the parts back into one record? The first part’s category, note and labels are kept.')) return;
   const f = t.splits[0] || {};
-  await updateDoc(doc(db, 'transactions', t.id), { splits: deleteField(), splitMode: deleteField(), categoryId: f.categoryId || null, isTransfer: !!f.isTransfer, note: f.note || '', labels: f.labels || [] });
+  await unsplitWrite(t, { categoryId: f.categoryId || null, isTransfer: !!f.isTransfer, note: f.note || '', labels: f.labels || [] });
   S.split = null; closeSheet(); toast('Split removed'); backToPopup();
+}
+// Back to one record: the parts' links are gathered on the record, and records linked to a part point to the record
+async function unsplitWrite(t, fields) {
+  const map = {}; const links = new Set(t.links || []);
+  (t.splits || []).forEach((x, i) => { map[`${t.id}~${i}`] = t.id; (x.links || []).forEach((l) => links.add(l)); });
+  [...links].forEach((l) => { if (l.startsWith(t.id + '~')) links.delete(l); }); // its own parts
+  const b = writeBatch(db);
+  b.update(doc(db, 'transactions', t.id), { splits: deleteField(), splitMode: deleteField(), ...fields, links: [...links] });
+  linkWrite(b, linkSwap(map, t.id));
+  await b.commit();
 }
 async function ensureCash(accountId) {
   if (accountId === 'cash' && !S.accounts.cash) await setDoc(doc(db, 'accounts', 'cash'), { name: 'Cash', type: 'cash', manual: true, order: 999 });
@@ -4349,7 +4392,7 @@ document.addEventListener('click', async (e) => {
       }
       case 'del-tx': {
         if (!S.rawById[id]?.manual) break; if (!confirm('Delete this record?')) break;
-        const b = writeBatch(db); (S.rawById[id].links || []).forEach((x) => { if (S.rawById[x]) b.update(doc(db, 'transactions', x), { links: arrayRemove(id) }); }); // linked records forget it
+        const b = writeBatch(db); linkWrite(b, linkSwap({ [id]: null })); // linked records forget it
         b.delete(doc(db, 'transactions', id)); await b.commit(); closeSheet(); toast('Deleted'); break;
       }
       case 'ed-link': captureEdit(); S.linkSel = null; sheetLink(S.edit.txId); break;
