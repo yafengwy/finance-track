@@ -789,8 +789,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '22.6';
-const APP_BUILD = '202610102021'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '22.7';
+const APP_BUILD = '202610102027'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -938,7 +938,7 @@ function linkPct(r) { const outs = txLinks(r).filter((x) => x.amount > 0); const
 function txLinkLine(t) {
   if (!txLinks(t).length) return '';
   const back = linkBack(t); const p = linkPct(t);
-  const txt = back > 0 ? `Out of pocket ${money(Math.max(0, t.amount - back))}` : p ? `Pays back ${p.pct}% of ${money(p.tot)}` : `Linked to ${txLinks(t).length} record${txLinks(t).length === 1 ? '' : 's'}`;
+  const txt = back > 0 ? `Out of pocket ${money(Math.max(0, t.amount - back))} (${Math.round(Math.max(0, t.amount - back) / t.amount * 100)}%)` : p ? `Pays back ${p.pct}% of ${money(p.tot)}` : `Linked to ${txLinks(t).length} record${txLinks(t).length === 1 ? '' : 's'}`;
   return `<span class="meta link-line">${icon('link')}${txt}</span>`;
 }
 function txNoteLine(t) { return t.note && t.note !== txTitle(t) ? `<span class="note">${esc(t.note)}</span>` : ''; }
