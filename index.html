@@ -488,6 +488,12 @@ input.row-select { direction: ltr; }
 .sub-btn .n { flex: 1; min-width: 0; }
 .subs3 { padding-left: 36px; }
 .rec-page { padding-bottom: 150px; }
+.link-line { display: flex; align-items: center; gap: 3px; font-size: 12px; }
+.link-line .ms { font-size: 14px; }
+.link-sum .nw { white-space: nowrap; }
+.link-sum { padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; }
+.link-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 8px 0 4px; }
+.link-bar i { display: block; height: 100%; background: #34C759; border-radius: 999px; }
 .rec-sum { padding: 0 4px; }
 .rec-sum:has(.rec-io) { flex-wrap: wrap; row-gap: 2px; }
 .rec-io { flex-basis: 100%; text-align: right; font-size: 12px; white-space: nowrap; }
@@ -783,8 +789,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '22.4';
-const APP_BUILD = '202610101948'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '22.5';
+const APP_BUILD = '202610102000'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -889,6 +895,25 @@ function txCatName(c) { return !c ? 'Uncategorized' : subsOf(c.id).length ? `Gen
 // Row title: bank records show the bank's name; manual records show the Name you typed (or their category).
 // txNoteLine: the note under the title (bank records only, so a manual note is not shown twice)
 function txTitle(t) { return t.manual ? (t.name || txCatName(S.cats[t.categoryId])) : (t.merchant || t.name || t.note || ''); }
+// ---- Linked records: e.g. a vet bill and the insurance money paid back for it ----
+// transactions/{id}.links = [ids], kept on both records; whole records only (not split parts). Amounts and totals don't change.
+function txLinks(t) { return t ? (S.rawById?.[t.id]?.links || []).map((id) => S.txById[id]).filter((x) => x && x.id !== t.id) : []; }
+// Money back for an outflow from the inflows linked to it; an inflow linked to several outflows is shared by their amounts
+function linkBack(e) {
+  if (!e || !(e.amount > 0)) return 0;
+  return txLinks(e).filter((r) => r.amount < 0).reduce((n, r) => {
+    const outs = txLinks(r).filter((x) => x.amount > 0); if (!outs.some((x) => x.id === e.id)) outs.push(e);
+    return n + (-r.amount) * e.amount / outs.reduce((m, x) => m + x.amount, 0);
+  }, 0);
+}
+function linkPct(r) { const outs = txLinks(r).filter((x) => x.amount > 0); const tot = outs.reduce((m, x) => m + x.amount, 0); return r.amount < 0 && tot ? { pct: Math.round(-r.amount / tot * 100), tot } : null; }
+// Small line under a linked record in lists: "Out of pocket $500.00" for a bill, "Pays back 75% of $2,000.00" for the money back
+function txLinkLine(t) {
+  if (!txLinks(t).length) return '';
+  const back = linkBack(t); const p = linkPct(t);
+  const txt = back > 0 ? `Out of pocket ${money(Math.max(0, t.amount - back))}` : p ? `Pays back ${p.pct}% of ${money(p.tot)}` : `Linked to ${txLinks(t).length} record${txLinks(t).length === 1 ? '' : 's'}`;
+  return `<span class="meta link-line">${icon('link')}${txt}</span>`;
+}
 function txNoteLine(t) { return t.note && t.note !== txTitle(t) ? `<span class="note">${esc(t.note)}</span>` : ''; }
 function accName(a) { return a ? (a.customName || a.name) : ''; }
 
@@ -1620,7 +1645,7 @@ function recTxs() { return S.txs; }
 function rowDate(d) { return String(d).slice(0, 4) === String(new Date().getFullYear()) ? shortDate(d).replace(/, \d{4}$/, '') : shortDate(d); }
 function txRowHtml(t, cls = 'top-row', back = '') {
   const c = S.cats[t.categoryId];
-  return `<button class="${cls}" data-act="tx" data-id="${t.id}"${back ? ` data-back="${back}"` : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${movedTag(t)}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${rowDate(t.date)}</span></span></button>`;
+  return `<button class="${cls}" data-act="tx" data-id="${t.id}"${back ? ` data-back="${back}"` : ''}>${t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(c)}<span class="mid"><span class="n">${esc(txTitle(t))}</span><span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(S.accounts[t.accountId]))}${movedTag(t)}${t.parentId ? ` <span class="tag">Split</span>` : ''}</span>${txNoteLine(t)}${txLinkLine(t)}</span><span class="r"><span class="num" style="color:var(${t.amount < 0 ? '--inc' : '--exp'})">${t.amount < 0 ? '+' : '-'}${money(Math.abs(t.amount))}</span><span class="meta">${rowDate(t.date)}</span></span></button>`;
 }
 function cardStructure() {
   const spec = cardSpec('structure').spec; const r = rangeOf(getPeriod('structure'));
@@ -1688,7 +1713,7 @@ function sheetRecords(pop) {
     return `<div class="more-row"><button class="tx-ico" data-act="tx-cat" data-id="${t.id}" data-back="rec" aria-label="Choose category">${ic}</button>
       <button class="more-main" data-act="tx" data-id="${t.id}" data-back="rec"><span class="mid"><span class="row-between"><span class="n">${esc(nm)}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
       <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}${movedTag(t)}</span><span class="meta">${rowDate(t.date)}</span></span>
-      ${t.note ? `<span class="desc">${esc(t.note)}</span>` : ''}${desc ? `<span class="desc">“${esc(desc)}”</span>` : ''}
+      ${t.note ? `<span class="desc">${esc(t.note)}</span>` : ''}${desc ? `<span class="desc">“${esc(desc)}”</span>` : ''}${txLinkLine(t)}
       ${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span></button></div>`;
   }).join('');
   openSheet(`<div class="row-between rec-head"><h3>${esc(p.title)}</h3>
@@ -2754,7 +2779,7 @@ function viewTx(params) {
     html += `<div class="tx${t.isTransfer ? ' transfer' : ''}">
       <button class="tx-ico" data-act="${t.isTransfer ? 'tx' : 'tx-cat'}" data-id="${t.id}" aria-label="Choose category">${((ic) => conf.has(t.id) ? warnIcon(ic) : ic)(t.isTransfer ? `<span class="ci unknown">${icon('swap_horiz')}</span>` : catIcon(c))}</button>
       <button class="tx-main" data-act="tx" data-id="${t.id}"><span class="mid"><span class="n">${esc(txTitle(t))}</span>
-      <span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(acc))}${bySize ? ` · ${esc(shortDate(t.date))}` : ''}${t.pending ? ' <span class="tag">Pending</span>' : ''}${movedTag(t)}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
+      <span class="meta"><b class="m-cat">${esc(t.isTransfer ? 'Transfer' : txCatName(c))}</b> · ${esc(accName(acc))}${bySize ? ` · ${esc(shortDate(t.date))}` : ''}${t.pending ? ' <span class="tag">Pending</span>' : ''}${movedTag(t)}${t.parentId ? ` <span class="tag">Split ${t.splitIdx + 1}/${t.splitN}</span>` : ''}</span>${txNoteLine(t)}${txLinkLine(t)}${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span>
       <span class="a num" style="color:${t.isTransfer ? 'inherit' : inflow ? 'var(--inc)' : 'var(--text)'}">${inflow ? '+' : '-'}$${fmt.format(Math.abs(t.amount))}</span></button></div>`;
   }
   if (day) html += '</div>';
@@ -3388,6 +3413,46 @@ function labelChips(selected, txId) {
 }
 // A posted bank record (not a split part) can be counted on another date, e.g. income paid early next month that belongs to this month
 function dateMovable(t, e) { return !!t && !t.manual && !t.pending && !t.parentId && !e.part; }
+function linkSection(t) {
+  const ls = txLinks(t).sort((a, b) => a.date.localeCompare(b.date));
+  const rows = ls.map((x) => `<button class="set-item link-row" data-act="link-open" data-id="${x.id}">${x.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[x.categoryId])}<span class="n">${esc(txTitle(x))}<div class="meta">${esc(x.isTransfer ? 'Transfer' : txCatName(S.cats[x.categoryId]))} · ${esc(shortDate(x.date))}</div></span><span class="num" style="color:var(${x.amount < 0 ? '--inc' : '--text'});font-weight:600">${money(-x.amount, true)}</span>${icon('chevron_right')}</button>`).join('');
+  const back = linkBack(t); const p = linkPct(t);
+  const sum = back > 0 ? `<div class="link-sum"><span class="nw">Reimbursed <b style="color:var(--inc)">${money(back)}</b> of ${money(t.amount)}</span> · <span class="nw">Out of pocket <b>${money(Math.max(0, t.amount - back))}</b></span><div class="link-bar"><i style="width:${Math.min(100, back / t.amount * 100).toFixed(1)}%"></i></div><span class="meta">${Math.round(back / t.amount * 100)}% back</span></div>`
+    : p ? `<div class="link-sum">Pays back <b style="color:var(--inc)">${p.pct}%</b> of ${money(p.tot)}</div>` : '';
+  return `<div class="sec-head">Linked</div><div class="set-list">${rows}${sum}<button class="set-item" data-act="ed-link">${glyph('add_link', '#3478F6')}<span class="n" style="color:var(--accent)">Link a record</span>${icon('chevron_right')}</button></div>`;
+}
+// Choose the records linked to this one (suggested: the other direction of money, within 90 days, same category or label)
+function sheetLink(id) {
+  const t = S.txById[id]; if (!t) return;
+  if (S.linkFor !== id || !S.linkSel) { S.linkFor = id; S.linkSel = new Set((S.rawById[id]?.links || []).filter((x) => S.txById[x])); }
+  const sel = S.linkSel; const top = (x) => topOf(S.cats[x.categoryId])?.id;
+  const near = (x) => Math.abs(parseYmd(x.date) - parseYmd(t.date)) / 864e5;
+  const pool = S.txs.filter((x) => x.id !== id && !x.parentId);
+  const sug = (x) => sel.has(x.id) || (Math.sign(x.amount) === -Math.sign(t.amount) && near(x) <= 90 && ((t.categoryId && top(x) === top(t)) || (x.labels || []).some((l) => (t.labels || []).includes(l))));
+  const a = pool.filter(sug).sort((p, q) => sel.has(q.id) - sel.has(p.id) || near(p) - near(q));
+  const b = pool.filter((x) => !sug(x)).sort((p, q) => near(p) - near(q)).slice(0, 300);
+  const row = (x) => `<label class="msel-row" data-bcl="${esc(`${txTitle(x)} ${x.note || ''} ${x.isTransfer ? 'transfer' : txCatName(S.cats[x.categoryId])} ${accName(S.accounts[x.accountId])} ${Math.abs(x.amount).toFixed(2)} ${x.date}`.toLowerCase())}"><input type="checkbox" data-lnksel="${x.id}" ${sel.has(x.id) ? 'checked' : ''}>${x.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(S.cats[x.categoryId])}<span class="n"><span class="nw-pick-t">${esc(txTitle(x))}</span><div class="meta">${esc(x.isTransfer ? 'Transfer' : txCatName(S.cats[x.categoryId]))} · ${esc(shortDate(x.date))} · ${esc(accName(S.accounts[x.accountId]))}</div></span>${nwPickAmt(x)}</label>`;
+  openSheet(`<h3>Link to ${money(-t.amount, true)}</h3>
+    <div class="searchbar">${icon('search')}<input id="rbq" type="search" placeholder="Search name, amount or date" autocomplete="off" aria-label="Search records"></div>
+    <div id="rbc-list">${a.length ? `<div class="sec-head">Suggested · ${t.amount > 0 ? 'Money in' : 'Money out'} · Within 90 days</div><div class="set-list">${a.map(row).join('')}</div>` : ''}
+    <div class="sec-head">Other records</div><div class="set-list">${b.map(row).join('') || '<div class="empty">No records</div>'}</div></div>
+    <div class="sticky-save"><button class="pill-btn primary" data-act="lnk-save" id="lnk-save">${linkLabel()}</button></div>`);
+  S.sheetBack = () => { S.linkSel = null; renderEdit(); };
+}
+function linkLabel() { const n = S.linkSel?.size || 0; return n ? `Save · ${n} linked` : 'Save'; }
+async function linkSave() {
+  const id = S.linkFor; const cur = new Set(S.rawById[id]?.links || []); const sel = S.linkSel; if (!id || !sel) return;
+  const b = writeBatch(db);
+  b.update(doc(db, 'transactions', id), { links: [...sel] });
+  sel.forEach((x) => { if (!cur.has(x)) b.update(doc(db, 'transactions', x), { links: arrayUnion(id) }); });
+  cur.forEach((x) => { if (!sel.has(x) && S.rawById[x]) b.update(doc(db, 'transactions', x), { links: arrayRemove(id) }); });
+  try { await b.commit(); } catch (e) { toast('Could not save: ' + errMsg(e)); return; }
+  // update the local copies so the record shows the links right away (the snapshot follows)
+  if (S.rawById[id]) S.rawById[id].links = [...sel];
+  sel.forEach((x) => { const r = S.rawById[x]; if (r) r.links = [...new Set([...(r.links || []), id])]; });
+  cur.forEach((x) => { const r = S.rawById[x]; if (r && !sel.has(x)) r.links = (r.links || []).filter((y) => y !== id); });
+  S.linkSel = null; toast(sel.size ? `Linked ${sel.size} record${sel.size === 1 ? '' : 's'}` : 'Links removed'); renderEdit(); render();
+}
 function renderEdit() {
   const e = S.edit; const t = e.txId ? S.txById[e.txId] : null;
   const inflow = t ? t.amount < 0 : false;
@@ -3413,6 +3478,7 @@ function renderEdit() {
       ${t && !t.manual ? (() => { const n = ruleList().filter((r) => ruleMatches(r, t)).length; return valueRow('ed-rule', glyph('bolt', '#FF9500'), 'Create rule', esc(n ? `${n} rule${n === 1 ? '' : 's'} match` : `Auto-sort “${kwSuggest(t)[0] || 'this merchant'}”`)); })() : ''}
     </div>
     ${t && !e.manual && !e.part && e.type !== 'transfer' ? `<label class="check"><input type="checkbox" id="same-merchant" ${S.sameMerchant ? 'checked' : ''}>Also apply the category to other uncategorized records from this merchant</label>` : ''}
+    ${t && !t.parentId ? linkSection(t) : ''}
     <div class="sec-head">Labels</div>${labelChips(e.labels, '')}
     ${e.manual ? `<div class="sec-head">Name</div><input class="input" id="ed-name" value="${esc(e.name || '')}" placeholder="e.g. Animal Hospital" autocomplete="off" aria-label="Name">` : ''}
     <div class="sec-head">Note</div><input class="input" id="ed-note" value="${esc(e.note)}" placeholder="${esc(t ? (t.merchant || t.name || '') : 'Add a note')}" autocomplete="off" aria-label="Note">
@@ -4281,7 +4347,14 @@ document.addEventListener('click', async (e) => {
         el.before(chipEl);
         break;
       }
-      case 'del-tx': if (!S.rawById[id]?.manual) break; if (!confirm('Delete this record?')) break; await deleteDoc(doc(db, 'transactions', id)); closeSheet(); toast('Deleted'); break;
+      case 'del-tx': {
+        if (!S.rawById[id]?.manual) break; if (!confirm('Delete this record?')) break;
+        const b = writeBatch(db); (S.rawById[id].links || []).forEach((x) => { if (S.rawById[x]) b.update(doc(db, 'transactions', x), { links: arrayRemove(id) }); }); // linked records forget it
+        b.delete(doc(db, 'transactions', id)); await b.commit(); closeSheet(); toast('Deleted'); break;
+      }
+      case 'ed-link': captureEdit(); S.linkSel = null; sheetLink(S.edit.txId); break;
+      case 'lnk-save': await linkSave(); break;
+      case 'link-open': captureEdit(); openEdit(id); break;
       case 'add-label': sheetLabel(null); break;
       case 'edit-label': sheetLabel(id); break;
       case 'save-label': {
@@ -4349,6 +4422,7 @@ document.addEventListener('compositionend', (e) => {
   S.search = e.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refreshRecResults, 200);
 });
 document.addEventListener('change', async (e) => {
+  if (e.target.dataset.lnksel && S.linkSel) { e.target.checked ? S.linkSel.add(e.target.dataset.lnksel) : S.linkSel.delete(e.target.dataset.lnksel); if ($('lnk-save')) $('lnk-save').textContent = linkLabel(); return; }
   if (e.target.dataset.nwsel && S.nwPickSel) { e.target.checked ? S.nwPickSel.add(e.target.dataset.nwsel) : S.nwPickSel.delete(e.target.dataset.nwsel); if ($('nw-pick-done')) $('nw-pick-done').textContent = nwPickLabel(); return; }
   if (e.target.dataset.rum && S.ruleDraft) { const v = e.target.dataset.rum; const a = (S.ruleDraft.merchants || []).filter((x) => x.toLowerCase() !== v.toLowerCase()); if (e.target.checked) a.push(v); S.ruleDraft.merchants = a; return; }
   if (e.target.dataset.rubc && S.ruleDraft) { const v = e.target.dataset.rubc; const a = new Set(S.ruleDraft.bankCats || []); e.target.checked ? a.add(v) : a.delete(v); S.ruleDraft.bankCats = [...a]; return; }
