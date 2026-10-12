@@ -494,9 +494,9 @@ input.row-select { direction: ltr; }
 .link-sum { padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; }
 .link-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 8px 0 4px; }
 .link-bar i { display: block; height: 100%; background: #34C759; border-radius: 999px; }
-.rb-hero { padding: 4px 4px 0; display: flex; flex-direction: column; gap: 2px; }
-.sec-head.rb-sh { min-height: 0; margin: 8px 0 -6px; }
-.rb-big { font-size: 28px; font-weight: 700; letter-spacing: -0.3px; }
+.rb-hero { padding: 0 4px; display: flex; flex-direction: column; gap: 0; line-height: 1.25; }
+.sec-head.rb-sh { min-height: 0; margin: 14px 0 -6px; font-size: 15px; font-weight: 600; color: var(--text); }
+.rb-big { font-size: 28px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.15; margin: 2px 0; }
 .rb-tag2 { font-size: 15px; font-weight: 500; color: var(--sub); }
 .rb-settle { margin-top: 12px; color: var(--accent); border-color: var(--accent); }
 .rb-pill { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: #E8F5E9; color: var(--good); white-space: nowrap; margin-left: auto; }
@@ -796,8 +796,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '23.0';
-const APP_BUILD = '202610121521'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '23.1';
+const APP_BUILD = '202610121526'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
