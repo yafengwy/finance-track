@@ -494,6 +494,12 @@ input.row-select { direction: ltr; }
 .link-sum { padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; }
 .link-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 8px 0 4px; }
 .link-bar i { display: block; height: 100%; background: #34C759; border-radius: 999px; }
+.rb-hero { background: var(--card); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 2px; }
+.rb-big { font-size: 28px; font-weight: 700; letter-spacing: -0.3px; }
+.rb-tag2 { font-size: 15px; font-weight: 500; color: var(--sub); }
+.rb-settle { margin-top: 12px; color: var(--accent); border-color: var(--accent); }
+.rb-pill { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: #E8F5E9; color: var(--good); white-space: nowrap; margin-left: auto; }
+.rb-round .n { flex: 1; min-width: 0; }
 .rec-sum { padding: 0 4px; }
 .rec-sum:has(.rec-io) { flex-wrap: wrap; row-gap: 2px; }
 .rec-io { flex-basis: 100%; text-align: right; font-size: 12px; white-space: nowrap; }
@@ -789,8 +795,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '22.8';
-const APP_BUILD = '202610102049'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '22.9';
+const APP_BUILD = '202610121513'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1731,22 +1737,24 @@ function sheetRecords(pop) {
   const cmp = { date_desc: (a, b) => b.date.localeCompare(a.date), date_asc: (a, b) => a.date.localeCompare(b.date), amt_desc: (a, b) => val(b) - val(a), amt_asc: (a, b) => val(a) - val(b) }[p.sort];
   txs.sort(cmp);
   const total = txs.reduce((n, t) => n + t.amount, 0);
-  const rows = txs.map((t) => {
+  const rows = txs.map((t) => recPopRow(t)).join('');
+  openSheet(`<div class="row-between rec-head"><h3>${esc(p.title)}</h3>
+      <button class="pill-btn small" data-act="rec-sort" aria-label="Sort records">${icon('sort')}Sort</button></div>
+    <div class="meta">${esc(p.period)} · ${txs.length} record${txs.length === 1 ? '' : 's'} · ${p.side === 'abs' ? money(-total, true) : money(Math.abs(total))} · ${esc(SORTS[p.sort])}</div>
+    <div class="list" id="rec-pop-list">${rows || '<div class="empty">No records</div>'}</div>`, { noClose: true, short: true });
+  if (p.back) S.sheetBack = p.back; // e.g. a past reimbursement round goes back to the person's sheet
+}
+function recPopRow(t, back = 'rec') {
     const c = S.cats[t.categoryId]; const inflow = t.amount < 0;
     const lbls = (t.labels || []).filter((l) => S.labels[l]).map((l) => labelPill(S.labels[l])).join('');
     const ic = t.isTransfer ? glyph('swap_horiz', '#8E8E93') : catIcon(c); const nm = t.isTransfer ? 'Transfer' : txCatName(c);
     // Name in quotes (bank description, or the Name of a manual record)
     const desc = t.manual ? (t.name && t.name !== t.note ? t.name : '') : [t.merchant, t.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i && v !== t.note).join(' - ');
-    return `<div class="more-row"><button class="tx-ico" data-act="tx-cat" data-id="${t.id}" data-back="rec" aria-label="Choose category">${ic}</button>
-      <button class="more-main" data-act="tx" data-id="${t.id}" data-back="rec"><span class="mid"><span class="row-between"><span class="n">${esc(nm)}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
+    return `<div class="more-row"><button class="tx-ico" data-act="tx-cat" data-id="${t.id}" data-back="${back}" aria-label="Choose category">${ic}</button>
+      <button class="more-main" data-act="tx" data-id="${t.id}" data-back="${back}"><span class="mid"><span class="row-between"><span class="n">${esc(nm)}</span><span class="num amt" style="color:var(${inflow ? '--inc' : '--exp'})">${inflow ? '+' : '-'}${money(Math.abs(t.amount))}</span></span>
       <span class="row-between"><span class="meta">${esc(accName(S.accounts[t.accountId]))}${movedTag(t)}</span><span class="meta">${rowDate(t.date)}</span></span>
       ${t.note ? `<span class="desc">${esc(t.note)}</span>` : ''}${desc ? `<span class="desc">“${esc(desc)}”</span>` : ''}${txLinkLine(t)}
       ${lbls ? `<span class="lbls">${lbls}</span>` : ''}</span></button></div>`;
-  }).join('');
-  openSheet(`<div class="row-between rec-head"><h3>${esc(p.title)}</h3>
-      <button class="pill-btn small" data-act="rec-sort" aria-label="Sort records">${icon('sort')}Sort</button></div>
-    <div class="meta">${esc(p.period)} · ${txs.length} record${txs.length === 1 ? '' : 's'} · ${p.side === 'abs' ? money(-total, true) : money(Math.abs(total))} · ${esc(SORTS[p.sort])}</div>
-    <div class="list" id="rec-pop-list">${rows || '<div class="empty">No records</div>'}</div>`, { noClose: true, short: true });
 }
 // After editing a record opened from a records popup, go back to that popup
 function backToPopup() {
@@ -1754,6 +1762,7 @@ function backToPopup() {
   if (b === 'rulelist' && S.ruList && S.ruleDraft) sheetRuleList(); // record opened from a rule's "View records" list
   else if (b === 'search') sheetSearch(); // saving from a search result goes back to the results
   else if (b === 'rec' && S.recPop) sheetRecords();
+  else if (b === 'reimb' && S.reimbOpen) sheetReimb(S.reimbOpen);
 }
 function sheetShowMore() {
   const m = S.spendMore; if (!m) return;
@@ -1886,8 +1895,40 @@ function reimbGroups() {
     const self = S.txs.filter((t) => t.categoryId === top.id);
     if (self.length) out.push({ id: '=' + top.id, name: `General – ${top.name}`, cat: top, txs: self });
   });
-  out.forEach((g) => { g.txs = g.txs.filter((t) => t.date >= REIMB_START); g.owed = g.txs.reduce((n, t) => n + t.amount, 0); });
+  out.forEach((g) => { g.txs = g.txs.filter((t) => t.date >= REIMB_START); reimbRounds(g); });
   return out;
+}
+// Rounds: a round ends on the day the balance comes back to $0, or on a day you settled it by hand (paid back more than owed).
+// g.rounds = past rounds (oldest first), g.cur = the open one; g.owed = what's still out in the open round (− = extra back)
+function reimbSettles(gid) { return new Set(S.meta?.reimb?.settles?.[gid] || []); }
+function reimbRounds(g) {
+  const settles = reimbSettles(g.id); const byDay = new Map();
+  [...g.txs].sort((a, b) => a.date.localeCompare(b.date)).forEach((t) => { if (!byDay.has(t.date)) byDay.set(t.date, []); byDay.get(t.date).push(t); });
+  const fresh = () => ({ txs: [], paid: 0, back: 0, bal: 0 });
+  const rounds = []; let cur = fresh();
+  byDay.forEach((ts, d) => {
+    ts.forEach((t) => { cur.txs.push(t); cur.bal += t.amount; if (t.amount > 0) cur.paid += t.amount; else cur.back -= t.amount; });
+    const zero = Math.abs(cur.bal) < 0.005; const hand = settles.has(d) && cur.bal < 0;
+    if (zero || hand) { rounds.push({ ...cur, start: cur.txs[0].date, end: d, extra: hand ? -cur.bal : 0, byHand: hand }); cur = fresh(); }
+  });
+  g.rounds = rounds; g.cur = cur; g.owed = Math.abs(cur.bal) < 0.005 ? 0 : cur.bal;
+}
+function sheetReimb(gid) {
+  const g = reimbGroups().find((x) => x.id === gid); if (!g) return;
+  S.reimbOpen = gid; const c = g.cur; const n = c.txs.length;
+  const sd = (d) => shortDate(d).replace(/, \d{4}$/, '');
+  const hero = !n ? `<div class="meta">Current round</div><div class="rb-big" style="color:var(--good)">✓ Settled</div><div class="meta">Nothing out right now</div>`
+    : `<div class="meta">Current round · Since ${sd(c.txs[0].date)}</div>
+      ${g.owed > 0 ? `<div class="rb-big">${money(g.owed)} <span class="rb-tag2">not back</span></div>` : g.owed < 0 ? `<div class="rb-big" style="color:var(--inc)">+${money(-g.owed)} <span class="rb-tag2">extra back</span></div>` : `<div class="rb-big" style="color:var(--good)">✓ Settled</div>`}
+      <div class="meta">Paid ${money(c.paid)} · Back ${money(c.back)}</div>
+      ${g.owed < 0 ? `<button class="pill-btn wide rb-settle" data-act="reimb-settle" data-id="${esc(gid)}">${icon('check')}Settle this round</button><div class="meta" style="margin-top:6px">If you don't, the extra ${money(-g.owed)} counts toward the next round.</div>` : ''}`;
+  const rows = [...c.txs].sort((a, b) => b.date.localeCompare(a.date)).map((t) => recPopRow(t, 'reimb')).join('');
+  const past = [...g.rounds].reverse().map((r) => { const i = g.rounds.indexOf(r); return `<button class="set-item rb-round" data-act="reimb-round" data-id="${esc(gid)}" data-i="${i}"><span class="n">${sd(r.start)}${r.start !== r.end ? ` – ${sd(r.end)}` : ''}<div class="meta">${r.txs.length} record${r.txs.length === 1 ? '' : 's'} · Paid ${money(r.paid)}${r.extra ? ` · +${money(r.extra)} extra` : ''}</div></span><span class="rb-pill">✓ Settled ${sd(r.end)}</span>${icon('chevron_right')}</button>`; }).join('');
+  openSheet(`<h3>${esc(g.name)}</h3>
+    <div class="rb-hero">${hero}</div>
+    ${n ? `<div class="sec-head">This round · ${n} record${n === 1 ? '' : 's'}</div><div class="list">${rows}</div>` : ''}
+    ${past ? `<div class="sec-head">Past rounds</div><div class="set-list">${past}</div>` : ''}
+    <div class="meta" style="padding:0 4px">Counted since ${mdy(REIMB_START)}.</div>`, { short: true });
 }
 // Reimbursements still out, per person (all time), shown at the bottom of Income & Expenses and Spending by Category
 // Income & Expenses: the reimbursable category as the last row, same look as the others; tap to see each person
@@ -2815,7 +2856,7 @@ function viewTx(params) {
   const total = list.reduce((n, t) => n + signed(t), 0);
   // Money in and money out behind Σ (same rule as Σ: transfers and reimbursable left out, so In + Out = Σ); shown when there are both
   const inSum = list.reduce((n, t) => n + Math.max(0, signed(t)), 0); const outSum = total - inSum;
-  const io = Math.round(inSum * 100) && Math.round(outSum * 100) ? `<span class="meta rec-io">In <span class="num" style="color:var(--inc)">${money(inSum, true)}</span> · Out <span class="num">${money(outSum)}</span></span>` : '';
+  const io = Math.round(inSum * 100) && Math.round(outSum * 100) ? `<span class="meta rec-io">In <span class="num" style="color:var(--inc)">${money(inSum, true)}</span> · Out <span class="num" style="color:var(--exp)">${money(outSum)}</span></span>` : '';
   const searchBar = `<div class="rec-search"><div class="searchbar">${icon('search')}<input id="txsearch" type="search" placeholder="Search merchant, note, category, amount" value="${esc(S.search)}" autocomplete="off" aria-label="Search records"><span id="search-clear-slot">${searchClearBtn()}</span></div></div>`;
   const nf = recFilterCount(); const p = recPeriod();
   const rf = recFilterState();
@@ -3520,6 +3561,7 @@ function renderEdit() {
   if (S.back === 'rulelist' && S.ruList && S.ruleDraft) S.sheetBack = sheetRuleList;
   else if (S.back === 'search') S.sheetBack = sheetSearch;
   else if (S.back === 'rec' && S.recPop) S.sheetBack = backToPopup;
+  else if (S.back === 'reimb' && S.reimbOpen) S.sheetBack = backToPopup;
 }
 async function saveEdit() {
   captureEdit();
@@ -4133,7 +4175,21 @@ document.addEventListener('click', async (e) => {
       case 'card-settings': sheetCard(el.dataset.card); break;
       case 'go-tbills': closeSheet(); go('#/tbills'); break;
       case 'reimb-open': { if (id.startsWith('all:')) { const top = S.cats[id.slice(4)]; const ids = new Set([top.id, ...descendants(top.id)]); const txs = S.txs.filter((t) => ids.has(t.categoryId) && t.date >= REIMB_START); sheetRecords({ title: top.name, period: `Not back ${money(txs.reduce((n, t) => n + t.amount, 0))} · Since ${mdy(REIMB_START)}`, ids: txs.map((t) => t.id), sort: 'date_desc' }); break; }
-        const g = reimbGroups().find((x) => x.id === id); if (g) sheetRecords({ title: g.name, period: `Not back ${money(g.owed)} · Since ${mdy(REIMB_START)}`, ids: g.txs.map((t) => t.id), sort: 'date_desc' }); break; }
+        sheetReimb(id); break; }
+      case 'reimb-round': {
+        const g = reimbGroups().find((x) => x.id === id); const r = g?.rounds[+el.dataset.i]; if (!r) break;
+        const sd = (d) => shortDate(d).replace(/, \d{4}$/, '');
+        sheetRecords({ title: `${sd(r.start)}${r.start !== r.end ? ` – ${sd(r.end)}` : ''}`, period: `Paid ${money(r.paid)} · Back ${money(r.back)} · Settled ${sd(r.end)}`, ids: r.txs.map((t) => t.id), sort: 'date_desc', side: 'abs', back: () => sheetReimb(id) });
+        break;
+      }
+      case 'reimb-settle': {
+        const g = reimbGroups().find((x) => x.id === id); if (!g || !(g.owed < 0)) break;
+        if (!confirm(`Settle this round?\n\n${g.name} paid back ${money(-g.owed)} more than this round. The extra stays in this round and the next round starts at $0.`)) break;
+        const d = g.cur.txs.map((t) => t.date).sort().pop();
+        await setDoc(doc(db, 'meta', 'reimb'), { settles: { [id]: arrayUnion(d) } }, { merge: true });
+        S.meta ||= {}; S.meta.reimb ||= {}; S.meta.reimb.settles ||= {}; S.meta.reimb.settles[id] = [...new Set([...(S.meta.reimb.settles[id] || []), d])];
+        toast('Round settled'); sheetReimb(id); render(); break;
+      }
       case 'tb-view': sheetTbView(); break;
       case 'tb-view-set': tbView('tbBy'); S.tbView[el.dataset.k] = el.dataset.v; render(); sheetTbView(); break;
       case 'tb-tab': S.tbTab = el.dataset.v; render(); break;
