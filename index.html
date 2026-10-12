@@ -494,7 +494,8 @@ input.row-select { direction: ltr; }
 .link-sum { padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; }
 .link-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 8px 0 4px; }
 .link-bar i { display: block; height: 100%; background: #34C759; border-radius: 999px; }
-.rb-hero { background: var(--card); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 2px; }
+.rb-hero { padding: 4px 4px 0; display: flex; flex-direction: column; gap: 2px; }
+.sec-head.rb-sh { min-height: 0; margin: 8px 0 -6px; }
 .rb-big { font-size: 28px; font-weight: 700; letter-spacing: -0.3px; }
 .rb-tag2 { font-size: 15px; font-weight: 500; color: var(--sub); }
 .rb-settle { margin-top: 12px; color: var(--accent); border-color: var(--accent); }
@@ -795,8 +796,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '22.9';
-const APP_BUILD = '202610121513'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '23.0';
+const APP_BUILD = '202610121521'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1926,8 +1927,8 @@ function sheetReimb(gid) {
   const past = [...g.rounds].reverse().map((r) => { const i = g.rounds.indexOf(r); return `<button class="set-item rb-round" data-act="reimb-round" data-id="${esc(gid)}" data-i="${i}"><span class="n">${sd(r.start)}${r.start !== r.end ? ` – ${sd(r.end)}` : ''}<div class="meta">${r.txs.length} record${r.txs.length === 1 ? '' : 's'} · Paid ${money(r.paid)}${r.extra ? ` · +${money(r.extra)} extra` : ''}</div></span><span class="rb-pill">✓ Settled ${sd(r.end)}</span>${icon('chevron_right')}</button>`; }).join('');
   openSheet(`<h3>${esc(g.name)}</h3>
     <div class="rb-hero">${hero}</div>
-    ${n ? `<div class="sec-head">This round · ${n} record${n === 1 ? '' : 's'}</div><div class="list">${rows}</div>` : ''}
-    ${past ? `<div class="sec-head">Past rounds</div><div class="set-list">${past}</div>` : ''}
+    ${n ? `<div class="sec-head rb-sh">This round · ${n} record${n === 1 ? '' : 's'}</div><div class="list">${rows}</div>` : ''}
+    ${past ? `<div class="sec-head rb-sh">Past rounds</div><div class="set-list">${past}</div>` : ''}
     <div class="meta" style="padding:0 4px">Counted since ${mdy(REIMB_START)}.</div>`, { short: true });
 }
 // Reimbursements still out, per person (all time), shown at the bottom of Income & Expenses and Spending by Category
