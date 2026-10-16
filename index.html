@@ -796,8 +796,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '23.1';
-const APP_BUILD = '202610121526'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '23.2';
+const APP_BUILD = '202610152100'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1264,9 +1264,21 @@ function conflictTxIds() {
   return out;
 }
 function warnIcon(ic) { return `<span class="ci-warn">${ic}<b aria-label="Conflict">!</b></span>`; }
+// Marked transfer only because the bank calls it one (Plaid "Transfer in/out", card payment) and you never saved it yourself:
+// a rule with a category wins over that (e.g. a Zelle to the gardener → Garden). Transfers you set yourself are never touched.
+function autoTransferred(t) {
+  return !!t?.isTransfer && !t.conflictOk && !t.manual && !t.parentId && !t.categoryId
+    && (t.pfcPrimary === 'TRANSFER_IN' || t.pfcPrimary === 'TRANSFER_OUT' || t.pfcDetailed === 'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT');
+}
 function ruleUpdates(t) {
-  // Rules only fill in records that are still uncategorized; a categorized (or transfer) record is never touched
-  if (t.categoryId || t.isTransfer) return {};
+  // Rules only fill in records that are still uncategorized; a categorized (or transfer) record is never touched,
+  // except a bank-marked transfer that a rule gives a category (see autoTransferred)
+  const autoTr = autoTransferred(t);
+  if (t.categoryId || (t.isTransfer && !autoTr)) return {};
+  if (autoTr) {
+    const v = ruleVerdict(t);
+    if (v.clash || !v.cat || ruleList().some((r) => r.transfer && ruleMatches(r, t))) return {}; // no category from the rules, or a rule says transfer: stays a transfer
+  }
   const upd = {}; let labels = null;
   const v = ruleVerdict(t); // rules disagree on the category and none is preferred: leave it for you to choose
   if (!v.clash && v.cat && !t.categoryId) upd.categoryId = v.cat;
@@ -1277,13 +1289,14 @@ function ruleUpdates(t) {
     if (r.transfer && !t.isTransfer) upd.isTransfer = true;
   }
   if (labels) upd.labels = [...labels];
+  if (autoTr && upd.categoryId) upd.isTransfer = false;
   return upd;
 }
 let rulesTimer;
 function scheduleRules() { clearTimeout(rulesTimer); rulesTimer = setTimeout(() => applyRules(false), 800); }
 async function applyRules(all) {
   if (S.applying || !S.rulesLoaded || !S.txLoaded || !ruleList().length) return 0;
-  const cands = S.txs.filter((t) => !t.manual && !t.parentId && (all || !t.ruled));
+  const cands = S.txs.filter((t) => !t.manual && !t.parentId && (all || !t.ruled || autoTransferred(t))); // bank-marked transfers are checked again (a new rule may give them a category)
   if (!cands.length) return 0;
   S.applying = true; let changed = 0;
   try {
@@ -3830,7 +3843,7 @@ function rulePastMatches(d) {
   if (r.field === 'account' && !r.accountId) return [];
   if (r.field === 'bankcat' && !ruleBankCats(r).length) return [];
   if (r.field === 'merchant' && !(r.merchants || []).length) return [];
-  return S.txs.filter((t) => !t.manual && !t.parentId && !t.categoryId && !t.isTransfer && ruleMatches(r, t));
+  return S.txs.filter((t) => !t.manual && !t.parentId && !t.categoryId && (!t.isTransfer || autoTransferred(t)) && ruleMatches(r, t));
 }
 function rulePastText(n) { return `Also apply to ${n} past uncategorized record${n === 1 ? '' : 's'}`; }
 // Past bank records that already have a (different) category but match this rule — only changed when you switch it on
