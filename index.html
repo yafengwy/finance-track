@@ -89,6 +89,7 @@ button { cursor: pointer; }
 .card-head .icon-btn { color: var(--sub); margin: -8px -10px 0 0; }
 .big { font-size: 32px; font-weight: 600; letter-spacing: -0.5px; }
 .bar-row { display: flex; flex-direction: column; gap: 6px; }
+.bar-btn { width: 100%; border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .track { height: 12px; border-radius: 999px; background: var(--line); overflow: hidden; }
 .fill { height: 100%; border-radius: 999px; }
 .sec-head { display: flex; justify-content: space-between; align-items: center; min-height: 36px; padding: 0 4px; font-size: 13px; font-weight: 400; color: var(--sub); }
@@ -796,8 +797,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '23.2';
-const APP_BUILD = '202610152100'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '23.3';
+const APP_BUILD = '202610170954'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1613,10 +1614,10 @@ function cardCash() {
   const max = Math.max(s1.income, s1.expense, 1);
   const cash = `<section class="card">${cardHead('Cash Flow', 'cashflow')}
     <div class="big num">${money(s1.income - s1.expense, true)}</div>
-    <div class="bar-row"><div class="row-between"><span>Income</span><span class="num">${money(s1.income)}</span></div>
-      <div class="track"><div class="fill" style="width:${(s1.income / max) * 100}%;background:var(--inc)"></div></div></div>
-    <div class="bar-row"><div class="row-between"><span>Expenses</span><span class="num">${money(s1.expense)}</span></div>
-      <div class="track"><div class="fill" style="width:${(s1.expense / max) * 100}%;background:var(--exp)"></div></div></div>
+    <button class="bar-row bar-btn" data-act="row-rec" data-card="cashflow" data-side="income" data-scope="all" data-title="Income"><div class="row-between"><span>Income</span><span class="num">${money(s1.income)}</span></div>
+      <div class="track"><div class="fill" style="width:${(s1.income / max) * 100}%;background:var(--inc)"></div></div></button>
+    <button class="bar-row bar-btn" data-act="row-rec" data-card="cashflow" data-side="expense" data-scope="all" data-title="Expenses"><div class="row-between"><span>Expenses</span><span class="num">${money(s1.expense)}</span></div>
+      <div class="track"><div class="fill" style="width:${(s1.expense / max) * 100}%;background:var(--exp)"></div></div></button>
   </section>`;
   return cash;
 }
@@ -1783,12 +1784,13 @@ function sheetShowMore() {
   sheetRecords({ title: m.title, period: m.period, ids: m.ids, sort: 'amt_desc' });
 }
 // scope: top:<id> whole main category · unk uncategorized · l2:<id> subcategory incl. its children · exact:<id>
-function openRowRecords(side, scope, title) {
-  const r = rangeOf(getPeriod('detail')); const ok = specMatcher(cardSpec('detail').spec);
+// card: 'detail' (Income & Expenses rows) or 'cashflow' (its Income / Expenses bars, scope 'all') — same records popup, same rules as the card's numbers
+function openRowRecords(side, scope, title, card = 'detail') {
+  const r = rangeOf(getPeriod(card)); const ok = specMatcher(cardSpec(card).spec);
   const [kind, id] = scope.split(':');
-  const match = (c) => (kind === 'top' ? topOf(c)?.id === id : kind === 'unk' ? !c : kind === 'l2' ? lvl2Of(c)?.id === id : c?.id === id);
+  const match = (c) => (kind === 'all' ? true : kind === 'top' ? topOf(c)?.id === id : kind === 'unk' ? !c : kind === 'l2' ? lvl2Of(c)?.id === id : c?.id === id);
   const ids = S.txs.filter((t) => t.date >= r[0] && t.date <= r[1] && !t.isTransfer && ok(t) && (sideOf(t) === side) && match(S.cats[t.categoryId])).map((t) => t.id);
-  sheetRecords({ title, period: periodLabel(getPeriod('detail')), ids, sort: 'date_desc', side });
+  sheetRecords({ title, period: periodLabel(getPeriod(card)), ids, sort: 'date_desc', side });
 }
 function shade(hex, i, n) {
   const c = hex.replace('#', ''); const [r, g, b] = [0, 2, 4].map((k) => parseInt(c.slice(k, k + 2), 16));
@@ -4316,7 +4318,7 @@ document.addEventListener('click', async (e) => {
         const y = document.querySelector('.sheet')?.scrollTop; sheetReorder(); if (y) document.querySelector('.sheet').scrollTop = y; render(); break;
       }
       case 'show-more': sheetShowMore(); break;
-      case 'row-rec': openRowRecords(el.dataset.side, el.dataset.scope, el.dataset.title); break;
+      case 'row-rec': openRowRecords(el.dataset.side, el.dataset.scope, el.dataset.title, el.dataset.card || 'detail'); break;
       case 'rec-page-sort': openOptions('Sort records', Object.entries(REC_SORTS).map(([k, [l]]) => ({ value: k, label: l, iconHtml: glyph(k.startsWith('date') ? 'calendar_today' : 'attach_money', '#3478F6') })), REC_SORTS[S.recSort] ? S.recSort : 'date_desc', (v) => { S.recSort = v; closeSheet(); render(); }); break;
       case 'rec-sort': openOptions('Sort by', Object.entries(SORTS).map(([k, l]) => ({ value: k, label: l, iconHtml: glyph(k.startsWith('date') ? 'calendar_today' : 'attach_money', '#3478F6') })), S.recPop.sort, (v) => { S.recPop.sort = v; sheetRecords(); }); break;
       case 'donut-sel': S.donutSel = S.donutSel === id ? null : id; render(); break;
