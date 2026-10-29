@@ -185,9 +185,9 @@ button.nw-brk-r > .ms { font-size: 16px; color: var(--sub); margin-left: -4px; }
 .pay-row { display: flex; align-items: baseline; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
 .pay-head + .pay-row { margin-top: 4px; }
 .pay-d { width: 58px; flex: none; font-weight: 600; }
-.pay-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pay-n { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow-wrap: break-word; }
+.pay-n .meta { font-size: 12.5px; }
 .pay-a { font-weight: 600; white-space: nowrap; }
-.pay-b { width: 46px; flex: none; text-align: right; font-size: 12.5px; color: var(--sub); }
 .pay-empty { padding: 6px 0 2px; }
 .pay-date { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .pay-date .input { flex: 1; min-width: 0; }
@@ -814,8 +814,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '23.5';
-const APP_BUILD = '202610290418'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '23.6';
+const APP_BUILD = '202610290431'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2039,7 +2039,7 @@ function payKeepMap() {
 }
 function payCard() {
   const up = payUpcoming();
-  const rows = up.map(({ p, d }) => `<div class="pay-row"><span class="pay-d num">${payMD(d)}</span><span class="pay-n">${esc(p.name)}</span><span class="pay-a num">${money(p.amount)}</span><span class="pay-b">${esc(bankShort(p.bank))}</span></div>`).join('');
+  const rows = up.map(({ p, d }) => `<div class="pay-row"><span class="pay-d num">${payMD(d)}</span><span class="pay-n">${esc(p.name)}<span class="meta">${esc(bankShort(p.bank))}</span></span><span class="pay-a num">${money(p.amount)}</span></div>`).join('');
   return `<section class="card pay-card"><div class="row-between pay-head"><b>Upcoming payments</b><button class="link-btn" data-act="pay-list">${payItems().length ? 'Edit' : 'Add'}</button></div>
     ${rows || '<div class="meta pay-empty">Bills you need to keep cash for, like property tax or insurance.</div>'}</section>`;
 }
