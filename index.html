@@ -797,8 +797,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '23.3';
-const APP_BUILD = '202610170954'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '23.4';
+const APP_BUILD = '202610290405'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2057,8 +2057,8 @@ function sheetTbill(id) {
       ${open ? '' : kv('trending_up', apy != null && t.expApy != null && apy + 0.005 < t.expApy ? '#FF3B30' : '#34C759', 'Actual APY', `<b style="color:${tbApyColor(t)}">${apy != null ? apy.toFixed(2) + '%' : '—'}</b>`)}
       ${t.notes ? `<div class="set-item tb-kv-notes">${glyph('edit_note', '#AF52DE')}<span class="n">Notes<span class="tb-notes-full">${esc(t.notes)}</span></span></div>` : ''}
     </div>
-    ${!open && t.incomeTxId ? (S.rawById?.[t.incomeTxId] ? `<div class="set-list"><button class="set-item" data-act="tx" data-id="${t.incomeTxId}">${glyph('check', '#34C759')}<span class="n">Recorded as income</span><span class="v">${esc(tbCatLabel(S.rawById[t.incomeTxId].categoryId))}</span>${icon('chevron_right')}</button></div>` : `<div class="set-list"><div class="set-item">${glyph('check', '#34C759')}<span class="n">Recorded as income</span></div></div>`) : ''}
-    ${!open && !t.incomeTxId && t.gotBack > t.amount ? `<button class="pill-btn wide" data-act="tb-mature" data-id="${id}">${tbNeedsIncome(t) ? TB_WARN : icon('receipt_long')}Record +${money(t.gotBack - t.amount)} as income</button>` : ''}
+    ${!open && t.incomeTxId ? (S.rawById?.[t.incomeTxId] ? `<div class="set-list"><button class="set-item" data-act="tx" data-id="${t.incomeTxId}">${glyph('check', '#34C759')}<span class="n">Recorded as investment income</span><span class="v">${esc(tbCatLabel(S.rawById[t.incomeTxId].categoryId))}</span>${icon('chevron_right')}</button></div>` : `<div class="set-list"><div class="set-item">${glyph('check', '#34C759')}<span class="n">Recorded as investment income</span></div></div>`) : ''}
+    ${!open && !t.incomeTxId && t.gotBack > t.amount ? `<button class="pill-btn wide" data-act="tb-mature" data-id="${id}">${tbNeedsIncome(t) ? TB_WARN : icon('receipt_long')}Record +${money(t.gotBack - t.amount)} as investment income</button>` : ''}
     ${tbNeedsIncome(t) ? `<button class="tb-skip" data-act="tb-skip" data-id="${id}">Already recorded elsewhere</button>` : ''}
     ${open ? `<button class="pill-btn wide" data-act="tb-cal" data-id="${id}">${tbNeedsCal(t) ? TB_WARN : icon('event_available')}Add to calendar</button>` : ''}
     <button class="pill-btn wide" data-act="tb-edit" data-id="${id}">${icon('edit')}Edit</button>
@@ -2092,7 +2092,7 @@ function sheetTbMature(id) {
       <div class="set-item">${glyph('trending_up', '#34C759')}<span class="n">Actual APY</span><span class="v num" id="tb-apy">—</span></div>
     </div>
     <div class="set-list">
-      <label class="set-item">${glyph('receipt_long', '#3478F6')}<span class="n">Record the interest as income</span><input type="checkbox" class="switch" id="tb-rec" ${m.record ? 'checked' : ''}></label>
+      <label class="set-item">${glyph('receipt_long', '#3478F6')}<span class="n">Record the interest as investment income</span><input type="checkbox" class="switch" id="tb-rec" ${m.record ? 'checked' : ''}></label>
       ${valueRow('tb-cat', glyph('category', '#FF9500'), 'Category', esc(tbCatLabel(m.cat)))}
       ${valueRow('tb-acc', glyph('account_balance_wallet', '#5856D6'), 'Account', esc(accName(S.accounts[m.acc]) || 'Choose'))}
     </div>
@@ -2137,7 +2137,7 @@ async function tbMatureSave(id) {
   }
   await updateDoc(doc(db, 'tbills', id), upd);
   S.tbMat = null; closeSheet();
-  toast(`Saved · ${money(interest, true)} interest${upd.incomeTxId ? ', recorded as income' : ''}`, 4000);
+  toast(`Saved · ${money(interest, true)} interest${upd.incomeTxId ? ', recorded as investment income' : ''}`, 4000);
 }
 // ---- add / edit ----
 function hasOwnRecords(a) { return S.txs.some((t) => t.accountId === a.id); } // an investment account with records you added
