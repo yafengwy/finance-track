@@ -177,6 +177,23 @@ button.nw-brk-r > .ms { font-size: 16px; color: var(--sub); margin-left: -4px; }
 .tb-warn { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 6px; border-radius: 50%; background: #FF9500; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; vertical-align: 2px; flex: none; font-family: -apple-system, system-ui, sans-serif; }
 .pill-btn .tb-warn { margin: 0 2px 0 0; vertical-align: 0; }
 .tb-skip { align-self: center; border: 0; background: none; color: var(--accent); font: inherit; font-size: 14px; padding: 4px 8px; }
+.pay-card { padding: 12px 14px; margin-bottom: 14px; }
+.tb-cols { grid-template-rows: auto minmax(0, 1fr); }
+.tb-cols > .pay-card { grid-column: 1 / -1; margin: 0; }
+.pay-head b { font-size: 16px; }
+.pay-head .link-btn { font-weight: 600; padding: 4px 0 4px 12px; }
+.pay-row { display: flex; align-items: baseline; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.pay-head + .pay-row { margin-top: 4px; }
+.pay-d { width: 58px; flex: none; font-weight: 600; }
+.pay-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pay-a { font-weight: 600; white-space: nowrap; }
+.pay-b { width: 46px; flex: none; text-align: right; font-size: 12.5px; color: var(--sub); }
+.pay-empty { padding: 6px 0 2px; }
+.pay-date { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.pay-date .input { flex: 1; min-width: 0; }
+.pay-form > .field { min-width: 0; }
+.pay-form .seg { align-self: flex-start; }
+.tb-keep { align-self: flex-start; margin-top: 4px; font-size: 12.5px; font-weight: 600; color: #8E5B2E; background: #F6EEE7; padding: 2px 8px; border-radius: 8px; }
 .tb-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; color: var(--text); text-align: left; }
 .tb-list > .tb-row:first-child, .day + .tb-row, .tb-gh + .tb-row { border-top: 0; }
 .tb-gh { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; }
@@ -797,8 +814,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '23.4';
-const APP_BUILD = '202610290405'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '23.5';
+const APP_BUILD = '202610290418'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1878,7 +1895,7 @@ function tbRow(t, grouped = false) {
     const sub = [grouped === 'date' ? esc(tbAccName(t)) : '', open ? `Bought ${mdy(t.buyDate)}` : `${mdy(t.buyDate)} – ${mdy(t.maturity)}`].filter(Boolean).join(' · ');
     const right = open ? `<div class="num tb-due">${mdy(t.maturity)}</div><div class="meta">${tbDue(t) === 0 ? '<span class="tb-pill">Today</span>' : tbDue(t) < 0 ? `<span style="color:var(--bad)">${-tbDue(t)} days ago</span>` : `In ${tbDue(t)} days`}</div>`
       : `<div class="num tb-due" style="color:var(--good)">+${money(t.gotBack - t.amount)}</div><div class="meta num" style="color:${tbApyColor(t)}">${tbApy(t)?.toFixed(2) ?? '—'}%</div>`;
-    return `<button class="tb-line" data-act="tb-open" data-id="${t.id}">${grouped === 'date' ? `<span class="nw-st" style="background:${esc(tbColor(t))}"></span>` : ''}<span class="tb-main"><span class="num tb-amt2">${money(t.amount)}${tbWarn(t)}</span><span class="meta tb-note">${sub}</span>${t.notes ? `<span class="meta tb-notes">Notes: ${esc(t.notes)}</span>` : ''}</span><span class="tb-r">${right}</span></button>`;
+    return `<button class="tb-line" data-act="tb-open" data-id="${t.id}">${grouped === 'date' ? `<span class="nw-st" style="background:${esc(tbColor(t))}"></span>` : ''}<span class="tb-main"><span class="num tb-amt2">${money(t.amount)}${tbWarn(t)}</span><span class="meta tb-note">${sub}</span>${t.notes ? `<span class="meta tb-notes">Notes: ${esc(t.notes)}</span>` : ''}${open ? (S.payKeep?.[t.id] || []).map((k) => `<span class="tb-keep">${k}</span>`).join('') : ''}</span><span class="tb-r">${right}</span></button>`;
   }
 
 
@@ -1978,17 +1995,110 @@ function cardTbills() {
     <div class="tb-stats"><div><span class="meta">Interest this year</span><b class="num" style="color:var(--good)">+${money(st.interest)}</b></div><div><span class="meta">Avg actual APY</span><b class="num">${st.apy == null ? '—' : st.apy.toFixed(2) + '%'}</b></div></div>
     <div class="tb-list">${open.map((t) => tbRow(t)).join('') || '<div class="meta">Nothing open right now</div>'}</div></section>`;
 }
+// ---- Upcoming payments: big yearly bills to keep cash for (property tax, life insurance…) ----
+// meta/payments.items = { id: { name, amount, dates: ['12-10', '04-10'] (month-day, every year), bank, years, paid, ends: 'YYYY-MM-DD' | null } }
+function payItems() { return Object.entries(S.meta?.payments?.items || {}).map(([id, p]) => ({ id, ...p })).filter((p) => p && p.name && (p.dates || []).length); }
+function bankOf(a) { return (S.items[a?.itemId] || {}).institutionName || a?.institution || ''; }
+function bankShort(n) { return n === 'Bank of America' ? 'BOA' : n || ''; }
+// Banks to pay from: Chase and Bank of America, plus the bank of any other investment account you add
+function payBanks() { const s = new Set(['Chase', 'Bank of America']); invAccountsAll().forEach((a) => { const n = bankOf(a); if (n) s.add(n); }); return [...s]; }
+// Due dates of p between from and to (YYYY-MM-DD, inclusive), not after its last payment
+function payOccur(p, from, to) {
+  const out = [];
+  for (let y = +from.slice(0, 4); y <= +to.slice(0, 4); y++) (p.dates || []).forEach((md) => { const d = `${y}-${md}`; if (d >= from && d <= to && (!p.ends || d <= p.ends)) out.push(d); });
+  return out.sort();
+}
+function payUpcoming(days = 365) {
+  const from = ymd(new Date()); const to = ymd(addDays(new Date(), days));
+  return payItems().flatMap((p) => payOccur(p, from, to).map((d) => ({ p, d }))).sort((a, b) => a.d.localeCompare(b.d) || a.p.name.localeCompare(b.p.name));
+}
+// Last due date when it ends after `years` in total and `paid` already paid (counting from today); null = every year, no end
+function payEnds(dates, years, paid) {
+  if (!(years > 0)) return null;
+  const left = Math.max(0, years - (paid || 0)) * dates.length; const today = ymd(new Date());
+  if (!left) return ymd(addDays(new Date(), -1));
+  const occ = payOccur({ dates }, today, `${+today.slice(0, 4) + years + 1}-12-31`);
+  return occ[left - 1] || occ[occ.length - 1] || null;
+}
+function payLeftText(p) {
+  if (!p.ends) return 'Every year, no end date';
+  const left = payOccur(p, ymd(new Date()), p.ends).length;
+  return left ? `${left} payment${left === 1 ? '' : 's'} left · Last one ${shortDate(p.ends)}` : 'All paid';
+}
+const payMD = (d) => shortDate(d).replace(/, \d{4}$/, '');
+// "Keep $X" on the CD from the same bank that matures last before each due date in the next year
+function payKeepMap() {
+  const map = {}; const open = tbOpen();
+  payUpcoming().forEach(({ p, d }) => {
+    const cds = open.filter((t) => t.maturity < d && bankOf(S.accounts[t.accountId]) === p.bank);
+    if (!cds.length) return;
+    const t = cds.reduce((a, b) => (b.maturity > a.maturity ? b : a));
+    (map[t.id] ||= []).push(`Keep ${money(p.amount)} · ${esc(p.name)} ${payMD(d)}`);
+  });
+  return map;
+}
+function payCard() {
+  const up = payUpcoming();
+  const rows = up.map(({ p, d }) => `<div class="pay-row"><span class="pay-d num">${payMD(d)}</span><span class="pay-n">${esc(p.name)}</span><span class="pay-a num">${money(p.amount)}</span><span class="pay-b">${esc(bankShort(p.bank))}</span></div>`).join('');
+  return `<section class="card pay-card"><div class="row-between pay-head"><b>Upcoming payments</b><button class="link-btn" data-act="pay-list">${payItems().length ? 'Edit' : 'Add'}</button></div>
+    ${rows || '<div class="meta pay-empty">Bills you need to keep cash for, like property tax or insurance.</div>'}</section>`;
+}
+function sheetPayList() {
+  const items = payItems().sort((a, b) => a.name.localeCompare(b.name));
+  openSheet(`<h3>Upcoming payments</h3>
+    <div class="set-list">${items.map((p) => `<button class="set-item" data-act="pay-edit" data-id="${esc(p.id)}"><span class="n">${esc(p.name)}<div class="meta">${money(p.amount)} · ${p.dates.map((md) => payMD(`2000-${md}`)).join(' · ')} · ${esc(bankShort(p.bank))}</div><div class="meta">${esc(payLeftText(p))}</div></span>${icon('chevron_right')}</button>`).join('')}
+      <button class="set-item" data-act="pay-edit" data-id="">${glyph('add', '#3478F6')}<span class="n" style="color:var(--accent)">Add a payment</span></button></div>`, { short: true });
+}
+function sheetPayEdit(id) {
+  const p = id ? payItems().find((x) => x.id === id) : null;
+  const d = S.payDraft && S.payDraft.id === (id || null) ? S.payDraft
+    : (S.payDraft = p ? { id, name: p.name, amount: p.amount, dates: [...p.dates], bank: p.bank, years: p.years ?? '', paid: p.paid ?? '' } : { id: null, name: '', amount: '', dates: [''], bank: payBanks()[0], years: '', paid: '' });
+  const y = new Date().getFullYear();
+  const dateRows = d.dates.map((md, i) => `<div class="pay-date"><input class="input" type="date" data-paydate="${i}" value="${md ? `${y}-${md}` : ''}" aria-label="Due date ${i + 1}">${d.dates.length > 1 ? `<button class="icon-btn" data-act="pay-date-del" data-i="${i}" aria-label="Remove this date">${icon('close')}</button>` : ''}</div>`).join('');
+  openSheet(`<h3>${p ? esc(p.name) : 'New payment'}</h3>
+    <div class="tb-form pay-form">
+      <div class="field tb-wide"><label for="pay-name">Name</label><input class="input" id="pay-name" value="${esc(d.name)}" placeholder="Property tax"></div>
+      <div class="field"><label for="pay-amt">Amount</label><input class="input num" id="pay-amt" inputmode="decimal" value="${esc(d.amount)}" placeholder="8450"></div>
+      <div class="field tb-wide"><label>Due every year</label>${dateRows}<button class="link-btn" data-act="pay-date-add" style="align-self:flex-start;padding:6px 0">${icon('add')}Add another date</button></div>
+      <div class="field tb-wide"><label>Pay from</label><div class="seg">${payBanks().map((b) => `<button data-act="pay-bank" data-v="${esc(b)}" aria-pressed="${d.bank === b}">${esc(bankShort(b))}</button>`).join('')}</div></div>
+      <div class="field"><label for="pay-years">Years in total</label><input class="input num" id="pay-years" inputmode="numeric" value="${esc(d.years)}" placeholder="No end"></div>
+      <div class="field"><label for="pay-paid">Paid so far (years)</label><input class="input num" id="pay-paid" inputmode="numeric" value="${esc(d.paid)}" placeholder="0"></div>
+    </div>
+    <div class="meta" id="pay-left" style="padding:0 4px">${esc(payLeftText({ dates: d.dates.filter(Boolean), ends: payEnds(d.dates.filter(Boolean), num(d.years), num(d.paid)) }))}</div>
+    ${p ? `<button class="pill-btn danger wide" data-act="pay-del" data-id="${esc(id)}">${icon('delete')}Delete</button>` : ''}
+    ${saveBar('pay-save', 'Save')}`, { short: true });
+  S.sheetBack = () => { S.payDraft = null; sheetPayList(); };
+}
+function payCapture() {
+  const d = S.payDraft; if (!d || !$('pay-name')) return;
+  d.name = $('pay-name').value; d.amount = $('pay-amt').value; d.years = $('pay-years').value; d.paid = $('pay-paid').value;
+  document.querySelectorAll('[data-paydate]').forEach((el) => { d.dates[+el.dataset.paydate] = el.value ? el.value.slice(5) : ''; });
+}
+async function paySave() {
+  payCapture(); const d = S.payDraft; if (!d) return;
+  const name = d.name.trim(); const amount = num(d.amount); const dates = [...new Set(d.dates.filter(Boolean))].sort();
+  if (!name) { toast('Enter a name'); return; }
+  if (!(amount > 0)) { toast('Enter the amount'); return; }
+  if (!dates.length) { toast('Pick a due date'); return; }
+  const years = String(d.years).trim() === '' ? null : Math.max(1, Math.round(num(d.years)));
+  const paid = String(d.paid).trim() === '' ? 0 : Math.max(0, Math.round(num(d.paid)));
+  const id = d.id || 'p' + Date.now().toString(36);
+  const item = { name, amount, dates, bank: d.bank, years, paid, ends: payEnds(dates, years, paid) };
+  try { await setDoc(doc(db, 'meta', 'payments'), { items: { [id]: item } }, { merge: true }); } catch (e) { toast('Could not save: ' + errMsg(e)); return; }
+  S.meta ||= {}; S.meta.payments ||= {}; S.meta.payments.items ||= {}; S.meta.payments.items[id] = item;
+  S.payDraft = null; toast('Saved'); sheetPayList(); render();
+}
 function viewTbills() {
-  const open = tbOpen(); const done = tbDone();
+  const open = tbOpen(); const done = tbDone(); S.payKeep = payKeepMap();
   if (WIDE.matches) {
     const o = tbPart('open'); const d = tbPart('done');
     const oTot = open.length ? `<div class="meta tb-sum">${open.length} open · <span class="num">≈ $${Math.round(open.reduce((n, t) => n + tbValueNow(t), 0)).toLocaleString('en-US')}</span> · Grouped by account</div>` : '';
-    return `<div class="page dash-page dash-cols">${tbImportBox()}
+    return `<div class="page dash-page dash-cols tb-cols">${tbImportBox()}${payCard()}
       <div class="dash-col"><div class="row-between tb-colhead"><span class="chip" aria-pressed="true">Open ${open.length}${tbWarnOpenChip()}</span><button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></div>${oTot}${o.list}</div>
       <div class="dash-col"><div class="row-between tb-colhead"><span class="chip" aria-pressed="true">Matured ${done.length}${tbWarnChip()}</span><button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button></div>${d.total}${d.list}</div></div>`;
   }
   const tab = S.tbTab === 'done' ? 'done' : 'open'; const p = tbPart(tab);
-  return `<div class="page">${tbImportBox()}
+  return `<div class="page">${tbImportBox()}${payCard()}
     <div class="row-between"><div class="chips"><button class="chip" data-act="tb-tab" data-v="open" aria-pressed="${tab === 'open'}">Open ${open.length}${tbWarnOpenChip()}</button><button class="chip" data-act="tb-tab" data-v="done" aria-pressed="${tab === 'done'}">Matured ${done.length}${tbWarnChip()}</button></div>
       <span class="tb-tools">${tab === 'done' ? `<button class="icon-btn" data-act="tb-view" aria-label="Group and period">${icon('filter_list')}</button>` : ''}<button class="pill-btn small" data-act="tb-new">${icon('add')}New</button></span></div>
     ${p.total}${p.list}</div>`;
@@ -4232,6 +4342,17 @@ document.addEventListener('click', async (e) => {
       case 'tb-del': if (confirm('Delete this T-bill? Its income record (if any) stays.')) { await deleteDoc(doc(db, 'tbills', id)); S.tbDraft = null; closeSheet(); toast('Deleted'); } break;
       case 'tb-cal': tbCalendar(id); if (S.tbills[id] && !S.tbills[id].calAdded) { S.tbills[id].calAdded = true; updateDoc(doc(db, 'tbills', id), { calAdded: true }).catch((e) => toast('Could not save: ' + errMsg(e))); sheetTbill(id); render(); } break;
       case 'tb-mature': S.tbMat = null; sheetTbMature(id); break;
+      case 'pay-list': S.payDraft = null; sheetPayList(); break;
+      case 'pay-edit': S.payDraft = null; sheetPayEdit(id || null); break;
+      case 'pay-date-add': payCapture(); S.payDraft.dates.push(''); sheetPayEdit(S.payDraft.id); break;
+      case 'pay-date-del': payCapture(); S.payDraft.dates.splice(+el.dataset.i, 1); sheetPayEdit(S.payDraft.id); break;
+      case 'pay-bank': payCapture(); S.payDraft.bank = el.dataset.v; sheetPayEdit(S.payDraft.id); break;
+      case 'pay-save': await paySave(); break;
+      case 'pay-del': {
+        const p = payItems().find((x) => x.id === id); if (!p || !confirm(`Delete “${p.name}”?`)) break;
+        try { await updateDoc(doc(db, 'meta', 'payments'), { [`items.${id}`]: deleteField() }); } catch (e) { toast('Could not delete: ' + errMsg(e)); break; }
+        delete S.meta.payments.items[id]; S.payDraft = null; toast('Deleted'); sheetPayList(); render(); break;
+      }
       case 'tb-skip': await updateDoc(doc(db, 'tbills', id), { incomeSkip: true }); if (S.tbills[id]) S.tbills[id].incomeSkip = true; toast('Marked as recorded'); sheetTbill(id); render(); break;
       case 'tb-mature-save': await tbMatureSave(id); break;
       case 'tb-income-save': await tbIncomeSave(id); break;
@@ -4513,6 +4634,10 @@ document.addEventListener('click', async (e) => {
 let searchTimer;
 document.addEventListener('input', (e) => {
   if (e.target.id === 'tb-back') { tbCaptureMat(); tbMatureCalc(); return; }
+  if (['pay-years', 'pay-paid'].includes(e.target.id) || e.target.dataset?.paydate != null) {
+    payCapture(); const d = S.payDraft; const ds = d.dates.filter(Boolean);
+    if ($('pay-left')) $('pay-left').textContent = payLeftText({ dates: ds, ends: payEnds(ds, num(d.years), num(d.paid)) });
+  }
   if (e.target.id === 'rbq') { const q = e.target.value.trim().toLowerCase(); document.querySelectorAll('#rbc-list [data-bcl]').forEach((r) => { r.style.display = !q || r.dataset.bcl.includes(q) ? '' : 'none'; }); return; }
   if (e.target.id === 'nm' && $('lbl-prev')) { $('lbl-prev').innerHTML = labelPill({ name: e.target.value || 'Label', color: $('sheet').dataset.color }); return; }
   if (e.target.id === 'ed-amt') { e.target.style.width = `${Math.max(4, e.target.value.length) + 0.5}ch`; return; }
