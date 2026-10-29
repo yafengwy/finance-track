@@ -820,8 +820,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '23.8';
-const APP_BUILD = '202610291946'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '23.9';
+const APP_BUILD = '202610291950'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2033,11 +2033,25 @@ function payLeftText(p) {
 }
 const payMD = (d) => shortDate(d).replace(/, \d{4}$/, '');
 // "Keep $X" on the CD from the same bank that matures last before each due date in the next year
-function payKeepMap() {
-  const map = {}; const open = tbOpen();
-  payUpcoming().forEach(({ p, d }) => {
-    const t = payCoverCD(p, d, open); if (!t) return;
-    (map[t.id] ||= []).push(`Keep ${money(p.amount)} · ${esc(p.name)} ${payMD(d)}`);
+// What an open CD pays out at maturity (principal grown at the expected APY; principal alone if no APY)
+function tbAtMaturity(t) { return t.expApy != null ? t.amount * (1 + t.expApy / 100) ** (tbDays(t) / 365) : t.amount; }
+// Each upcoming payment → the CD that pays it (last one of that bank maturing before the due date) and how much is short.
+// Payments draw on the CD in date order, so two bills on one CD can't both count its full payout.
+function payPlan(open = tbOpen()) {
+  const left = {};
+  return payUpcoming().map(({ p, d }) => {
+    const cd = payCoverCD(p, d, open); if (!cd) return { p, d, cd: null, take: 0, short: p.amount };
+    if (!(cd.id in left)) left[cd.id] = tbAtMaturity(cd);
+    const take = Math.min(p.amount, Math.max(0, left[cd.id])); left[cd.id] -= take;
+    const short = Math.round((p.amount - take) * 100) / 100;
+    return { p, d, cd, take, short };
+  });
+}
+function payKeepMap(plan = payPlan()) {
+  const map = {};
+  plan.forEach(({ p, d, cd, take, short }) => {
+    if (!cd || !(take > 0)) return;
+    (map[cd.id] ||= []).push(`Keep ${money(take)} · ${esc(p.name)} ${payMD(d)}${short > 0 ? ` · Short ${money(short)}` : ''}`);
   });
   return map;
 }
@@ -2047,11 +2061,11 @@ function payCoverCD(p, d, open = tbOpen()) {
   return cds.length ? cds.reduce((a, b) => (b.maturity > a.maturity ? b : a)) : null;
 }
 function payCard() {
-  const up = payUpcoming();
-  const open = tbOpen();
-  const rows = up.map(({ p, d }) => {
-    const cd = payCoverCD(p, d, open); // the bank is shown on the right, so the tag only names the date
-    const st = cd ? `<span class="pay-st ok">${icon('check')}CD matures ${payMD(cd.maturity)}</span>` : '<span class="pay-st no">! Nothing matures before it</span>';
+  const rows = payPlan().map(({ p, d, cd, short }) => {
+    // the bank is shown on the right, so the tag only names the date
+    const st = !cd ? '<span class="pay-st no">! Nothing matures before it</span>'
+      : short > 0 ? `<span class="pay-st no">! Short ${money(short)}</span>`
+      : `<span class="pay-st ok">${icon('check')}CD matures ${payMD(cd.maturity)}</span>`;
     return `<div class="pay-row"><span class="pay-d num">${payMD(d)}</span><span class="pay-n">${esc(p.name)}</span><span class="pay-a num">${money(p.amount)}</span><span class="pay-s">${st}</span><span class="pay-b">${esc(bankShort(p.bank))}</span></div>`;
   }).join('');
   return `<section class="card pay-card"><div class="row-between pay-head"><b>Upcoming payments</b><button class="link-btn" data-act="pay-list">${payItems().length ? 'Edit' : 'Add'}</button></div>
