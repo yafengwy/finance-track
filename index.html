@@ -177,16 +177,17 @@ button.nw-brk-r > .ms { font-size: 16px; color: var(--sub); margin-left: -4px; }
 .tb-warn { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 6px; border-radius: 50%; background: #FF9500; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; vertical-align: 2px; flex: none; font-family: -apple-system, system-ui, sans-serif; }
 .pill-btn .tb-warn { margin: 0 2px 0 0; vertical-align: 0; }
 .tb-skip { align-self: center; border: 0; background: none; color: var(--accent); font: inherit; font-size: 14px; padding: 4px 8px; }
-.pay-card { padding: 12px 14px; margin-bottom: 14px; }
+.pay-card { padding: 12px 14px; margin-bottom: 14px; gap: 0; } /* .card is a flex column with a 12px gap; rows carry their own padding */
+.pay-head { margin-bottom: 12px; }
 .tb-cols { grid-template-rows: auto minmax(0, 1fr); }
 .tb-cols > .pay-card { grid-column: 1 / -1; margin: 0; }
 .pay-head b { font-size: 16px; }
 .pay-head .link-btn { font-weight: 600; padding: 4px 0 4px 12px; }
-.pay-row { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; column-gap: 10px; row-gap: 4px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; }
-.pay-s { grid-column: 2; min-width: 0; }
-.pay-b { grid-column: 3; justify-self: end; font-size: 12.5px; color: var(--sub); }
-.pay-st { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-.pay-st .ms { font-size: 14px; }
+.pay-row { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; column-gap: 10px; row-gap: 6px; align-items: start; padding: 11px 0 14px; border-top: 1px solid var(--line); font-size: 15px; line-height: 20px; }
+.pay-s { grid-column: 2; min-width: 0; display: flex; align-self: center; }
+.pay-b { grid-column: 3; justify-self: end; align-self: center; font-size: 12.5px; line-height: 16px; color: var(--sub); }
+.pay-st { display: inline-flex; align-items: center; gap: 3px; height: 22px; font-size: 12px; line-height: 16px; font-weight: 600; padding: 0 8px; border-radius: 999px; white-space: nowrap; }
+.pay-st .ms { font-size: 14px; line-height: 14px; width: 14px; height: 14px; overflow: hidden; }
 .pay-st.ok { background: #E8F5E9; color: var(--good); }
 .pay-st.no { background: #FFF3E0; color: #E65100; }
 .pay-head + .pay-row { margin-top: 4px; }
@@ -819,8 +820,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '23.7';
-const APP_BUILD = '202610290439'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '23.8';
+const APP_BUILD = '202610291946'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
