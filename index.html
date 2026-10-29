@@ -182,11 +182,16 @@ button.nw-brk-r > .ms { font-size: 16px; color: var(--sub); margin-left: -4px; }
 .tb-cols > .pay-card { grid-column: 1 / -1; margin: 0; }
 .pay-head b { font-size: 16px; }
 .pay-head .link-btn { font-weight: 600; padding: 4px 0 4px 12px; }
-.pay-row { display: flex; align-items: baseline; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.pay-row { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; column-gap: 10px; row-gap: 4px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.pay-s { grid-column: 2; min-width: 0; }
+.pay-b { grid-column: 3; justify-self: end; font-size: 12.5px; color: var(--sub); }
+.pay-st { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.pay-st .ms { font-size: 14px; }
+.pay-st.ok { background: #E8F5E9; color: var(--good); }
+.pay-st.no { background: #FFF3E0; color: #E65100; }
 .pay-head + .pay-row { margin-top: 4px; }
-.pay-d { width: 58px; flex: none; font-weight: 600; }
-.pay-n { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow-wrap: break-word; }
-.pay-n .meta { font-size: 12.5px; }
+.pay-d { font-weight: 600; }
+.pay-n { min-width: 0; overflow-wrap: break-word; }
 .pay-a { font-weight: 600; white-space: nowrap; }
 .pay-empty { padding: 6px 0 2px; }
 .pay-date { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
@@ -814,8 +819,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '23.6';
-const APP_BUILD = '202610290431'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '23.7';
+const APP_BUILD = '202610290439'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2030,16 +2035,24 @@ const payMD = (d) => shortDate(d).replace(/, \d{4}$/, '');
 function payKeepMap() {
   const map = {}; const open = tbOpen();
   payUpcoming().forEach(({ p, d }) => {
-    const cds = open.filter((t) => t.maturity < d && bankOf(S.accounts[t.accountId]) === p.bank);
-    if (!cds.length) return;
-    const t = cds.reduce((a, b) => (b.maturity > a.maturity ? b : a));
+    const t = payCoverCD(p, d, open); if (!t) return;
     (map[t.id] ||= []).push(`Keep ${money(p.amount)} · ${esc(p.name)} ${payMD(d)}`);
   });
   return map;
 }
+// The CD from the payment's bank that matures last before the due date (its money pays the bill), or null
+function payCoverCD(p, d, open = tbOpen()) {
+  const cds = open.filter((t) => t.maturity < d && bankOf(S.accounts[t.accountId]) === p.bank);
+  return cds.length ? cds.reduce((a, b) => (b.maturity > a.maturity ? b : a)) : null;
+}
 function payCard() {
   const up = payUpcoming();
-  const rows = up.map(({ p, d }) => `<div class="pay-row"><span class="pay-d num">${payMD(d)}</span><span class="pay-n">${esc(p.name)}<span class="meta">${esc(bankShort(p.bank))}</span></span><span class="pay-a num">${money(p.amount)}</span></div>`).join('');
+  const open = tbOpen();
+  const rows = up.map(({ p, d }) => {
+    const cd = payCoverCD(p, d, open); // the bank is shown on the right, so the tag only names the date
+    const st = cd ? `<span class="pay-st ok">${icon('check')}CD matures ${payMD(cd.maturity)}</span>` : '<span class="pay-st no">! Nothing matures before it</span>';
+    return `<div class="pay-row"><span class="pay-d num">${payMD(d)}</span><span class="pay-n">${esc(p.name)}</span><span class="pay-a num">${money(p.amount)}</span><span class="pay-s">${st}</span><span class="pay-b">${esc(bankShort(p.bank))}</span></div>`;
+  }).join('');
   return `<section class="card pay-card"><div class="row-between pay-head"><b>Upcoming payments</b><button class="link-btn" data-act="pay-list">${payItems().length ? 'Edit' : 'Add'}</button></div>
     ${rows || '<div class="meta pay-empty">Bills you need to keep cash for, like property tax or insurance.</div>'}</section>`;
 }
