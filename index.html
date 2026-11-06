@@ -835,8 +835,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '24.6';
-const APP_BUILD = '202611060039'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '24.7';
+const APP_BUILD = '202611060005'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1900,6 +1900,8 @@ const TB_WARN = '<span class="tb-warn" aria-hidden="true">!</span>';
 function tbWarn(t) { return tbNeedsIncome(t) || tbNeedsCal(t) ? TB_WARN : ''; }
 function tbWarnChip() { return tbDone().some(tbNeedsIncome) ? TB_WARN : ''; }
 function tbWarnOpenChip() { return tbOpen().some(tbNeedsCal) ? TB_WARN : ''; }
+// Outer level (home card title, menu link): any open one not yet added to Calendar/Reminders, or matured interest not recorded
+function tbWarnAny() { return tbOpen().some(tbNeedsCal) || tbDone().some(tbNeedsIncome) ? TB_WARN : ''; }
 // Matured list view: by month, this year — every time the app opens; the ≡ menu changes it until then
 function tbView(k) { return (S.tbView ||= { tbBy: 'date', tbPer: 'year' })[k]; }
 function tbDays(t) { return Math.max(1, Math.round((parseYmd(t.maturity) - parseYmd(t.buyDate)) / 864e5)); }
@@ -2020,7 +2022,7 @@ function reimbLine() {
 }
 function cardTbills() {
   const open = tbOpen(); const st = tbYearStats();
-  const head = `<div class="card-head"><div><button class="link-plain" data-act="go-tbills"><p class="h2">T-Bills & CDs</p></button><div class="meta">${open.length} open · ${money(open.reduce((n, t) => n + t.amount, 0))} invested</div></div>
+  const head = `<div class="card-head"><div><button class="link-plain" data-act="go-tbills"><p class="h2">T-Bills & CDs${tbWarnAny()}</p></button><div class="meta">${open.length} open · ${money(open.reduce((n, t) => n + t.amount, 0))} invested</div></div>
     ${updSpan(updatedText(tbAccs()))}<button class="icon-btn" data-act="tb-menu" aria-label="T-Bills options">${icon('more_horiz')}</button></div>`;
   if (!tbList().length) return `<section class="card">${head}<div class="meta" style="margin:6px 0 10px">Track each T-bill or CD: when it matures, what came back, the real APY.</div><button class="pill-btn" data-act="go-tbills">${icon('savings')}Get started</button></section>`;
   return `<section class="card">${head}
@@ -2196,7 +2198,7 @@ function tbNextLine(a) {
   if (!isInvest(a)) return '';
   const n = tbOpen().filter((t) => t.accountId === a.id);
   if (!n.length) return '';
-  return `<span class="meta nw-next" data-act="go-tbills">Next: <b>${mdy(n[0].maturity)}</b> · ${money(n[0].amount)}${n.length > 1 ? ` · +${n.length - 1}` : ''}</span>`;
+  return `<span class="meta nw-next" data-act="go-tbills">Next: <b>${mdy(n[0].maturity)}</b> · ${money(n[0].amount)}${n.length > 1 ? ` · +${n.length - 1}` : ''}${n.some(tbNeedsCal) ? TB_WARN : ''}</span>`;
 }
 // ---- detail ----
 function sheetTbView() {
@@ -3248,7 +3250,7 @@ function openDrawer() {
     <a href="#/labels" data-act="drawer-link">${icon('sell')}Labels</a>
     <a href="#/filters" data-act="drawer-link">${icon('filter_alt')}Filters</a>
     <a href="#/rules" data-act="drawer-link">${icon('bolt')}Automatic Rules</a>
-    <a href="#/tbills" data-act="drawer-link">${icon('savings')}T-Bills & CDs</a>
+    <a href="#/tbills" data-act="drawer-link">${icon('savings')}T-Bills & CDs${tbWarnAny()}</a>
     <div class="drawer-sep"></div>
     <button data-act="logout">${icon('logout')}Sign out</button>
     <button data-act="check-update">${icon('system_update')}Check for updates</button>
