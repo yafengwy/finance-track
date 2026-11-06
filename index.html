@@ -835,8 +835,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '24.8';
-const APP_BUILD = '202611060210'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '24.9';
+const APP_BUILD = '202611061023'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2063,7 +2063,7 @@ const payMD = (d) => shortDate(d).replace(/, \d{4}$/, '');
 // "Keep $X" on the CD from the same bank that matures last before each due date in the next year
 // What an open CD pays out at maturity (principal grown at the expected APY; principal alone if no APY)
 function tbAtMaturity(t) { return t.expApy != null ? t.amount * (1 + t.expApy / 100) ** (tbDays(t) / 365) : t.amount; }
-// Each upcoming payment → the CD that pays it (last one of that bank maturing before the due date) and how much is short.
+// Each upcoming payment → the CD that pays it (last one of that bank maturing on or before the due date) and how much is short.
 // Payments draw on the CD in date order, so two bills on one CD can't both count its full payout.
 function payPlan(open = tbOpen()) {
   const left = {};
@@ -2083,15 +2083,15 @@ function payKeepMap(plan = payPlan()) {
   });
   return map;
 }
-// The CD from the payment's bank that matures last before the due date (its money pays the bill), or null
+// The CD from the payment's bank that matures last on or before the due date (its money pays the bill), or null
 function payCoverCD(p, d, open = tbOpen()) {
-  const cds = open.filter((t) => t.maturity < d && bankOf(S.accounts[t.accountId]) === p.bank);
+  const cds = open.filter((t) => t.maturity <= d && bankOf(S.accounts[t.accountId]) === p.bank); // maturing on the due date itself counts too
   return cds.length ? cds.reduce((a, b) => (b.maturity > a.maturity ? b : a)) : null;
 }
 function payCard() {
   const rows = payPlan().map(({ p, d, cd, short }) => {
     // the bank is shown on the right, so the tag only names the date
-    const st = !cd ? '<span class="pay-st no">! Nothing matures before it</span>'
+    const st = !cd ? '<span class="pay-st no">! Nothing matures by then</span>'
       : short > 0 ? `<span class="pay-st no">! Short ${money(short)}</span>`
       : `<span class="pay-st ok">${icon('check')}CD matures ${payMD(cd.maturity)}</span>`;
     return `<div class="pay-row"><span class="pay-d num">${payMD(d)}</span><span class="pay-n">${esc(p.name)}</span><span class="pay-a num">${money(p.amount)}</span><span class="pay-s">${st}</span><span class="pay-b">${esc(bankShort(p.bank))}</span></div>`;
