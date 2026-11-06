@@ -835,8 +835,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '24.4';
-const APP_BUILD = '202611060008'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '24.5';
+const APP_BUILD = '202611060014'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2356,7 +2356,7 @@ function tbCalendar(id) {
   const a = document.createElement('a'); a.href = url; a.download = `tbill-${t.maturity}.ics`; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
-// ---- Apple Reminders: runs the iPhone shortcut "CD Reminder" with 3 lines of text: title / due "April 27, 2027 at 9:00 AM" / notes.
+// ---- Apple Reminders: runs the iPhone shortcut "CD Reminder" with 3 lines of text: title / due "Apr 27, 2027 at 09:00" / notes.
 // A reminder stays on the list until it's checked off, so a missed day doesn't drop it like a calendar alert would.
 const TB_SHORTCUT = 'CD Reminder';
 function tbReminderUrl(t) {
@@ -2365,7 +2365,7 @@ function tbReminderUrl(t) {
   const keep = (payKeepMap()[t.id] || []).map((k) => k.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&'));
   const notes = one([`Bought ${mdy(t.buyDate)}${t.expApy != null ? ` at ${t.expApy}%` : ''}`, ...keep, t.notes ? `Notes: ${t.notes}` : ''].filter(Boolean).join(' · '));
   const [y, m, d] = t.maturity.split('-').map(Number);
-  const due = `${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][m - 1]} ${d}, ${y} at 9:00 AM`; // spelled out: Shortcuts' "Get Dates" reads this reliably, not ISO
+  const due = `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${d}, ${y} at 09:00`; // the iPhone's own date format (Medium date, 24-hour time), e.g. "Sep 15, 2026 at 09:41"
   const text = [title, due, notes].join('\n');
   return `shortcuts://run-shortcut?name=${encodeURIComponent(TB_SHORTCUT)}&input=text&text=${encodeURIComponent(text)}`;
 }
