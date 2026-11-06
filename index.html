@@ -835,8 +835,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '24.7';
-const APP_BUILD = '202611060005'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '24.8';
+const APP_BUILD = '202611060210'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2346,15 +2346,16 @@ async function tbEditSave() {
   const back = d.id; S.tbDraft = null; closeSheet(); toast('Saved');
   if (back) setTimeout(() => sheetTbill(back), 300);
 }
+const TB_ALERT = '❗❗❗'; // start of the Calendar / Reminders title, e.g. "❗❗❗Chase CD $16,699.64"
 // ---- calendar reminder (.ics): all-day event on the maturity date, alert at 9 AM that day ----
 function tbCalendar(id) {
   const t = S.tbills[id]; if (!t) return;
   const d = t.maturity.replace(/-/g, ''); const next = ymd(addDays(parseYmd(t.maturity), 1)).replace(/-/g, '');
-  const title = `CD matures: ${tbAccName(t)} ${money(t.amount)}`;
+  const title = `${TB_ALERT}${tbAccName(t)} ${money(t.amount)}`;
   const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Finance Track//EN', 'BEGIN:VEVENT', `UID:tbill-${t.id}@finance-track`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
     `DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${next}`, `SUMMARY:${title}`, `DESCRIPTION:Bought ${mdy(t.buyDate)}${t.expApy != null ? ` at ${t.expApy}%` : ''}.${t.notes ? ' Notes: ' + t.notes.replace(/[,;\n]/g, ' ') : ''}`,
     'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${title}`, 'TRIGGER;RELATED=START:PT9H', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
-  const blob = new Blob([ics], { type: 'text/calendar' }); const url = URL.createObjectURL(blob);
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' }); const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = `tbill-${t.maturity}.ics`; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
@@ -2363,7 +2364,7 @@ function tbCalendar(id) {
 const TB_SHORTCUT = 'CD Reminder';
 function tbReminderUrl(t) {
   const one = (x) => String(x).replace(/\s*\n\s*/g, ' ').trim();
-  const title = one(`CD matures: ${tbAccName(t)} ${money(t.amount)}`);
+  const title = one(`${TB_ALERT}${tbAccName(t)} ${money(t.amount)}`);
   const keep = (payKeepMap()[t.id] || []).map((k) => k.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&'));
   const notes = one([`Bought ${mdy(t.buyDate)}${t.expApy != null ? ` at ${t.expApy}%` : ''}`, ...keep, t.notes ? `Notes: ${t.notes}` : ''].filter(Boolean).join(' · '));
   // 9:00 on the maturity date; Reminders rejects an alert time already past, so a CD that matured already gets one in 2 minutes
