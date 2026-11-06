@@ -820,8 +820,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '24.1';
-const APP_BUILD = '202611052242'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '24.2';
+const APP_BUILD = '202611052341'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1868,7 +1868,7 @@ function tbOpen() { return tbList().filter((t) => t.gotBack == null).sort((a, b)
 function tbDone() { return tbList().filter((t) => t.gotBack != null).sort((a, b) => b.maturity.localeCompare(a.maturity)); }
 // Matured with interest, but the interest was never recorded as income (imported ones were entered before; "Already recorded" hides it)
 function tbNeedsIncome(t) { return t.gotBack != null && !t.imported && !t.incomeTxId && !t.incomeSkip && t.gotBack > t.amount; }
-// Open, and "Add to Reminders" never tapped for it (the app can't read Reminders, only whether you tapped the button)
+// Open, and neither "Add to Calendar" nor "Add to Reminders" ever tapped for it (the app can't read Reminders, only whether you tapped the button)
 function tbNeedsCal(t) { return t.gotBack == null && !t.calAdded; }
 const TB_WARN = '<span class="tb-warn" aria-hidden="true">!</span>';
 function tbWarn(t) { return tbNeedsIncome(t) || tbNeedsCal(t) ? TB_WARN : ''; }
@@ -2198,7 +2198,8 @@ function sheetTbill(id) {
     ${!open && t.incomeTxId ? (S.rawById?.[t.incomeTxId] ? `<div class="set-list"><button class="set-item" data-act="tx" data-id="${t.incomeTxId}">${glyph('check', '#34C759')}<span class="n">Recorded as investment income</span><span class="v">${esc(tbCatLabel(S.rawById[t.incomeTxId].categoryId))}</span>${icon('chevron_right')}</button></div>` : `<div class="set-list"><div class="set-item">${glyph('check', '#34C759')}<span class="n">Recorded as investment income</span></div></div>`) : ''}
     ${!open && !t.incomeTxId && t.gotBack > t.amount ? `<button class="pill-btn wide" data-act="tb-mature" data-id="${id}">${tbNeedsIncome(t) ? TB_WARN : icon('receipt_long')}Record +${money(t.gotBack - t.amount)} as investment income</button>` : ''}
     ${tbNeedsIncome(t) ? `<button class="tb-skip" data-act="tb-skip" data-id="${id}">Already recorded elsewhere</button>` : ''}
-    ${open ? `<button class="pill-btn wide" data-act="tb-cal" data-id="${id}">${tbNeedsCal(t) ? TB_WARN : icon('checklist')}Add to Reminders</button>` : ''}
+    ${open ? `<button class="pill-btn wide" data-act="tb-cal" data-kind="cal" data-id="${id}">${tbNeedsCal(t) ? TB_WARN : icon('event_available')}Add to Calendar</button>
+    <button class="pill-btn wide" data-act="tb-cal" data-kind="rem" data-id="${id}">${tbNeedsCal(t) ? TB_WARN : icon('checklist')}Add to Reminders</button>` : ''}
     <button class="pill-btn wide" data-act="tb-edit" data-id="${id}">${icon('edit')}Edit</button>
     ${open ? saveBar('tb-mature', 'Enter amount back', ` data-id="${id}"`) : ''}`, { short: true });
 }
@@ -2316,6 +2317,18 @@ async function tbEditSave() {
   else await setDoc(doc(collection(db, 'tbills')), { ...data, gotBack: null, createdAt: serverTimestamp() });
   const back = d.id; S.tbDraft = null; closeSheet(); toast('Saved');
   if (back) setTimeout(() => sheetTbill(back), 300);
+}
+// ---- calendar reminder (.ics): all-day event on the maturity date, alert at 9 AM that day ----
+function tbCalendar(id) {
+  const t = S.tbills[id]; if (!t) return;
+  const d = t.maturity.replace(/-/g, ''); const next = ymd(addDays(parseYmd(t.maturity), 1)).replace(/-/g, '');
+  const title = `CD matures: ${tbAccName(t)} ${money(t.amount)}`;
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Finance Track//EN', 'BEGIN:VEVENT', `UID:tbill-${t.id}@finance-track`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+    `DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${next}`, `SUMMARY:${title}`, `DESCRIPTION:Bought ${mdy(t.buyDate)}${t.expApy != null ? ` at ${t.expApy}%` : ''}.${t.notes ? ' Notes: ' + t.notes.replace(/[,;\n]/g, ' ') : ''}`,
+    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${title}`, 'TRIGGER;RELATED=START:PT9H', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const blob = new Blob([ics], { type: 'text/calendar' }); const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `tbill-${t.maturity}.ics`; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 // ---- Apple Reminders: runs the iPhone shortcut "CD Reminder" with 3 lines of text: title / due "YYYY-MM-DD 09:00" / notes.
 // A reminder stays on the list until it's checked off, so a missed day doesn't drop it like a calendar alert would.
@@ -4368,7 +4381,7 @@ document.addEventListener('click', async (e) => {
         break;
       }
       case 'tb-del': if (confirm('Delete this T-bill? Its income record (if any) stays.')) { await deleteDoc(doc(db, 'tbills', id)); S.tbDraft = null; closeSheet(); toast('Deleted'); } break;
-      case 'tb-cal': tbReminder(id); if (S.tbills[id] && !S.tbills[id].calAdded) { S.tbills[id].calAdded = true; updateDoc(doc(db, 'tbills', id), { calAdded: true }).catch((e) => toast('Could not save: ' + errMsg(e))); sheetTbill(id); render(); } break;
+      case 'tb-cal': if (el.dataset.kind === 'cal') tbCalendar(id); else tbReminder(id); if (S.tbills[id] && !S.tbills[id].calAdded) { S.tbills[id].calAdded = true; updateDoc(doc(db, 'tbills', id), { calAdded: true }).catch((e) => toast('Could not save: ' + errMsg(e))); sheetTbill(id); render(); } break;
       case 'tb-mature': S.tbMat = null; sheetTbMature(id); break;
       case 'pay-list': S.payDraft = null; sheetPayList(); break;
       case 'pay-edit': S.payDraft = null; sheetPayEdit(id || null); break;
