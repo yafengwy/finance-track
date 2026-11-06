@@ -13,7 +13,11 @@
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,300..600,0..1,0&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,300..600,0..1,0&display=block" media="print" onload="this.media='all'">
+<script>
+// Offline copy (sw.js): lets the app open with the last saved data where Google is blocked. Registered here so it works even if the main script can't load.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
 <style>
 :root {
   --brand: #2F9E6E;
@@ -689,7 +693,6 @@ input.row-select { direction: ltr; }
 .ru-note-in { flex: 1; min-width: 0; text-align: right; }
 
 </style>
-<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
 <body>
 <div id="app"></div>
@@ -699,9 +702,9 @@ input.row-select { direction: ltr; }
 <div id="update"></div>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import {
-  getFirestore, collection, doc, onSnapshot, getDocs, query, where, orderBy, writeBatch, updateDoc, setDoc, deleteDoc, deleteField,
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, onSnapshot, getDocs, query, where, orderBy, writeBatch, updateDoc, setDoc, deleteDoc, deleteField,
   arrayUnion, arrayRemove, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js';
@@ -813,19 +816,31 @@ const DEMO_TX = [
   ['Chase Card Autopay', null, null, 1500, 3000, 2, 'demo_acc_3', true],
 ];
 
+// Sign-in checks with Google when the app opens; where Google is blocked that hangs ~30 s before giving up.
+// Cap it so the app opens with the saved sign-in and data (Firebase keeps you signed in on a network error).
+const AUTH_HOSTS = ['identitytoolkit.googleapis.com', 'securetoken.googleapis.com'];
+const rawFetch = window.fetch.bind(window);
+window.fetch = (url, init = {}) => {
+  let host = ''; try { host = new URL(typeof url === 'string' ? url : url.url, location.href).hostname; } catch {}
+  if (!AUTH_HOSTS.includes(host) || init.signal) return rawFetch(url, init);
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 8000);
+  return rawFetch(url, { ...init, signal: ctl.signal }).finally(() => clearTimeout(t));
+};
 const fb = initializeApp(firebaseConfig);
-const auth = getAuth(fb);
-const db = getFirestore(fb);
+// Email sign-in only, so no popup/redirect helper (it loads a page from firebaseapp.com, also blocked in China)
+const auth = initializeAuth(fb, { persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence] });
+// Data is also kept on the device: it shows at once on open, and offline (e.g. in China without VPN) the last synced data still shows
+const db = initializeFirestore(fb, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
 const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '24.3';
-const APP_BUILD = '202611052344'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '24.4';
+const APP_BUILD = '202611060008'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
-  catsLoaded: false, rulesLoaded: false, txLoaded: false, seeding: false, applying: false,
+  catsLoaded: false, rulesLoaded: false, txLoaded: false, seeding: false, applying: false, cached: {},
   expanded: new Set(), txFilter: 'all', unsub: [], loadAll: false, txUnsub: null, search: '',
   picker: null, pickOpen: new Set(), edit: null, sameMerchant: true,
   msel: new Set(), mselOpen: new Set(), instant: {}, cardEdit: null,
@@ -1102,8 +1117,13 @@ function pctHtml(p, side) {
 
 // ---------- data ----------
 function listen() {
-  S.unsub.forEach((u) => u()); S.unsub = [];
-  const watch = (name, key, after) => S.unsub.push(onSnapshot(collection(db, name), (snap) => {
+  S.unsub.forEach((u) => u()); S.unsub = []; S.cached = {};
+  clearTimeout(S.offlineTimer); S.offlineTimer = setTimeout(() => { if (isCached()) toast('Offline · Showing saved data', 4000); }, 10000);
+  // includeMetadataChanges: also hear when saved (cached) data is confirmed by the server, so jobs that write wait for live data
+  const watch = (name, key, after) => S.unsub.push(onSnapshot(collection(db, name), { includeMetadataChanges: true }, (snap) => {
+    const cached = snap.metadata.fromCache;
+    if (S.cached[name] === cached && !snap.docChanges().length) return; // only a pending-write flag changed: nothing to redraw
+    S.cached[name] = cached;
     S[key] = {}; snap.forEach((d) => { S[key][d.id] = { id: d.id, ...d.data() }; });
     if (after) after(snap); render();
   }, onErr));
@@ -1111,24 +1131,29 @@ function listen() {
   watch('categories', 'cats', () => { S.catsLoaded = true; });
   watch('accounts', 'accounts', () => {
     Object.values(S.accounts).forEach((a) => { if (a.mergedInto) delete S.accounts[a.id]; }); // an old card merged into its replacement
-    rebuildTxs(); saveBalanceSnapshot();
+    rebuildTxs(); if (!S.cached.accounts) saveBalanceSnapshot(); // saved balances may be old: don't record them as today's
   });
   watch('labels', 'labels');
   watch('tbills', 'tbills', () => { S.tbLoaded = true; });
   watch('chartNotes', 'chartNotes');
   watch('filters', 'filters');
-  watch('rules', 'rules', () => { S.rulesLoaded = true; mergeDupRules(); scheduleRules(); });
+  watch('rules', 'rules', () => { S.rulesLoaded = true; if (!S.cached.rules) mergeDupRules(); scheduleRules(); });
   watch('items', 'items');
   watch('meta', 'meta');
   if (Object.keys(CARDS).some((c) => prevRange(rangeOf(getPeriod(c)))[0] < loadedSince())) S.loadAll = true;
   subscribeTx();
 }
+// Any list still showing only the saved copy (not yet confirmed by the server)
+function isCached() { return Object.values(S.cached || {}).some(Boolean); }
 function loadedSince() { return `${new Date().getFullYear() - 1}-01-01`; }
 function subscribeTx() {
   if (S.txUnsub) S.txUnsub();
   const col = collection(db, 'transactions');
   const q = S.loadAll ? query(col, orderBy('date', 'desc')) : query(col, where('date', '>=', loadedSince()), orderBy('date', 'desc'));
-  S.txUnsub = onSnapshot(q, (snap) => {
+  S.txUnsub = onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
+    const cached = snap.metadata.fromCache;
+    if (S.cached.transactions === cached && !snap.docChanges().length) return;
+    S.cached.transactions = cached;
     S.raw = []; S.rawById = {};
     snap.forEach((d) => { const t = { id: d.id, ...d.data() }; S.raw.push(t); S.rawById[t.id] = t; });
     rebuildTxs();
@@ -1320,6 +1345,7 @@ let rulesTimer;
 function scheduleRules() { clearTimeout(rulesTimer); rulesTimer = setTimeout(() => applyRules(false), 800); }
 async function applyRules(all) {
   if (S.applying || !S.rulesLoaded || !S.txLoaded || !ruleList().length) return 0;
+  if (!all && (S.cached.rules || S.cached.transactions)) return 0; // automatic run waits for live data (it runs again when it arrives)
   const cands = S.txs.filter((t) => !t.manual && !t.parentId && (all || !t.ruled || autoTransferred(t))); // bank-marked transfers are checked again (a new rule may give them a category)
   if (!cands.length) return 0;
   S.applying = true; let changed = 0;
@@ -4214,7 +4240,18 @@ async function openLink(itemId, accountSelection = false) {
     startLink(data.linkToken, itemId, null);
   } catch (e) { toast('Could not open: ' + errMsg(e)); }
 }
-function startLink(token, itemId, receivedRedirectUri) {
+// Plaid's script loads only when a bank connection opens (a blocked or slow cdn.plaid.com no longer holds up the app)
+let plaidLoad = null;
+function loadPlaid() {
+  if (window.Plaid) return Promise.resolve();
+  return (plaidLoad ||= new Promise((ok, fail) => {
+    const sc = document.createElement('script'); sc.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+    sc.onload = ok; sc.onerror = () => { plaidLoad = null; fail(new Error('Could not load Plaid')); };
+    document.head.appendChild(sc);
+  }));
+}
+async function startLink(token, itemId, receivedRedirectUri) {
+  try { await loadPlaid(); } catch (e) { toast(errMsg(e)); return; }
   const handler = window.Plaid.create({
     token,
     receivedRedirectUri: receivedRedirectUri || undefined,
