@@ -820,8 +820,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '24.0';
-const APP_BUILD = '202611052238'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '24.1';
+const APP_BUILD = '202611052242'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2317,9 +2317,9 @@ async function tbEditSave() {
   const back = d.id; S.tbDraft = null; closeSheet(); toast('Saved');
   if (back) setTimeout(() => sheetTbill(back), 300);
 }
-// ---- Apple Reminders: runs the iPhone shortcut "FT Reminder" with 3 lines of text: title / due "YYYY-MM-DD 09:00" / notes.
+// ---- Apple Reminders: runs the iPhone shortcut "CD Reminder" with 3 lines of text: title / due "YYYY-MM-DD 09:00" / notes.
 // A reminder stays on the list until it's checked off, so a missed day doesn't drop it like a calendar alert would.
-const TB_SHORTCUT = 'FT Reminder';
+const TB_SHORTCUT = 'CD Reminder';
 function tbReminderUrl(t) {
   const one = (x) => String(x).replace(/\s*\n\s*/g, ' ').trim();
   const title = one(`CD matures: ${tbAccName(t)} ${money(t.amount)}`);
