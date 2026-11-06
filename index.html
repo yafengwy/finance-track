@@ -835,8 +835,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '24.5';
-const APP_BUILD = '202611060014'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '24.6';
+const APP_BUILD = '202611060039'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2364,8 +2364,11 @@ function tbReminderUrl(t) {
   const title = one(`CD matures: ${tbAccName(t)} ${money(t.amount)}`);
   const keep = (payKeepMap()[t.id] || []).map((k) => k.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&'));
   const notes = one([`Bought ${mdy(t.buyDate)}${t.expApy != null ? ` at ${t.expApy}%` : ''}`, ...keep, t.notes ? `Notes: ${t.notes}` : ''].filter(Boolean).join(' · '));
-  const [y, m, d] = t.maturity.split('-').map(Number);
-  const due = `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${d}, ${y} at 09:00`; // the iPhone's own date format (Medium date, 24-hour time), e.g. "Sep 15, 2026 at 09:41"
+  // 9:00 on the maturity date; Reminders rejects an alert time already past, so a CD that matured already gets one in 2 minutes
+  let at = parseYmd(t.maturity); at.setHours(9, 0, 0, 0);
+  if (at.getTime() < Date.now() + 60e3) { at = new Date(Date.now() + 120e3); at.setSeconds(0, 0); }
+  const p2 = (n) => String(n).padStart(2, '0');
+  const due = `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][at.getMonth()]} ${at.getDate()}, ${at.getFullYear()} at ${p2(at.getHours())}:${p2(at.getMinutes())}`; // the iPhone's own format, e.g. "Sep 15, 2026 at 09:41"
   const text = [title, due, notes].join('\n');
   return `shortcuts://run-shortcut?name=${encodeURIComponent(TB_SHORTCUT)}&input=text&text=${encodeURIComponent(text)}`;
 }
