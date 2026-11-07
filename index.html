@@ -835,8 +835,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '24.9';
-const APP_BUILD = '202611061023'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '25.0';
+const APP_BUILD = '202611062021'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2346,7 +2346,7 @@ async function tbEditSave() {
   const back = d.id; S.tbDraft = null; closeSheet(); toast('Saved');
   if (back) setTimeout(() => sheetTbill(back), 300);
 }
-const TB_ALERT = '❗❗❗'; // start of the Calendar / Reminders title, e.g. "❗❗❗Chase CD $16,699.64"
+const TB_ALERT = '❗❗'; // start of the Calendar / Reminders title, e.g. "❗❗Chase CD $16,699.64"
 // ---- calendar reminder (.ics): all-day event on the maturity date, alert at 9 AM that day ----
 function tbCalendar(id) {
   const t = S.tbills[id]; if (!t) return;
