@@ -492,6 +492,12 @@ input.row-select { direction: ltr; }
 .update-bar { position: fixed; left: 50%; transform: translateX(-50%); top: calc(var(--safe-top) + 8px); z-index: 40; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 10px 16px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; box-shadow: 0 4px 16px rgba(52,120,246,.35); white-space: nowrap; }
 .update-bar .ms { font-size: 18px; }
 .top-row.in-list { padding: 6px 14px; }
+/* Rule "View records" list: tick which past records the rule changes */
+.ru-pick { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); }
+.ru-pick > input { flex: none; width: 20px; height: 20px; margin: 0; }
+.ru-pick > .top-row { flex: 1; min-width: 0; border-top: 0; }
+.ru-sel-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 0 10px; }
+.ru-sel-bar .meta { flex: 1 1 100%; }
 .list .top-row.in-list:first-child { border-top: 0; }
 .card .link-btn { align-self: center; font-size: 13px; }
 .card .link-btn.show-more { align-self: flex-start; padding: 8px 0; font-size: 14px; font-weight: 600; letter-spacing: .3px; }
@@ -835,8 +841,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '25.2';
-const APP_BUILD = '202611170541'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '25.3';
+const APP_BUILD = '202611170552'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -4033,7 +4039,10 @@ function rulePastMatches(d) {
   if (r.field === 'merchant' && !(r.merchants || []).length) return [];
   return S.txs.filter((t) => !t.manual && !t.parentId && !t.categoryId && (!t.isTransfer || autoTransferred(t)) && ruleMatches(r, t));
 }
-function rulePastText(n) { return `Also apply to ${n} past uncategorized record${n === 1 ? '' : 's'}`; }
+function rulePastText(n, sel = n) { return `Also apply to ${sel < n ? `${sel} of ` : ''}${n} past uncategorized record${n === 1 ? '' : 's'}`; }
+// Past records you unticked in "View records" (the rule leaves them alone when saved); ticked = default
+function ruSkip(d, k) { return (d[k === 'over' ? 'skipOver' : 'skipPast'] ||= new Set()); }
+function ruPicked(d, k) { const sk = ruSkip(d, k); return (k === 'over' ? rulePastCatMatches(d) : rulePastMatches(d)).filter((t) => !sk.has(t.id)); }
 // Past bank records that already have a (different) category but match this rule — only changed when you switch it on
 function rulePastCatMatches(d) {
   const r = draftRule(d); if (r.field === 'description' && !r.keywords.length) return [];
@@ -4043,11 +4052,11 @@ function rulePastCatMatches(d) {
   const changes = (t) => (r.categoryId && (t.categoryId !== r.categoryId || t.isTransfer)) || (r.labelId && S.labels[r.labelId] && !(t.labels || []).includes(r.labelId)) || (r.transfer && !t.isTransfer) || (r.note && !(t.note || '').trim());
   return S.txs.filter((t) => !t.manual && !t.parentId && (t.categoryId || t.isTransfer) && ruleMatches(r, t) && changes(t));
 }
-function ruleOverText(n) { return `Also update ${n} past record${n === 1 ? '' : 's'} that ${n === 1 ? 'is' : 'are'} already sorted`; }
+function ruleOverText(n, sel = n) { return `Also update ${sel < n ? `${sel} of ` : ''}${n} past record${n === 1 ? '' : 's'} that ${n === 1 ? 'is' : 'are'} already sorted`; }
 function refreshRuleCounts() {
   const d = S.ruleDraft; if (!d) return;
-  const a = $('ru-past-n'); if (a) a.textContent = rulePastText(rulePastMatches(d).length);
-  const b = $('ru-over-n'); if (b) b.textContent = ruleOverText(rulePastCatMatches(d).length);
+  const a = $('ru-past-n'); if (a) a.textContent = rulePastText(rulePastMatches(d).length, ruPicked(d, 'past').length);
+  const b = $('ru-over-n'); if (b) b.textContent = ruleOverText(rulePastCatMatches(d).length, ruPicked(d, 'over').length);
 }
 // Tapping a past-records line in a rule: see exactly which records it covers, newest first, grouped by month, with a search box
 function ruListRows() {
@@ -4057,15 +4066,19 @@ function ruListRows() {
   if (q) txs = txs.filter((t) => matchSearch(t, q));
   if (!txs.length) return `<div class="empty">${all ? 'No matching records' : 'No records'}</div>`;
   const total = txs.reduce((n, t) => n + t.amount, 0);
+  const pick = L.k === 'past' || L.k === 'over'; const sk = pick ? ruSkip(d, L.k) : null;
   let out = `<div class="row-between rec-sum"><span class="meta">${q ? `${txs.length} of ${all}` : all} record${all === 1 ? '' : 's'}</span><span class="num">Σ ${money(total, true)}</span></div>`;
+  if (pick) out += `<div class="ru-sel-bar"><span class="meta" id="ru-sel-n">${ruSelText(d, L.k)}</span><button class="pill-btn small" data-act="ru-sel-all" data-v="1">${icon('done_all')}Select all</button><button class="pill-btn small" data-act="ru-sel-all" data-v="0">${icon('remove_done')}Deselect all</button></div>`;
   let mon = '';
   txs.forEach((t) => {
     const m = t.date.slice(0, 7);
     if (m !== mon) { mon = m; out += `<div class="sec-head">${new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })}</div>`; }
-    out += txRowHtml(t, 'top-row', 'rulelist'); // tap for details; closing or saving comes back here
+    const row = txRowHtml(t, 'top-row', 'rulelist'); // tap for details; closing or saving comes back here
+    out += pick ? `<div class="ru-pick"><input type="checkbox" data-rusel="${t.id}" ${sk.has(t.id) ? '' : 'checked'} aria-label="Apply the rule to this record">${row}</div>` : row;
   });
   return out;
 }
+function ruSelText(d, k) { const n = (k === 'over' ? rulePastCatMatches(d) : rulePastMatches(d)).length; const sel = ruPicked(d, k).length; const on = k === 'over' ? d.overwrite : d.applyPast; return `${sel} of ${n} selected · ${on ? 'Saving changes only these' : 'Turn the switch on to apply'}`; }
 function sheetRuleList() {
   const L = S.ruList; S.back = null;
   openSheet(`<h3>${L.k === 'conflict' ? 'Records matching both rules' : L.k === 'over' ? 'Already sorted records' : 'Uncategorized records'}</h3>
@@ -4139,8 +4152,8 @@ function renderRule() {
       <label class="set-item">${glyph('swap_horiz', '#8E8E93')}<span class="n">Mark as transfer</span><input type="checkbox" class="switch" id="ru-tr" ${d.transfer ? 'checked' : ''}></label>
       ${d.preferred || ruleConflictList(d).length ? `<label class="set-item">${glyph('star', '#FF9500')}<span class="n">Preferred<div class="meta">When rules give a record different categories, this rule’s category is used, with no red !</div></span><input type="checkbox" class="switch" id="ru-pref" ${d.preferred ? 'checked' : ''}></label>` : ''}
     </div>
-    <div class="set-list"><div class="set-item">${glyph('history', '#8E8E93')}<button class="n ru-list-btn" data-act="ru-list" data-k="past"><span id="ru-past-n">${rulePastText(rulePastMatches(d).length)}</span><span class="ru-view">View records ›</span></button><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''} aria-label="Apply to past uncategorized records"></div>
-      <div class="set-item">${glyph('published_with_changes', '#FF9500')}<button class="n ru-list-btn" data-act="ru-list" data-k="over"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length)}</span><div class="meta">Off by default. Records with a category, and transfers. Gives them this rule’s category and label; a record given a category stops being a transfer.</div><span class="ru-view">View records ›</span></button><input type="checkbox" class="switch" id="ru-over" aria-label="Update already sorted records" ${d.overwrite ? 'checked' : ''}></div></div>
+    <div class="set-list"><div class="set-item">${glyph('history', '#8E8E93')}<button class="n ru-list-btn" data-act="ru-list" data-k="past"><span id="ru-past-n">${rulePastText(rulePastMatches(d).length, ruPicked(d, 'past').length)}</span><span class="ru-view">View records ›</span></button><input type="checkbox" class="switch" id="ru-past" ${d.applyPast ? 'checked' : ''} aria-label="Apply to past uncategorized records"></div>
+      <div class="set-item">${glyph('published_with_changes', '#FF9500')}<button class="n ru-list-btn" data-act="ru-list" data-k="over"><span id="ru-over-n">${ruleOverText(rulePastCatMatches(d).length, ruPicked(d, 'over').length)}</span><div class="meta">Off by default. Records with a category, and transfers. Gives them this rule’s category and label; a record given a category stops being a transfer.</div><span class="ru-view">View records ›</span></button><input type="checkbox" class="switch" id="ru-over" aria-label="Update already sorted records" ${d.overwrite ? 'checked' : ''}></div></div>
     ${ruleConflictHtml(d)}
     ${d.id ? `<button class="pill-btn danger wide" data-act="del-rule" data-id="${d.id}">${icon('delete')}Delete rule</button>` : ''}
     ${saveBar('save-rule', 'Save')}`);
@@ -4160,7 +4173,7 @@ async function saveRule() {
   // The record the rule was opened from: you picked this rule for it, so it gets the rule's result even if it has another category
   const src = d.fromTx ? S.txById[d.fromTx] : null;
   const srcOn = !!src && !src.manual && !src.parentId && ruleMatches(data, src);
-  const past = [...(d.applyPast ? rulePastMatches(d) : []), ...(d.overwrite ? rulePastCatMatches(d) : [])].filter((t) => !srcOn || t.id !== src.id);
+  const past = [...(d.applyPast ? ruPicked(d, 'past') : []), ...(d.overwrite ? ruPicked(d, 'over') : [])].filter((t) => !srcOn || t.id !== src.id); // only the ticked ones
   // Records this rule is in conflict on right now (uncategorized): if the saved rule settles them (e.g. made preferred), they get the category at once
   const cfBefore = data.categoryId ? S.txs.filter((t) => !t.categoryId && isConflict(t) && ruleMatches(data, t) && !past.includes(t) && !(srcOn && t.id === src.id)) : [];
   // Same account and same actions as an existing rule → just add the keywords to that rule
@@ -4178,8 +4191,9 @@ async function saveRule() {
     const b = writeBatch(db);
     past.slice(i, i + 450).forEach((t) => {
       const u = { ruled: true };
-      const clash = !!data.categoryId && ruleVerdict(t, after).cat !== data.categoryId; if (clash) held++;
-      if (!clash && data.categoryId && S.cats[data.categoryId]) { u.categoryId = data.categoryId; if (!data.transfer) u.isTransfer = false; }
+      // Ticked by you in the list: it gets this rule's category even where another rule disagrees (and stops being flagged as a conflict)
+      const clash = !!data.categoryId && ruleVerdict(t, after).cat !== data.categoryId;
+      if (data.categoryId && S.cats[data.categoryId]) { u.categoryId = data.categoryId; if (!data.transfer) u.isTransfer = false; if (clash) u.conflictOk = true; }
       if (data.labelId && S.labels[data.labelId] && !(t.labels || []).includes(data.labelId)) u.labels = [...(t.labels || []), data.labelId];
       if (data.transfer) u.isTransfer = true;
       if (data.note && !(t.note || '').trim()) u.note = data.note;
@@ -4613,6 +4627,8 @@ document.addEventListener('click', async (e) => {
       case 'save-edit': await saveEdit(); break;
       case 'ru-conf': { captureRule(); const x = S.ruConf?.[+el.dataset.i]; if (!x) break; S.ruList = { k: 'conflict', ids: x.ids, q: '', sub: `Also matched by “${ruleText(x.rule).cond}” → ${S.cats[x.rule.categoryId]?.name || ''}.` }; sheetRuleList(); break; }
       case 'ru-list': captureRule(); S.ruList = { k: el.dataset.k, q: '' }; sheetRuleList(); break;
+      case 'ru-sel-all': { const d = S.ruleDraft; const L = S.ruList; if (!d || !L) break; const sk = ruSkip(d, L.k); const q = (L.q || '').trim().toLowerCase();
+        (L.k === 'over' ? rulePastCatMatches(d) : rulePastMatches(d)).filter((t) => !q || matchSearch(t, q)).forEach((t) => (el.dataset.v === '1' ? sk.delete(t.id) : sk.add(t.id))); refreshRuleList(); break; }
       case 'rq-clear': if (S.ruList) S.ruList.q = ''; { const rq = $('rq'); if (rq) rq.value = ''; } refreshRuleList(); focusNow('rq'); break;
       case 'sq-clear': S.sq = ''; const sq = $('sq'); if (sq) sq.value = ''; refreshSearchSheet(); focusNow('sq'); break;
       case 'search-clear': S.search = ''; clearTimeout(searchTimer); render(); break;
@@ -4781,6 +4797,7 @@ document.addEventListener('change', async (e) => {
   if (e.target.dataset.lnksel && S.linkSel) { e.target.checked ? S.linkSel.add(e.target.dataset.lnksel) : S.linkSel.delete(e.target.dataset.lnksel); if ($('lnk-save')) $('lnk-save').textContent = linkLabel(); return; }
   if (e.target.dataset.nwsel && S.nwPickSel) { e.target.checked ? S.nwPickSel.add(e.target.dataset.nwsel) : S.nwPickSel.delete(e.target.dataset.nwsel); if ($('nw-pick-done')) $('nw-pick-done').textContent = nwPickLabel(); return; }
   if (e.target.dataset.rum && S.ruleDraft) { const v = e.target.dataset.rum; const a = (S.ruleDraft.merchants || []).filter((x) => x.toLowerCase() !== v.toLowerCase()); if (e.target.checked) a.push(v); S.ruleDraft.merchants = a; return; }
+  if (e.target.dataset.rusel && S.ruleDraft && S.ruList) { const sk = ruSkip(S.ruleDraft, S.ruList.k); e.target.checked ? sk.delete(e.target.dataset.rusel) : sk.add(e.target.dataset.rusel); if ($('ru-sel-n')) $('ru-sel-n').textContent = ruSelText(S.ruleDraft, S.ruList.k); return; }
   if (e.target.dataset.rubc && S.ruleDraft) { const v = e.target.dataset.rubc; const a = new Set(S.ruleDraft.bankCats || []); e.target.checked ? a.add(v) : a.delete(v); S.ruleDraft.bankCats = [...a]; return; }
   if (e.target.dataset.ruacc && S.ruleDraft) { const id = e.target.dataset.ruacc; const a = new Set(S.ruleDraft.onlyAccs || []); e.target.checked ? a.add(id) : a.delete(id); S.ruleDraft.onlyAccs = [...a]; return; }
   if (e.target.dataset.connPause) { const on = e.target.checked; await updateDoc(doc(db, 'items', e.target.dataset.connPause), { paused: on }); toast(on ? 'Syncing paused' : 'Syncing resumed'); return; }
