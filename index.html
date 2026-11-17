@@ -835,8 +835,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '25.0';
-const APP_BUILD = '202611062021'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '25.1';
+const APP_BUILD = '202611170539'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -4157,6 +4157,8 @@ async function saveRule() {
   if (data.amtMode === 'exact' && !data.amtValues.length) { toast('Enter at least one amount'); return; }
   if (data.amtMode === 'range' && (data.amtMin == null || data.amtMax == null || data.amtMin > data.amtMax)) { toast('Enter a valid amount range'); return; }
   const past = [...(d.applyPast ? rulePastMatches(d) : []), ...(d.overwrite ? rulePastCatMatches(d) : [])];
+  // Records this rule is in conflict on right now (uncategorized): if the saved rule settles them (e.g. made preferred), they get the category at once
+  const cfBefore = data.categoryId ? S.txs.filter((t) => !t.categoryId && isConflict(t) && ruleMatches(data, t) && !past.includes(t)) : [];
   // Same account and same actions as an existing rule → just add the keywords to that rule
   const twin = ruleList().find((r) => r.id !== d.id && sameRuleTarget(r, data));
   if (twin) {
@@ -4181,9 +4183,16 @@ async function saveRule() {
     });
     await b.commit();
   }
+  const settled = cfBefore.map((t) => [t, ruleVerdict(t, after)]).filter(([, v]) => !v.clash && v.cat && S.cats[v.cat]);
+  for (let i = 0; i < settled.length; i += 450) {
+    const b = writeBatch(db);
+    settled.slice(i, i + 450).forEach(([t, v]) => b.update(doc(db, 'transactions', t.id), { categoryId: v.cat, ruled: true, ...(autoTransferred(t) ? { isTransfer: false } : {}) }));
+    await b.commit();
+  }
   S.ruleDraft = null; closeSheet();
   const head = twin ? 'Keywords added to an existing rule' : 'Rule saved';
-  toast(past.length ? `${head} · ${past.length - held} record${past.length - held === 1 ? '' : 's'} updated${held ? ` · ${held} not changed (another rule wins or they conflict)` : ''}` : `${head}. It applies to new records from now on.`, 4000);
+  const nUpd = past.length - held + settled.length;
+  toast(nUpd || held ? `${head} · ${nUpd} record${nUpd === 1 ? '' : 's'} updated${settled.length ? ` (${settled.length} conflict${settled.length === 1 ? '' : 's'} settled)` : ''}${held ? ` · ${held} not changed (another rule wins or they conflict)` : ''}` : `${head}. It applies to new records from now on.`, 4000);
   backToPopup(); // came from a record in the search results or a card list: go back there
 }
 
