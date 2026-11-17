@@ -129,6 +129,11 @@ button { cursor: pointer; }
 .inv-chg { font-size: 15px; font-weight: 600; margin: 2px 0 8px; }
 .inv-imp { background: var(--bg); border-radius: 12px; padding: 10px 12px; margin: 4px 0 8px; }
 .inv-tip { min-height: 20px; font-size: 13px; }
+/* Touching a chart: date + value, change vs the point before, change from then to today — one label/number pair per line, same small grey size */
+.tip-box { background: var(--bg); border-radius: 10px; padding: 5px 10px; }
+.tip-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; line-height: 17px; }
+.tip-row > .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tip-row.head, .tip-row.head > .num { color: var(--text); font-weight: 600; }
 .inv-wrap { margin: 4px -16px 0; touch-action: pan-y; } /* chart runs edge to edge of the card */
 .bal-chart { width: 100%; height: auto; display: block; }
 .nw-mk { font-size: 9px; font-weight: 700; fill: #fff; pointer-events: none; }
@@ -143,7 +148,7 @@ button { cursor: pointer; }
 .card.nw-hist { gap: 0; }
 .nw-hist .inv-chips { margin-top: 8px; margin-bottom: 11px; }
 .nw-hist .inv-chg { margin: 6.5px 0 10px; }
-.nw-hist .inv-tip { min-height: 30px; } /* room for the note line, so the chart doesn't jump when a dot is tapped */
+.inv-tip.has-rows { min-height: 61px; } /* room for the three lines, so the chart doesn't move under your finger */
 .nw-hist .inv-wrap { margin-top: 1.5px; }
 .nw-hist > .meta:not(.inv-tip) { margin-top: 8px; }
 .nw-pick-per { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; font-weight: 600; margin-bottom: 8px; }
@@ -841,8 +846,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '25.3';
-const APP_BUILD = '202611170552'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '25.4';
+const APP_BUILD = '202611170603'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2520,7 +2525,7 @@ function cardInvest() {
   const since = shortDate(first.d).replace(new RegExp(`, ${new Date().getFullYear()}$`), '');
   const body = pts.length < 2 || first.d === lastP.d
     ? `<div class="meta" style="padding:10px 0">History starts ${esc(shortDate(lastP.d))}. A point is saved every day at the morning sync and whenever you refresh, so the chart fills in from here.</div>`
-    : `<div class="inv-tip meta" id="inv-tip">Touch the chart to see a date</div><div class="inv-wrap">${invChartSvg(pts, color)}</div>`;
+    : `<div class="inv-tip has-rows meta" id="inv-tip">Touch the chart to see a date</div><div class="inv-wrap">${invChartSvg(pts, color)}</div>`;
   return `<section class="card">${head}${invHistBox()}${chips}
     <div class="big num">${money(lastP.v)}</div>
     <div class="inv-chg" style="color:${pts.length > 1 ? color : 'var(--sub)'}">${pts.length > 1 ? `${money(chg, true)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)` : '—'} <span class="meta">since ${esc(since)}</span></div>
@@ -2574,12 +2579,14 @@ function invScrub(e) {
   const px = c.X(best.d); const py = c.Y(best.v);
   $(`${k}-mark`).style.display = ''; $(`${k}-mline`).setAttribute('x1', px); $(`${k}-mline`).setAttribute('x2', px); $(`${k}-mdot`).setAttribute('cx', px); $(`${k}-mdot`).setAttribute('cy', py);
   // Change from the previous point (the Sunday before, or the day before in "This month")
-  const i = c.pts.indexOf(best); const base = c.pts[i - 1];
-  if (!base || base === best) { $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span>`; if (k === 'nw') nwBreakdown(null); return; }
-  const d = best.v - base.v; const pc = base.v ? (d / Math.abs(base.v)) * 100 : 0;
-  const vs = ` <span class="meta">vs ${esc(parseYmd(base.d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</span>`;
-  $(`${k}-tip`).innerHTML = `<b>${esc(shortDate(best.d))}</b> · <span class="num">${money(best.v)}</span> · <span style="color:${d >= 0 ? '#34C759' : '#FF3B30'}">${money(d, true)} (${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%)</span>${vs}`;
-  if (k === 'nw') nwBreakdown(best, base);
+  const i = c.pts.indexOf(best); const base = c.pts[i - 1]; const last = c.pts[c.pts.length - 1];
+  const chg = (a, b) => { const d = a - b; const pc = b ? (d / Math.abs(b)) * 100 : 0; return `<span class="num" style="color:${d >= 0 ? '#34C759' : '#FF3B30'}">${money(d, true)} (${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%)</span>`; };
+  const md = (x) => esc(parseYmd(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  let rows = `<div class="tip-row head"><span>${esc(shortDate(best.d))}</span><span class="num">${money(best.v)}</span></div>`;
+  if (base && base !== best) rows += `<div class="tip-row"><span>Vs ${md(base.d)}</span>${chg(best.v, base.v)}</div>`;
+  if (last && last !== best) rows += `<div class="tip-row"><span>To today</span>${chg(last.v, best.v)}</div>`;
+  $(`${k}-tip`).innerHTML = `<div class="tip-box">${rows}</div>`;
+  if (k === 'nw') { if (base && base !== best) nwBreakdown(best, base); else nwBreakdown(null); }
 }
 document.addEventListener('pointerdown', invScrub);
 document.addEventListener('pointermove', invScrub);
@@ -2784,7 +2791,7 @@ function cardNetWorthChart(accs) {
   const notes = Object.values(S.chartNotes || {}).filter((x) => x.date && x.date >= first.d && x.date <= lastP.d).sort((a, b) => a.date.localeCompare(b.date));
   const body = pts.length < 2 || first.d === lastP.d
     ? `<div class="meta" style="padding:10px 0">History starts ${esc(shortDate(lastP.d))}. A point is saved every day at the morning sync and whenever you refresh, so the chart fills in from here.</div>`
-    : `<div class="inv-tip meta" id="nw-tip">${notes.length ? 'Tap a blue dot to see its note' : 'Touch the chart to see a date'}</div><div class="inv-wrap">${invChartSvg(pts, color, 'nw', notes.map((x, i) => ({ d: x.date, n: i + 1, id: x.id })))}</div>`;
+    : `<div class="inv-tip has-rows meta" id="nw-tip">${notes.length ? 'Tap a blue dot to see its note' : 'Touch the chart to see a date'}</div><div class="inv-wrap">${invChartSvg(pts, color, 'nw', notes.map((x, i) => ({ d: x.date, n: i + 1, id: x.id })))}</div>`;
   const list = '';
   return `<section class="card nw-hist">${head}${chips}
     <div class="big num">${money(lastP.v)}</div>
