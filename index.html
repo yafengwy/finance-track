@@ -835,8 +835,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '25.1';
-const APP_BUILD = '202611170539'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '25.2';
+const APP_BUILD = '202611170541'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -3956,13 +3956,14 @@ function sheetLabel(id) {
 }
 
 // ---- automatic rule editor ----
-function sheetRule(id) {
+// fromTx: opened from a record (its "matches N rules" list) — saving then also applies the rule to that record
+function sheetRule(id, fromTx) {
   const r = id ? S.rules[id] : {};
   const field = r.field || 'description';
   S.ruleDraft = { accNot: !!r.accountsNot, preferred: !!r.preferred, id: id || null, field, kw: [...(r.keywords || [])], kwInput: '', accountId: field === 'account' ? r.accountId || null : null, bankCats: [...ruleBankCats(r)], merchants: [...(r.merchants || [])], onlyAccs: field !== 'account' ? (r.accountIds?.length ? [...r.accountIds] : r.accountId ? [r.accountId] : []) : [],
     categoryId: r.categoryId || null, labelId: r.labelId || null, note: r.note || '', transfer: !!r.transfer, applyPast: !id, overwrite: false,
     amtMode: r.amtMode || 'any', amtList: r.amtValues?.length ? r.amtValues.map(String) : r.amtMin != null && (r.amtMode || 'any') === 'exact' ? [String(r.amtMin)] : [],
-    amtA: (r.amtMode || 'any') === 'range' && r.amtMin != null ? String(r.amtMin) : '', amtB: r.amtMax != null ? String(r.amtMax) : '' };
+    amtA: (r.amtMode || 'any') === 'range' && r.amtMin != null ? String(r.amtMin) : '', amtB: r.amtMax != null ? String(r.amtMax) : '', fromTx: fromTx || null };
   renderRule();
 }
 // Keyword ideas from a bank record: its first word, and the whole name without trailing store numbers
@@ -4106,7 +4107,7 @@ function renderRule() {
   const src = d.fromTx && !d.id ? S.txById[d.fromTx] : null;
   const hits = src ? ruleList().filter((r) => ruleMatches(r, src)) : [];
   const hitHtml = hits.length ? `<div class="rule-hits"><div class="meta">This record already matches ${hits.length === 1 ? 'a rule' : `${hits.length} rules`}. Tap to view, or create a new one below.</div>
-    <div class="set-list">${hits.map((r) => { const t = ruleText(r, true); const c = S.cats[r.categoryId]; return `<button class="set-item" data-act="edit-rule" data-id="${r.id}">${c ? catIcon(c) : glyph(r.transfer ? 'swap_horiz' : 'sell', '#8E8E93')}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`; }).join('')}</div></div>` : '';
+    <div class="set-list">${hits.map((r) => { const t = ruleText(r, true); const c = S.cats[r.categoryId]; return `<button class="set-item" data-act="edit-rule" data-id="${r.id}" data-from="${src.id}">${c ? catIcon(c) : glyph(r.transfer ? 'swap_horiz' : 'sell', '#8E8E93')}<span class="n">${esc(t.cond)}<div class="meta">${esc(t.acts)}</div></span>${icon('chevron_right')}</button>`; }).join('')}</div></div>` : '';
   openSheet(`<h3>${d.id ? 'Edit rule' : 'New rule'}</h3>
     ${hitHtml}
     <div class="sec-head">When</div>
@@ -4156,9 +4157,12 @@ async function saveRule() {
   if (!data.categoryId && !data.labelId && !data.transfer && !data.note) { toast('Choose at least one action'); return; }
   if (data.amtMode === 'exact' && !data.amtValues.length) { toast('Enter at least one amount'); return; }
   if (data.amtMode === 'range' && (data.amtMin == null || data.amtMax == null || data.amtMin > data.amtMax)) { toast('Enter a valid amount range'); return; }
-  const past = [...(d.applyPast ? rulePastMatches(d) : []), ...(d.overwrite ? rulePastCatMatches(d) : [])];
+  // The record the rule was opened from: you picked this rule for it, so it gets the rule's result even if it has another category
+  const src = d.fromTx ? S.txById[d.fromTx] : null;
+  const srcOn = !!src && !src.manual && !src.parentId && ruleMatches(data, src);
+  const past = [...(d.applyPast ? rulePastMatches(d) : []), ...(d.overwrite ? rulePastCatMatches(d) : [])].filter((t) => !srcOn || t.id !== src.id);
   // Records this rule is in conflict on right now (uncategorized): if the saved rule settles them (e.g. made preferred), they get the category at once
-  const cfBefore = data.categoryId ? S.txs.filter((t) => !t.categoryId && isConflict(t) && ruleMatches(data, t) && !past.includes(t)) : [];
+  const cfBefore = data.categoryId ? S.txs.filter((t) => !t.categoryId && isConflict(t) && ruleMatches(data, t) && !past.includes(t) && !(srcOn && t.id === src.id)) : [];
   // Same account and same actions as an existing rule → just add the keywords to that rule
   const twin = ruleList().find((r) => r.id !== d.id && sameRuleTarget(r, data));
   if (twin) {
@@ -4189,9 +4193,19 @@ async function saveRule() {
     settled.slice(i, i + 450).forEach(([t, v]) => b.update(doc(db, 'transactions', t.id), { categoryId: v.cat, ruled: true, ...(autoTransferred(t) ? { isTransfer: false } : {}) }));
     await b.commit();
   }
+  let srcDone = 0;
+  if (srcOn) {
+    const u = { ruled: true };
+    if (data.categoryId && S.cats[data.categoryId]) { u.categoryId = data.categoryId; u.conflictOk = true; if (!data.transfer) u.isTransfer = false; }
+    if (data.labelId && S.labels[data.labelId] && !(src.labels || []).includes(data.labelId)) u.labels = [...(src.labels || []), data.labelId];
+    if (data.transfer) u.isTransfer = true;
+    if (data.note && !(src.note || '').trim()) u.note = data.note;
+    const changes = (u.categoryId && u.categoryId !== src.categoryId) || ('isTransfer' in u && u.isTransfer !== !!src.isTransfer) || u.labels || u.note;
+    if (Object.keys(u).length > 1) { await updateDoc(doc(db, 'transactions', src.id), u); if (changes) srcDone = 1; }
+  }
   S.ruleDraft = null; closeSheet();
   const head = twin ? 'Keywords added to an existing rule' : 'Rule saved';
-  const nUpd = past.length - held + settled.length;
+  const nUpd = past.length - held + settled.length + srcDone;
   toast(nUpd || held ? `${head} · ${nUpd} record${nUpd === 1 ? '' : 's'} updated${settled.length ? ` (${settled.length} conflict${settled.length === 1 ? '' : 's'} settled)` : ''}${held ? ` · ${held} not changed (another rule wins or they conflict)` : ''}` : `${head}. It applies to new records from now on.`, 4000);
   backToPopup(); // came from a record in the search results or a card list: go back there
 }
@@ -4717,7 +4731,7 @@ document.addEventListener('click', async (e) => {
         closeSheet(); toast('Filter deleted'); break;
       }
       case 'add-rule': sheetRule(null); break;
-      case 'edit-rule': sheetRule(id); break;
+      case 'edit-rule': sheetRule(id, el.dataset.from); break;
       case 'save-rule': await saveRule(); break;
       case 'del-rule': if (!confirm('Delete this rule?')) break; await deleteDoc(doc(db, 'rules', id)); closeSheet(); toast('Rule deleted'); break;
       case 'run-rules': { toast('Applying rules…'); const n = await applyRules(true); toast(n ? `Updated ${n} record${n === 1 ? '' : 's'}` : 'No records needed changes'); break; }
