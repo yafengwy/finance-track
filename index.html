@@ -430,23 +430,27 @@ input.row-select { direction: ltr; }
 /* landscape: keep clear of the rounded corners / camera on the sides */
 #app { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 /* iPhone Duo cover screen: the right strip holds the system camera/clock (top) and the app's buttons; content keeps the rest */
-.duo-cover { --duo-w: max(56px, env(safe-area-inset-right, 0px)); }
+.duo-cover { --duo-w: max(44px, env(safe-area-inset-right, 0px)); }
 .duo-cover #app { padding-right: var(--duo-w); max-width: none; margin: 0; padding-bottom: calc(24px + var(--safe-bottom)); }
 .duo-cover header.top:not(.sub) { display: none; }
 .duo-cover #app > .page:first-of-type, .duo-cover #app > .rec-page { padding-top: calc(var(--safe-top) + 12px); }
-.duo-strip { position: fixed; top: 0; right: 0; bottom: 0; width: var(--duo-w); z-index: 8; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: calc(var(--safe-top) + 104px) 0 calc(var(--safe-bottom) + 14px); background: #E6E6EB; }
-.ds-btn { width: 40px; height: 40px; flex: none; border: 0; border-radius: 50%; background: #fff; color: var(--text); display: flex; align-items: center; justify-content: center; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.ds-btn .ms { font-size: 21px; }
-.ds-btn.on { background: var(--accent); color: #fff; }
+.duo-strip { position: fixed; top: 0; right: 0; bottom: 0; width: var(--duo-w); z-index: 8; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: calc(var(--safe-top) + 104px) 0 calc(var(--safe-bottom) + 14px); background: transparent; }
+.ds-btn { width: 34px; height: 34px; flex: none; border: 0; border-radius: 50%; color: var(--text); display: flex; align-items: center; justify-content: center; text-decoration: none;
+  /* frosted glass: the page shows through, blurred */
+  background: rgba(255,255,255,.5); -webkit-backdrop-filter: blur(16px) saturate(1.8); backdrop-filter: blur(16px) saturate(1.8); box-shadow: 0 4px 14px rgba(0,0,0,.14), inset 0 0 0 .6px rgba(255,255,255,.8); }
+.ds-btn .ms { font-size: 19px; }
+.ds-btn.on { background: rgba(37,99,235,.72); color: #fff; }
 .ds-btn.lit { color: var(--accent); }
-.ds-btn.ds-add { background: #2563EB; color: #fff; }
+.ds-btn.ds-add { background: rgba(37,99,235,.8); color: #fff; }
 .ds-gap { flex: 1; }
 .duo-cover .sheet, .duo-cover .scrim { right: var(--duo-w); }
 .duo-cover .sheet { margin: 0; max-width: none; }
 /* Cover screen: everything one size smaller, and cards run edge to edge up to the button strip (no grey margins) */
 .duo-cover #app > .page, .duo-cover #app > header { zoom: .92; }
 .duo-cover #app .page { padding-left: 0; padding-right: 0; }
-.duo-cover #app .card { border-radius: 0; }
+.duo-cover #app .card { border-radius: 0; padding-left: 12px; padding-right: 12px; }
+/* cards and lists run on behind the button strip to the screen edge (their text stays clear of the buttons); ÷ .92 undoes the page zoom */
+.duo-cover #app .card, .duo-cover #app .list { box-shadow: calc(var(--duo-w) / .92) 0 0 0 var(--card); }
 .duo-cover .rec-search { margin-left: 0; margin-right: 0; padding-left: 12px; padding-right: 12px; }
 .duo-cover #app .page > .chips, .duo-cover #app .page > .row-between, .duo-cover #app .page > .meta, .duo-cover #app .rec-sum, .duo-cover #app .day, .duo-cover #app .yr-head, .duo-cover .tb-sum { padding-left: 12px; padding-right: 12px; }
 .duo-cover #app .list { border-radius: 0; }
@@ -846,8 +850,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '25.5';
-const APP_BUILD = '202611180315'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '25.6';
+const APP_BUILD = '202611180319'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
