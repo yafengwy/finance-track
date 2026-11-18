@@ -846,8 +846,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '25.4';
-const APP_BUILD = '202611170603'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '25.5';
+const APP_BUILD = '202611180315'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -2583,8 +2583,9 @@ function invScrub(e) {
   const chg = (a, b) => { const d = a - b; const pc = b ? (d / Math.abs(b)) * 100 : 0; return `<span class="num" style="color:${d >= 0 ? '#34C759' : '#FF3B30'}">${money(d, true)} (${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%)</span>`; };
   const md = (x) => esc(parseYmd(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
   let rows = `<div class="tip-row head"><span>${esc(shortDate(best.d))}</span><span class="num">${money(best.v)}</span></div>`;
-  if (base && base !== best) rows += `<div class="tip-row"><span>Vs ${md(base.d)}</span>${chg(best.v, base.v)}</div>`;
-  if (last && last !== best) rows += `<div class="tip-row"><span>To today</span>${chg(last.v, best.v)}</div>`;
+  // Labels read as "from → to", so + means the later date is higher (same wording as the breakdown below the chart)
+  if (base && base !== best) rows += `<div class="tip-row"><span>${md(base.d)} → ${md(best.d)}</span>${chg(best.v, base.v)}</div>`;
+  if (last && last !== best) rows += `<div class="tip-row"><span>${md(best.d)} → Today</span>${chg(last.v, best.v)}</div>`;
   $(`${k}-tip`).innerHTML = `<div class="tip-box">${rows}</div>`;
   if (k === 'nw') { if (base && base !== best) nwBreakdown(best, base); else nwBreakdown(null); }
 }
