@@ -429,31 +429,13 @@ input.row-select { direction: ltr; }
    Narrower (phone, cover screen 466, inner screen upright 626) keep the single column. */
 /* landscape: keep clear of the rounded corners / camera on the sides */
 #app { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
-/* iPhone Duo cover screen: the right strip holds the system camera/clock (top) and the app's buttons; content keeps the rest */
+/* iPhone Duo cover screen: the iPhone's own status pill (camera, clock, battery) floats at the top right.
+   Only the header (menu / title / sync and the tabs) stays left of it; everything below runs the full width under it. */
 .duo-cover { --duo-w: max(44px, env(safe-area-inset-right, 0px)); }
-.duo-cover #app { padding-right: var(--duo-w); max-width: none; margin: 0; padding-bottom: calc(24px + var(--safe-bottom)); }
-.duo-cover header.top:not(.sub) { display: none; }
-.duo-cover #app > .page:first-of-type, .duo-cover #app > .rec-page { padding-top: calc(var(--safe-top) + 12px); }
-.duo-strip { position: fixed; top: 0; right: 0; bottom: 0; width: var(--duo-w); z-index: 8; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: calc(var(--safe-top) + 104px) 0 calc(var(--safe-bottom) + 14px); background: transparent; }
-.ds-btn { width: 34px; height: 34px; flex: none; border: 0; border-radius: 50%; color: var(--text); display: flex; align-items: center; justify-content: center; text-decoration: none;
-  /* frosted glass: the page shows through, blurred */
-  background: rgba(255,255,255,.5); -webkit-backdrop-filter: blur(16px) saturate(1.8); backdrop-filter: blur(16px) saturate(1.8); box-shadow: 0 4px 14px rgba(0,0,0,.14), inset 0 0 0 .6px rgba(255,255,255,.8); }
-.ds-btn .ms { font-size: 19px; }
-.ds-btn.on { background: rgba(37,99,235,.72); color: #fff; }
-.ds-btn.lit { color: var(--accent); }
-.ds-btn.ds-add { background: rgba(37,99,235,.8); color: #fff; }
-.ds-gap { flex: 1; }
-.duo-cover .sheet, .duo-cover .scrim { right: var(--duo-w); }
-.duo-cover .sheet { margin: 0; max-width: none; }
-/* Cover screen: everything one size smaller, and cards run edge to edge up to the button strip (no grey margins) */
-.duo-cover #app > .page, .duo-cover #app > header { zoom: .92; }
-.duo-cover #app .page { padding-left: 0; padding-right: 0; }
-.duo-cover #app .card { border-radius: 0; padding-left: 12px; padding-right: 12px; }
-/* cards and lists run on behind the button strip to the screen edge (their text stays clear of the buttons); ÷ .92 undoes the page zoom */
-.duo-cover #app .card, .duo-cover #app .list { box-shadow: calc(var(--duo-w) / .92) 0 0 0 var(--card); }
-.duo-cover .rec-search { margin-left: 0; margin-right: 0; padding-left: 12px; padding-right: 12px; }
-.duo-cover #app .page > .chips, .duo-cover #app .page > .row-between, .duo-cover #app .page > .meta, .duo-cover #app .rec-sum, .duo-cover #app .day, .duo-cover #app .yr-head, .duo-cover .tb-sum { padding-left: 12px; padding-right: 12px; }
-.duo-cover #app .list { border-radius: 0; }
+.duo-cover #app { padding-right: 0; }
+.duo-cover header.top > .bar, .duo-cover header.top > .tabs { margin-right: var(--duo-w); }
+/* the pill reaches a bit below the header: the first block of each page (top card, Records search bar) also stops short of it */
+.duo-cover #app > .page > :first-child { margin-right: var(--duo-w); }
 @media (min-width: 800px) {
   #app:has(.dash-page) { max-width: 1120px; }
   /* Records: list on the left, the record you tap on the right, period + filter on a rail at the far right */
@@ -850,8 +832,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '25.6';
-const APP_BUILD = '202611180319'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '25.7';
+const APP_BUILD = '202611191622'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -879,7 +861,7 @@ function measureVars() {
   const hdr = document.querySelector('.top'); if (hdr) root.setProperty('--hdr', hdr.offsetHeight + 'px');
   const rs = document.querySelector('.rec-search'); if (rs) root.setProperty('--rsh', rs.offsetHeight + 'px');
 }
-// ---- iPhone Duo cover screen: content on the left, the app's buttons in the strip on the right (next to the camera and clock) ----
+// ---- iPhone Duo cover screen: full width, only the header stays clear of the iPhone status pill at the top right ----
 // Detected when the screen is upright and either iOS reports a right-side safe area (the cover screen's status strip),
 // or, on an iPhone, the shape matches it (squat portrait, ~466×678 CSS px: ratio ≥ 0.64, 420–600 wide). Normal phones (ratio ~0.46),
 // Flip inner screens (~0.43), the Duo inner screen (~626 wide) and iPad mini (744) don't match.
@@ -898,15 +880,6 @@ function duoCheck() {
   S.screen = { w, h, sa, auto, on, iPhone };
   if (on === DUO.on) return false;
   DUO.on = on; document.body.classList.toggle('duo-cover', on); return true;
-}
-function duoStrip(r) {
-  const cur = MAIN.includes(r.name) ? r.name : '';
-  const tab = (k, ic, l) => `<a class="ds-btn${cur === k ? ' on' : ''}" href="#/${k}" data-act="tab" aria-label="${l}">${icon(ic)}</a>`;
-  const b = (act, ic, l, on) => `<button class="ds-btn${on ? ' lit' : ''}" data-act="${act}" aria-label="${l}">${icon(ic)}</button>`;
-  const acts = r.name === 'tx'
-    ? `<button class="ds-btn ds-add" data-act="add-tx" aria-label="Add a record">${icon('add')}</button>${b('rec-kind', 'calendar_month', 'Choose period')}${b('rec-panel', 'filter_alt', 'Accounts, type, categories and filter', recFilterCount() > 0)}`
-    : b('sync', 'sync', 'Sync now');
-  return `<nav class="duo-strip" aria-label="Pages and actions">${tab('accounts', 'account_balance', 'Accounts')}${tab('dash', 'dashboard', 'Dashboard')}${tab('tx', 'receipt_long', 'Records')}<span class="ds-gap"></span>${acts}${b('drawer', 'menu', 'Menu')}</nav>`;
 }
 function settleVars() {
   if (duoCheck()) render();
@@ -1425,8 +1398,7 @@ function render() {
   document.body.classList.toggle('rec-wide', WIDE.matches && r.name === 'tx');
   const body = (views[r.name] || viewAccounts)();
   $('app').innerHTML = (main ? headerMain(r.name) : headerSub(r)) + body
-    + (DUO.on ? duoStrip(r) : '')
-    + (r.name === 'tx' && !WIDE.matches && !DUO.on ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
+    + (r.name === 'tx' && !WIDE.matches ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
   measureVars();
   window.scrollTo(0, y);
   document.querySelectorAll('.dash-col').forEach((c, i) => { if (colScroll[i]) c.scrollTop = colScroll[i]; });
@@ -3089,7 +3061,7 @@ function viewTx(params) {
     ${railBtn('rf-cat', 'category', 'Categories', !!(rf.cats || rf.labels))}
     ${railBtn('rf-filter', 'filter_alt', 'Filter', !!rf.filter)}</nav>
     <div class="rec-ph">${icon('receipt_long')}<div>Tap a record to see it here</div></div>`;
-  const dock = WIDE.matches ? rail : DUO.on ? '' : `<div class="rec-dock">
+  const dock = WIDE.matches ? rail : `<div class="rec-dock">
     <button class="dock-grab" data-act="rec-panel" aria-label="Accounts, categories and filter"><span class="grab"></span><span class="meta">${nf ? `${nf} filter${nf > 1 ? 's' : ''} on · ` : ''}Accounts · Type · Categories · Filter</span></button>
     <div class="period-pill">
       <button class="pp-arrow" data-act="rec-shift" data-dir="-1" aria-label="Previous period" ${p.unit === 'all' ? 'disabled' : ''}>${icon('chevron_left')}</button>
