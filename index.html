@@ -429,13 +429,12 @@ input.row-select { direction: ltr; }
    Narrower (phone, cover screen 466, inner screen upright 626) keep the single column. */
 /* landscape: keep clear of the rounded corners / camera on the sides */
 #app { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
-/* iPhone Duo cover screen: the iPhone's own status pill (camera, clock, battery) floats at the top right.
-   Only the header (menu / title / sync and the tabs) stays left of it; everything below runs the full width under it. */
-.duo-cover { --duo-w: max(44px, env(safe-area-inset-right, 0px)); }
-.duo-cover #app { padding-right: 0; }
-.duo-cover header.top > .bar, .duo-cover header.top > .tabs { margin-right: var(--duo-w); }
-/* the pill reaches a bit below the header: the first block of each page (top card, Records search bar) also stops short of it */
-.duo-cover #app > .page > :first-child { margin-right: var(--duo-w); }
+/* Upright screen with a right-side safe area = iPhone Duo cover screen (its status pill sits at the top right; normal phones report 0 here).
+   Everything runs the full width; only the Accounts / Dashboard / Records tabs stay left of the pill. Works without the Cover layout setting. */
+@media (orientation: portrait) {
+  #app { padding-right: 0; }
+  header.top > .tabs { margin-right: env(safe-area-inset-right, 0px); }
+}
 @media (min-width: 800px) {
   #app:has(.dash-page) { max-width: 1120px; }
   /* Records: list on the left, the record you tap on the right, period + filter on a rail at the far right */
@@ -832,8 +831,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '25.7';
-const APP_BUILD = '202611191622'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '25.8';
+const APP_BUILD = '202611191625'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
