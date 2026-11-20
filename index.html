@@ -439,8 +439,8 @@ body:not(.duo-inner):not(.duo-cover)::before { content: ''; position: fixed; top
 .duo-inner header.top { padding-top: 22px; } /* title centred on the status pill */
 .duo-inner header.top > .bar { height: 52px; margin-right: 4px; } /* centre of the title ≈ centre of the status pill */
 .duo-inner header.top > .bar h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; } /* centred on the screen; short enough to stay clear of the pill */
-/* Menu · tabs · Sync: below the status band (taps there go to iOS), ending left of the pill in case it grows */
-.duo-inner header.top > .bar2 { display: flex; align-items: center; gap: 8px; margin: max(4px, calc(var(--safe-top) - 74px)) calc(21vw - 12px) 0 4px; }
+/* Menu · tabs · Sync: below the status band (taps there go to iOS) */
+.duo-inner header.top > .bar2 { display: flex; align-items: center; gap: 8px; margin: max(4px, calc(var(--safe-top) - 74px)) 4px 0 4px; } /* full width: the row is below the pill */
 .duo-inner header.top > .bar2 .tabs { flex: 1; margin: 0; }
 .duo-inner .drawer { padding-top: 16px; }
 .duo-wide header.top { padding-top: 6px; }
@@ -858,8 +858,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '26.8';
-const APP_BUILD = '202611200231'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '26.9';
+const APP_BUILD = '202611200232'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
