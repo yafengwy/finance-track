@@ -433,9 +433,9 @@ input.row-select { direction: ltr; }
    iPhone Duo: they sit in their own dark pill, nothing to do. Other iPhones: a dark band behind them so they stay readable. */
 body:not(.duo-inner):not(.duo-cover)::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-top); background: #1C1C1E; z-index: 30; pointer-events: none; }
 /* Duo inner screen upright: the status pill is alone at the top right, so the header goes up to the top;
-   only the menu · title · sync row stops short of the pill (it starts ~80% across) */
-.duo-inner header.top { padding-top: 6px; }
-.duo-inner header.top > .bar { margin-right: calc(21vw - 12px); }
+   the menu · title · sync row is centred on the pill, and it and the tabs stop short of it (it starts ~80% across) */
+.duo-inner header.top { padding-top: 22px; } /* menu · title · sync row centred on the status pill */
+.duo-inner header.top > .bar, .duo-inner header.top > .tabs { margin-right: calc(21vw - 12px); } /* both rows end left of the pill (it can grow) */
 .duo-inner .drawer { padding-top: 16px; }
 .duo-wide header.top { padding-top: 6px; }
 .duo-wide header.top > .bar { margin-right: calc(9vw - 12px); }
@@ -845,8 +845,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '26.3';
-const APP_BUILD = '202611200210'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '26.4';
+const APP_BUILD = '202611200214'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
