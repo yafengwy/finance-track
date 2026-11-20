@@ -433,9 +433,12 @@ input.row-select { direction: ltr; }
    iPhone Duo: they sit in their own dark pill, nothing to do. Other iPhones: a dark band behind them so they stay readable. */
 body:not(.duo-inner):not(.duo-cover)::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-top); background: #1C1C1E; z-index: 30; pointer-events: none; }
 /* Duo inner screen upright: the status pill is alone at the top right, so the header goes up to the top;
-   the menu · title · sync row is centred on the pill, and it and the tabs stop short of it (it starts ~80% across) */
-.duo-inner header.top { padding-top: 22px; } /* menu · title · sync row centred on the status pill */
-.duo-inner header.top > .bar, .duo-inner header.top > .tabs { margin-right: calc(21vw - 12px); } /* both rows end left of the pill (it can grow) */
+   the title sits beside the pill; Menu · tabs · Sync go in one row below the status band, short of the pill (~80% across) */
+.duo-inner header.top { padding-top: 22px; } /* title centred on the status pill */
+.duo-inner header.top > .bar { height: 44px; margin-right: calc(21vw - 12px); }
+/* Menu · tabs · Sync: below the status band (taps there go to iOS), ending left of the pill in case it grows */
+.duo-inner header.top > .bar2 { display: flex; align-items: center; gap: 8px; margin: max(4px, calc(var(--safe-top) - 66px)) calc(21vw - 12px) 0 0; }
+.duo-inner header.top > .bar2 .tabs { flex: 1; margin: 0; }
 .duo-inner .drawer { padding-top: 16px; }
 .duo-wide header.top { padding-top: 6px; }
 .duo-wide header.top > .bar { margin-right: calc(9vw - 12px); }
@@ -845,8 +848,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '26.4';
-const APP_BUILD = '202611200214'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '26.5';
+const APP_BUILD = '202611200216'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -892,11 +895,12 @@ function duoCheck() {
   const on = force === 'on' ? true : force === 'off' ? false : auto;
   // Duo inner screen held upright (~530-630 wide): the iPhone status pill sits alone at the top right, so the header can move up into that band
   const inner = iPhone && h > w && w >= 500 && w < 800 && sa.r < 20;
+  const innerChanged = inner !== !!S.screen?.inner;
   document.body.classList.toggle('duo-inner', inner);
   // Duo inner screen sideways (no other iPhone is this wide): the status pill sits at the top right, ~92% across
   document.body.classList.toggle('duo-wide', iPhone && w > h && w >= 800);
   S.screen = { w, h, sa, auto, on, iPhone, inner };
-  if (on === DUO.on) return false;
+  if (on === DUO.on) return innerChanged; // the inner-screen header has its own layout, so a change needs a redraw
   DUO.on = on; document.body.classList.toggle('duo-cover', on); return true;
 }
 // After turning the phone, iOS home-screen apps can keep the old safe-area / viewport sizes (a big blank band at the top
@@ -1440,11 +1444,17 @@ function render() {
 function headerMain(active) {
   const cur = MAIN.includes(active) ? active : 'accounts';
   const tab = (key, label) => `<a href="#/${key}" data-act="tab"${cur === key ? ' aria-current="page"' : ''}>${label}</a>`;
+  const menuBtn = `<button class="icon-btn round" data-act="drawer" aria-label="Menu">${icon('menu')}</button>`;
+  const syncBtn = `<button class="icon-btn round" data-act="sync" aria-label="Sync now">${icon('sync')}</button>`;
+  const tabs = `<nav class="tabs">${tab('accounts', 'Accounts')}${tab('dash', 'Dashboard')}${tab('tx', 'Records')}</nav>`;
+  // Duo inner screen upright: iOS keeps taps in the status band for itself, so only the title sits there (beside the status pill);
+  // Menu, the tabs and Sync share the row just below it
+  if (S.screen?.inner) return `<header class="top"><div class="bar"><h1>${APP_NAME}</h1></div><div class="bar2">${menuBtn}${tabs}${syncBtn}</div></header>`;
   return `<header class="top"><div class="bar">
-    <button class="icon-btn round" data-act="drawer" aria-label="Menu">${icon('menu')}</button>
+    ${menuBtn}
     <h1>${APP_NAME}</h1>
-    <button class="icon-btn round" data-act="sync" aria-label="Sync now">${icon('sync')}</button>
-  </div><nav class="tabs">${tab('accounts', 'Accounts')}${tab('dash', 'Dashboard')}${tab('tx', 'Records')}</nav></header>`;
+    ${syncBtn}
+  </div>${tabs}</header>`;
 }
 function headerSub(r) {
   // Menu pages go back to the main tab you opened the menu from (e.g. Records), not always to Accounts
