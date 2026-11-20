@@ -53,7 +53,7 @@ button { cursor: pointer; }
 
 /* header */
 .top { background: rgba(242,242,244,.92); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); color: var(--text); padding: calc(var(--safe-top) + 6px) 12px 8px; position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--line); }
-.bar { display: flex; align-items: center; gap: 8px; height: 52px; }
+.bar { display: flex; align-items: center; gap: 8px; height: 52px; margin: 0 4px; } /* same side margins as the tabs below, so Menu and Sync line up with the tab bar's edges */
 .bar h1 { flex: 1; margin: 0; font-size: 17px; font-weight: 600; text-align: center; }
 .icon-btn.round { background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.08); color: var(--text); text-decoration: none; }
 .icon-btn { width: 44px; height: 44px; border: 0; background: none; color: inherit; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
@@ -437,14 +437,13 @@ body:not(.duo-inner):not(.duo-cover)::before { content: ''; position: fixed; top
 /* Duo inner screen upright: the status pill is alone at the top right, so the header goes up to the top;
    the title sits beside the pill; Menu · tabs · Sync go in one row below the status band, short of the pill (~80% across) */
 .duo-inner header.top { padding-top: 22px; } /* title centred on the status pill */
-.duo-inner header.top > .bar { height: 52px; margin-right: 0; } /* centre of the title ≈ centre of the status pill */
+.duo-inner header.top > .bar { height: 52px; margin-right: 4px; } /* centre of the title ≈ centre of the status pill */
 .duo-inner header.top > .bar h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; } /* centred on the screen; short enough to stay clear of the pill */
 /* Menu · tabs · Sync: below the status band (taps there go to iOS), ending left of the pill in case it grows */
-.duo-inner header.top > .bar2 { display: flex; align-items: center; gap: 8px; margin: max(4px, calc(var(--safe-top) - 74px)) calc(21vw - 12px) 0 0; }
+.duo-inner header.top > .bar2 { display: flex; align-items: center; gap: 8px; margin: max(4px, calc(var(--safe-top) - 74px)) calc(21vw - 12px) 0 4px; }
 .duo-inner header.top > .bar2 .tabs { flex: 1; margin: 0; }
 .duo-inner .drawer { padding-top: 16px; }
 .duo-wide header.top { padding-top: 6px; }
-.duo-wide header.top > .bar { margin-right: calc(9vw - 12px); }
 body.duo-wide::before { display: none; }
 /* Upright screen with a right-side safe area = iPhone Duo cover screen (its status pill sits at the top right; normal phones report 0 here).
    Everything runs the full width; only the header (menu · title · sync and the tabs) stays left of the pill. Works without the Cover layout setting. */
@@ -669,7 +668,7 @@ body.duo-wide::before { display: none; }
 
 /* Net Worth card */
 .nw-card { display: flex; flex-direction: column; gap: 6px; }
-.nw-total { font-size: 30px; font-weight: 700; margin-bottom: 4px; }
+.nw-total { font-size: 32px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 4px; } /* same as the Net Worth chart card's big number */
 .nw-row { display: flex; justify-content: space-between; align-items: center; width: 100%; font: inherit; font-size: 15px; color: var(--text); background: none; border: 0; border-top: 1px solid var(--line); padding: 8px 0; text-align: left; }
 .nw-l { display: inline-flex; align-items: center; gap: 6px; }
 .nw-l .meta { font-size: 12px; }
@@ -858,8 +857,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '26.6';
-const APP_BUILD = '202611200220'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '26.7';
+const APP_BUILD = '202611200229'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1628,8 +1627,8 @@ function netWorthCard(accs, part) {
     ${keys.filter((k) => ['cash', 'credit'].includes(k) || groups[gk][k]).map((k) => row(gk, k)).join('')}`;
   const hasBiz = Object.keys(groups.biz).length > 0;
   if (part === 'biz') return hasBiz ? `<div class="card nw-card">${section('biz', 'Business', ['cash', 'credit', 'loan', 'invest'])}</div>` : '';
-  if (part === 'per' && hasBiz) return `<div class="card nw-card"><div class="meta">Net Worth</div><div class="nw-total num">${money(tot(groups.per) + tot(groups.biz))}</div><div class="meta" style="margin-top:-6px">${lastSyncText()}</div>${section('per', 'Personal', ['cash', 'credit', 'loan', 'invest'])}</div>`;
-  return `<div class="card nw-card"><div class="meta">Net Worth</div><div class="nw-total num">${money(tot(groups.per) + tot(groups.biz))}</div><div class="meta" style="margin-top:-6px">${lastSyncText()}</div>
+  if (part === 'per' && hasBiz) return `<div class="card nw-card"><p class="h2">Net Worth</p><div class="nw-total num">${money(tot(groups.per) + tot(groups.biz))}</div><div class="meta" style="margin-top:-6px">${lastSyncText()}</div>${section('per', 'Personal', ['cash', 'credit', 'loan', 'invest'])}</div>`;
+  return `<div class="card nw-card"><p class="h2">Net Worth</p><div class="nw-total num">${money(tot(groups.per) + tot(groups.biz))}</div><div class="meta" style="margin-top:-6px">${lastSyncText()}</div>
     ${hasBiz ? section('per', 'Personal', ['cash', 'credit', 'loan', 'invest']) + section('biz', 'Business', ['cash', 'credit', 'loan', 'invest'])
       : ['cash', 'credit', 'loan', 'invest'].filter((k) => ['cash', 'credit', 'invest'].includes(k) || groups.per[k]).map((k) => row('per', k)).join('')}</div>`;
 }
