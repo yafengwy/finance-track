@@ -431,9 +431,6 @@ input.row-select { direction: ltr; }
 #app { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 /* Upright screen with a right-side safe area = iPhone Duo cover screen (its status pill sits at the top right; normal phones report 0 here).
    Everything runs the full width; only the header (menu · title · sync and the tabs) stays left of the pill. Works without the Cover layout setting. */
-/* Duo inner screen upright: header moves up into the status band; the menu · title · sync row stops short of the status pill; the tabs below it keep the full width (~80% across) */
-.duo-inner header.top { padding-top: 6px; }
-.duo-inner header.top > .bar { margin-right: calc(21vw - 12px); }
 @media (orientation: portrait) {
   #app { padding-right: 0; }
   /* the reported safe area is ~16px wider than the pill itself: stop just short of the pill (a small gap), not the whole safe area */
@@ -837,8 +834,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '26.1';
-const APP_BUILD = '202611200201'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '26.2';
+const APP_BUILD = '202611200204'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
