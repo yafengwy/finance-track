@@ -433,7 +433,10 @@ input.row-select { direction: ltr; }
    Everything runs the full width; only the header (menu · title · sync and the tabs) stays left of the pill. Works without the Cover layout setting. */
 @media (orientation: portrait) {
   #app { padding-right: 0; }
-  header.top > .bar, header.top > .tabs { margin-right: env(safe-area-inset-right, 0px); } /* menu · title · sync row too, so Sync isn't under the pill */
+  /* the reported safe area is ~16px wider than the pill itself: stop just short of the pill (a small gap), not the whole safe area */
+  :root { --pill-m: max(0px, calc(env(safe-area-inset-right, 0px) - 16px)); }
+  header.top > .bar, header.top > .tabs { margin-right: var(--pill-m); } /* menu · title · sync row too, so Sync isn't under the pill */
+  #app .rec-search { padding-right: max(16px, calc(12px + var(--pill-m))); } /* Records search box ends where the tabs end */
 }
 @media (min-width: 800px) {
   #app:has(.dash-page) { max-width: 1120px; }
@@ -831,8 +834,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '25.9';
-const APP_BUILD = '202611191657'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '26.0';
+const APP_BUILD = '202611191728'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
