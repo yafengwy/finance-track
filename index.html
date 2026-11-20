@@ -457,9 +457,9 @@ body.duo-wide::before { display: none; }
 @media (min-width: 800px) {
   #app:has(.dash-page) { max-width: 1120px; }
   /* Records: list on the left, the record you tap on the right, period + filter on a rail at the far right */
-  /* list 55% of the screen; the record pane and the icon rail share the other 45%, the rail running to the right edge (the status pill sits above its icons) */
-  body.rec-wide { --railW: 72px; --paneW: calc(45vw - var(--railW)); }
-  body.rec-wide #app { max-width: none; margin: 0; padding-right: 45vw; }
+  /* list half the screen; the record pane and the icon rail share the other half, the rail running to the right edge (the status pill sits above its icons) */
+  body.rec-wide { --railW: 72px; --paneW: calc(50vw - var(--railW)); }
+  body.rec-wide #app { max-width: none; margin: 0; padding-right: 50vw; }
   body.rec-wide.sheet-open { overflow: auto; }
   body.rec-wide #sheet .scrim { display: none; }
   body.rec-wide .sheet { left: auto !important; right: var(--railW) !important; top: 0 !important; bottom: 0 !important; width: var(--paneW) !important; max-width: none !important; max-height: none !important; height: 100dvh !important; margin: 0; border-radius: 0; box-shadow: -1px 0 0 var(--line); transform: none !important; z-index: 8; }
@@ -858,8 +858,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '26.9';
-const APP_BUILD = '202611200232'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '27.0';
+const APP_BUILD = '202611200233'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
