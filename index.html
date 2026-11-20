@@ -40,6 +40,8 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
+/* iOS enlarges some text on its own after the phone is turned (two "Net Worth" in different sizes, a huge In / Out line): keep every size as set */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Noto Sans SC', sans-serif; font-size: 16px; font-weight: 400; -webkit-font-smoothing: antialiased; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -435,9 +437,10 @@ body:not(.duo-inner):not(.duo-cover)::before { content: ''; position: fixed; top
 /* Duo inner screen upright: the status pill is alone at the top right, so the header goes up to the top;
    the title sits beside the pill; Menu · tabs · Sync go in one row below the status band, short of the pill (~80% across) */
 .duo-inner header.top { padding-top: 22px; } /* title centred on the status pill */
-.duo-inner header.top > .bar { height: 44px; margin-right: calc(21vw - 12px); }
+.duo-inner header.top > .bar { height: 52px; margin-right: 0; } /* centre of the title ≈ centre of the status pill */
+.duo-inner header.top > .bar h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; } /* centred on the screen; short enough to stay clear of the pill */
 /* Menu · tabs · Sync: below the status band (taps there go to iOS), ending left of the pill in case it grows */
-.duo-inner header.top > .bar2 { display: flex; align-items: center; gap: 8px; margin: max(4px, calc(var(--safe-top) - 66px)) calc(21vw - 12px) 0 0; }
+.duo-inner header.top > .bar2 { display: flex; align-items: center; gap: 8px; margin: max(4px, calc(var(--safe-top) - 74px)) calc(21vw - 12px) 0 0; }
 .duo-inner header.top > .bar2 .tabs { flex: 1; margin: 0; }
 .duo-inner .drawer { padding-top: 16px; }
 .duo-wide header.top { padding-top: 6px; }
@@ -545,6 +548,13 @@ body.duo-wide::before { display: none; }
 .rec-sum { padding: 0 4px; }
 .rec-sum:has(.rec-io) { flex-wrap: wrap; row-gap: 2px; }
 .rec-io { flex-basis: 100%; text-align: right; font-size: 12px; white-space: nowrap; }
+/* Wider screens (Duo inner screen, tablet): one line — period · count · sort on the left, In · Out · Σ on the right, all in the small grey size */
+@media (min-width: 560px) {
+  .rec-sum:has(.rec-io) { flex-wrap: nowrap; gap: 0; }
+  .rec-sum:has(.rec-io) > .rec-io { flex-basis: auto; order: 1; margin-left: auto; font-size: 13px; }
+  .rec-sum:has(.rec-io) > .num { order: 2; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .rec-sum:has(.rec-io) > .num::before { content: '·'; color: var(--sub); font-weight: 400; margin: 0 5px; }
+}
 #rec-results > .rec-sum:has(+ div > .yr-sec) { margin-bottom: -12px; }
 .rec-search + #rec-results { margin-top: -11px; } /* half the space between the search box and the chips */ /* half the space above the first day header */
 .day.row-between { font-weight: 600; }
@@ -848,8 +858,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '26.5';
-const APP_BUILD = '202611200216'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '26.6';
+const APP_BUILD = '202611200220'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
