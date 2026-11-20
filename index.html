@@ -457,14 +457,15 @@ body.duo-wide::before { display: none; }
 @media (min-width: 800px) {
   #app:has(.dash-page) { max-width: 1120px; }
   /* Records: list on the left, the record you tap on the right, period + filter on a rail at the far right */
-  body.rec-wide { --railW: calc(72px + env(safe-area-inset-right, 0px)); --paneW: 42vw; }
-  body.rec-wide #app { max-width: none; margin: 0; padding-right: calc(var(--paneW) + var(--railW)); }
+  /* list 55% of the screen; the record pane and the icon rail share the other 45%, the rail running to the right edge (the status pill sits above its icons) */
+  body.rec-wide { --railW: 72px; --paneW: calc(45vw - var(--railW)); }
+  body.rec-wide #app { max-width: none; margin: 0; padding-right: 45vw; }
   body.rec-wide.sheet-open { overflow: auto; }
   body.rec-wide #sheet .scrim { display: none; }
   body.rec-wide .sheet { left: auto !important; right: var(--railW) !important; top: 0 !important; bottom: 0 !important; width: var(--paneW) !important; max-width: none !important; max-height: none !important; height: 100dvh !important; margin: 0; border-radius: 0; box-shadow: -1px 0 0 var(--line); transform: none !important; z-index: 8; }
   .rec-ph { position: fixed; top: 0; bottom: 0; right: var(--railW); width: var(--paneW); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--sub); font-size: 13px; background: var(--card); box-shadow: -1px 0 0 var(--line); z-index: 5; }
   .rec-ph .ms { font-size: 34px; opacity: .5; }
-  .rec-rail { position: fixed; top: 0; bottom: 0; right: 0; width: var(--railW); padding: calc(12px + var(--safe-top)) env(safe-area-inset-right, 0px) calc(12px + var(--safe-bottom)) 0; display: flex; flex-direction: column; align-items: center; gap: 8px; background: rgba(255,255,255,.96); box-shadow: -1px 0 0 var(--line); z-index: 9; }
+  .rec-rail { position: fixed; top: 0; bottom: 0; right: 0; width: var(--railW); padding: calc(12px + var(--safe-top)) 0 calc(12px + var(--safe-bottom)); display: flex; flex-direction: column; align-items: center; gap: 8px; background: rgba(255,255,255,.96); box-shadow: -1px 0 0 var(--line); z-index: 9; }
   .rr-add { width: 52px; height: 52px; flex-shrink: 0; border: 0; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(52,120,246,.35); }
   .rr-add .ms { font-size: 28px; }
   .rr-mid { width: 62px; border: 0; border-radius: 14px; background: var(--bg); color: var(--text); font: inherit; font-size: 11px; font-weight: 700; line-height: 1.2; padding: 8px 4px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
@@ -547,12 +548,12 @@ body.duo-wide::before { display: none; }
 .rec-sum { padding: 0 4px; }
 .rec-sum:has(.rec-io) { flex-wrap: wrap; row-gap: 2px; }
 .rec-io { flex-basis: 100%; text-align: right; font-size: 12px; white-space: nowrap; }
-/* Wider screens (Duo inner screen, tablet): one line — period · count · sort on the left, In · Out · Σ on the right, all in the small grey size */
+/* Wider screens (Duo inner screen upright, tablet; not the narrower list column of the sideways Records layout): one line — period · count · sort on the left, In · Out · Σ on the right, all in the small grey size */
 @media (min-width: 560px) {
-  .rec-sum:has(.rec-io) { flex-wrap: nowrap; gap: 0; }
-  .rec-sum:has(.rec-io) > .rec-io { flex-basis: auto; order: 1; margin-left: auto; font-size: 13px; }
-  .rec-sum:has(.rec-io) > .num { order: 2; font-size: 13px; font-weight: 600; white-space: nowrap; }
-  .rec-sum:has(.rec-io) > .num::before { content: '·'; color: var(--sub); font-weight: 400; margin: 0 5px; }
+  body:not(.rec-wide) .rec-sum:has(.rec-io) { flex-wrap: nowrap; gap: 0; }
+  body:not(.rec-wide) .rec-sum:has(.rec-io) > .rec-io { flex-basis: auto; order: 1; margin-left: auto; font-size: 13px; }
+  body:not(.rec-wide) .rec-sum:has(.rec-io) > .num { order: 2; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  body:not(.rec-wide) .rec-sum:has(.rec-io) > .num::before { content: '·'; color: var(--sub); font-weight: 400; margin: 0 5px; }
 }
 #rec-results > .rec-sum:has(+ div > .yr-sec) { margin-bottom: -12px; }
 .rec-search + #rec-results { margin-top: -11px; } /* half the space between the search box and the chips */ /* half the space above the first day header */
@@ -857,8 +858,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '26.7';
-const APP_BUILD = '202611200229'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '26.8';
+const APP_BUILD = '202611200231'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
