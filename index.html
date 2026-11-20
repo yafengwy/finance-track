@@ -431,6 +431,9 @@ input.row-select { direction: ltr; }
 #app { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 /* Upright screen with a right-side safe area = iPhone Duo cover screen (its status pill sits at the top right; normal phones report 0 here).
    Everything runs the full width; only the header (menu · title · sync and the tabs) stays left of the pill. Works without the Cover layout setting. */
+/* Duo inner screen upright: header moves up into the status band; the menu · title · sync row stops short of the status pill; the tabs below it keep the full width (~80% across) */
+.duo-inner header.top { padding-top: 6px; }
+.duo-inner header.top > .bar { margin-right: calc(21vw - 12px); }
 @media (orientation: portrait) {
   #app { padding-right: 0; }
   /* the reported safe area is ~16px wider than the pill itself: stop just short of the pill (a small gap), not the whole safe area */
@@ -834,8 +837,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '26.0';
-const APP_BUILD = '202611191728'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '26.1';
+const APP_BUILD = '202611200201'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -879,11 +882,24 @@ function duoCheck() {
   const auto = h > w && w < 600 && (sa.r >= 20 || (iPhone && w / h >= 0.64 && w >= 420));
   const force = localStorage.getItem('duoForce');
   const on = force === 'on' ? true : force === 'off' ? false : auto;
-  S.screen = { w, h, sa, auto, on, iPhone };
+  // Duo inner screen held upright (~530-630 wide): the iPhone status pill sits alone at the top right, so the header can move up into that band
+  const inner = iPhone && h > w && w >= 500 && w < 800 && sa.r < 20;
+  document.body.classList.toggle('duo-inner', inner);
+  S.screen = { w, h, sa, auto, on, iPhone, inner };
   if (on === DUO.on) return false;
   DUO.on = on; document.body.classList.toggle('duo-cover', on); return true;
 }
+// After turning the phone, iOS home-screen apps can keep the old safe-area / viewport sizes (a big blank band at the top
+// until the app is reopened). Re-applying the viewport tag makes Safari recompute them.
+let lastLandscape = window.innerWidth > window.innerHeight;
+function refreshViewport() {
+  const m = document.querySelector('meta[name="viewport"]'); if (!m) return;
+  const c = m.getAttribute('content');
+  m.setAttribute('content', c + ', minimum-scale=1'); requestAnimationFrame(() => { m.setAttribute('content', c); window.scrollTo(0, window.scrollY); });
+}
 function settleVars() {
+  const land = window.innerWidth > window.innerHeight;
+  if (land !== lastLandscape) { lastLandscape = land; refreshViewport(); setTimeout(refreshViewport, 400); }
   if (duoCheck()) render();
   measureVars();
   requestAnimationFrame(() => { measureVars(); requestAnimationFrame(measureVars); });
