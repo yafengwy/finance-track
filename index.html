@@ -5,7 +5,7 @@
 <meta http-equiv="Cache-Control" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Finance Track">
 <meta name="theme-color" content="#F2F2F4">
 <title>Finance Track</title>
@@ -429,6 +429,17 @@ input.row-select { direction: ltr; }
    Narrower (phone, cover screen 466, inner screen upright 626) keep the single column. */
 /* landscape: keep clear of the rounded corners / camera on the sides */
 #app { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+/* The app draws under the iPhone status bar (black-translucent, like the camera app), so its clock / battery are white.
+   iPhone Duo: they sit in their own dark pill, nothing to do. Other iPhones: a dark band behind them so they stay readable. */
+body:not(.duo-inner):not(.duo-cover)::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-top); background: #1C1C1E; z-index: 30; pointer-events: none; }
+/* Duo inner screen upright: the status pill is alone at the top right, so the header goes up to the top;
+   only the menu · title · sync row stops short of the pill (it starts ~80% across) */
+.duo-inner header.top { padding-top: 6px; }
+.duo-inner header.top > .bar { margin-right: calc(21vw - 12px); }
+.duo-inner .drawer { padding-top: 16px; }
+.duo-wide header.top { padding-top: 6px; }
+.duo-wide header.top > .bar { margin-right: calc(9vw - 12px); }
+body.duo-wide::before { display: none; }
 /* Upright screen with a right-side safe area = iPhone Duo cover screen (its status pill sits at the top right; normal phones report 0 here).
    Everything runs the full width; only the header (menu · title · sync and the tabs) stays left of the pill. Works without the Cover layout setting. */
 @media (orientation: portrait) {
@@ -834,8 +845,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '26.2';
-const APP_BUILD = '202611200204'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '26.3';
+const APP_BUILD = '202611200210'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -882,6 +893,8 @@ function duoCheck() {
   // Duo inner screen held upright (~530-630 wide): the iPhone status pill sits alone at the top right, so the header can move up into that band
   const inner = iPhone && h > w && w >= 500 && w < 800 && sa.r < 20;
   document.body.classList.toggle('duo-inner', inner);
+  // Duo inner screen sideways (no other iPhone is this wide): the status pill sits at the top right, ~92% across
+  document.body.classList.toggle('duo-wide', iPhone && w > h && w >= 800);
   S.screen = { w, h, sa, auto, on, iPhone, inner };
   if (on === DUO.on) return false;
   DUO.on = on; document.body.classList.toggle('duo-cover', on); return true;
