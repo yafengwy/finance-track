@@ -868,8 +868,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '27.4';
-const APP_BUILD = '202611212045'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '27.5';
+const APP_BUILD = '202611212050'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1453,7 +1453,6 @@ function render() {
     + (r.name === 'tx' && !WIDE.matches ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
   measureVars();
   window.scrollTo(0, y);
-  pillFit($('app'));
   document.querySelectorAll('.dash-col').forEach((c, i) => { if (colScroll[i]) c.scrollTop = colScroll[i]; });
   if (focusId && $(focusId)) { const f = $(focusId); f.focus(); if (caret != null && f.setSelectionRange) f.setSelectionRange(caret, caret); }
   if ($('sq-results')) refreshSearchSheet(); // keep the search sheet in step with edits
@@ -3336,44 +3335,9 @@ const PILL_BOTTOM = 250;
 let pillRO = null;
 function pillWatch(sh) {
   pillRO?.disconnect();
-  const check = () => { sh.classList.toggle('pill-hit', sh.getBoundingClientRect().top < PILL_BOTTOM); if (!sh.scrollTop) pillFit(sh, true); };
+  const check = () => sh.classList.toggle('pill-hit', sh.getBoundingClientRect().top < PILL_BOTTOM);
   check(); requestAnimationFrame(check);
   if (window.ResizeObserver) { pillRO = new ResizeObserver(check); pillRO.observe(sh); }
-}
-// Duo cover screen: whatever sits under the pill when a page (or sheet) opens moves left, ending where the header's Sync ends.
-// The whole card (or list, or the line of text) moves, so its rows stay lined up; its background still runs to the edge.
-// Only things that would actually be covered move: text, icons, buttons, fields reaching under the pill.
-function pillFit(root, sheet = false) {
-  const pm = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pill-m')) || 0;
-  if (pm < 20 || !root) return; // only the cover screen has a pill this wide; every other screen stops here
-  const vw = window.innerWidth; const edge = vw - 16 - pm; // Sync's right edge = the pill's left side, less a small gap
-  const yOff = sheet ? 0 : window.scrollY;
-  const skip = 'header.top, .sheet-top, .fab-wrap, .rec-dock, .rec-search, .scrim';
-  const blocks = new Map(); // block → the right edge of the furthest-right covered thing in it
-  const hit = (r) => r.width && r.height && r.right > edge && r.top + yOff < PILL_BOTTOM && r.bottom + yOff > 0;
-  const blockOf = (el) => {
-    const b = el.closest('.card, .list'); if (b && root.contains(b)) return b;
-    for (let x = el; x && x !== root; x = x.parentElement) if (x.getBoundingClientRect().width >= vw * 0.6) return x;
-    return null;
-  };
-  const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const rg = document.createRange();
-  let below = 0; // the page runs top to bottom: once well past the pill, stop looking (long Records lists)
-  for (let t = tw.nextNode(); t && below < 40; t = tw.nextNode()) {
-    const el = t.parentElement; if (!t.textContent.trim() || !el || el.closest(skip)) continue;
-    if (el.getBoundingClientRect().top + yOff > PILL_BOTTOM + 200) { below++; continue; } below = 0;
-    rg.selectNodeContents(t);
-    const rs = [...rg.getClientRects()].filter(hit);
-    if (rs.length) { const b = blockOf(el); if (b) blocks.set(b, Math.max(blocks.get(b) || 0, ...rs.map((r) => r.right))); }
-  }
-  root.querySelectorAll('button, input, select, img, svg, .ms').forEach((el) => {
-    const r = el.getBoundingClientRect(); if (el.closest(skip) || !hit(r)) return;
-    const b = blockOf(el); if (b) blocks.set(b, Math.max(blocks.get(b) || 0, r.right));
-  });
-  blocks.forEach((right, b) => { // more padding on the right, just enough to bring that furthest-right thing to the edge
-    const add = right - edge; if (add <= 0) return;
-    b.style.paddingRight = ((parseFloat(getComputedStyle(b).paddingRight) || 0) + add) + 'px';
-  });
 }
 // iOS only opens the keyboard when focus happens inside the tap itself; a delayed focus leaves the
 // field "focused without keyboard" and then ignores taps on it. So focus synchronously, or not at all.
