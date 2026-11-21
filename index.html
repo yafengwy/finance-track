@@ -868,8 +868,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '27.5';
-const APP_BUILD = '202611212050'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '27.6';
+const APP_BUILD = '202611212125'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -1453,6 +1453,7 @@ function render() {
     + (r.name === 'tx' && !WIDE.matches ? `<div class="fab-wrap"><button class="fab" data-act="add-tx" aria-label="Add a record">${icon('add')}</button></div>` : '');
   measureVars();
   window.scrollTo(0, y);
+  pillFit($('app'));
   document.querySelectorAll('.dash-col').forEach((c, i) => { if (colScroll[i]) c.scrollTop = colScroll[i]; });
   if (focusId && $(focusId)) { const f = $(focusId); f.focus(); if (caret != null && f.setSelectionRange) f.setSelectionRange(caret, caret); }
   if ($('sq-results')) refreshSearchSheet(); // keep the search sheet in step with edits
@@ -3335,9 +3336,22 @@ const PILL_BOTTOM = 250;
 let pillRO = null;
 function pillWatch(sh) {
   pillRO?.disconnect();
-  const check = () => sh.classList.toggle('pill-hit', sh.getBoundingClientRect().top < PILL_BOTTOM);
+  const check = () => { sh.classList.toggle('pill-hit', sh.getBoundingClientRect().top < PILL_BOTTOM); if (!sh.scrollTop) pillFit(sh, true); };
   check(); requestAnimationFrame(check);
   if (window.ResizeObserver) { pillRO = new ResizeObserver(check); pillRO.observe(sh); }
+}
+// Duo cover screen: a small button under the pill (a card's Edit or ⋯) can't be reached by scrolling either – it slides under
+// the sticky header – so it moves left of the pill, ending where the header's Sync ends. Text, amounts and whole rows stay put.
+function pillFit(root, sheet = false) {
+  const pm = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pill-m')) || 0;
+  if (pm < 20 || !root) return; // only the cover screen has a pill this wide; every other screen stops here
+  const edge = window.innerWidth - 16 - pm; const yOff = sheet ? 0 : window.scrollY;
+  root.querySelectorAll('button, a[data-act], [data-act]:not(a):not(button)').forEach((el) => {
+    if (el.closest('header.top, .sheet-top, .fab-wrap, .rec-dock, .rec-search')) return;
+    el.style.transform = ''; const r = el.getBoundingClientRect();
+    if (!r.width || r.width > 150 || r.right <= edge || r.top + yOff >= PILL_BOTTOM) return;
+    el.style.transform = `translateX(${-Math.ceil(r.right - edge)}px)`;
+  });
 }
 // iOS only opens the keyboard when focus happens inside the tap itself; a delayed focus leaves the
 // field "focused without keyboard" and then ignores taps on it. So focus synchronously, or not at all.
