@@ -445,6 +445,9 @@ body:not(.duo-inner):not(.duo-cover)::before { content: ''; position: fixed; top
 .duo-inner .drawer { padding-top: 16px; }
 .duo-wide header.top { padding-top: 6px; }
 body.duo-wide::before { display: none; }
+/* Duo inner screen sideways: cards run on to the right edge (under the status pill's column); the header row keeps clear of the pill */
+.duo-wide #app { padding-right: 0; }
+.duo-wide header.top { padding-right: calc(12px + env(safe-area-inset-right, 0px)); }
 /* Upright screen with a right-side safe area = iPhone Duo cover screen (its status pill sits at the top right; normal phones report 0 here).
    Everything runs the full width; only the header (menu · title · sync and the tabs) stays left of the pill. Works without the Cover layout setting. */
 @media (orientation: portrait) {
@@ -858,8 +861,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '27.1';
-const APP_BUILD = '202611210127'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '27.2';
+const APP_BUILD = '202611210134'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
