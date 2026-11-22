@@ -461,7 +461,6 @@ body.duo-wide::before { display: none; }
   :root { --pill-m: max(0px, calc(env(safe-area-inset-right, 0px) - 16px)); }
   header.top > .bar, header.top > .tabs { margin-right: var(--pill-m); } /* menu · title · sync row too, so Sync isn't under the pill */
   #app .rec-search { padding-right: max(16px, calc(12px + var(--pill-m))); } /* Records search box ends where the tabs end */
-  #app .rec-sum { padding-right: max(4px, calc(var(--pill-m) - 4px)); } /* its Σ and In/Out end where the search box ends */
   /* a sheet tall enough to reach the pill: its right-hand button (Sort, Save…) moves left to end where the header's Sync ends; the title stays centred */
   .sheet.pill-hit .sheet-right { margin-right: var(--pill-m); }
 }
@@ -869,8 +868,8 @@ const fns = getFunctions(fb);
 const call = (name) => httpsCallable(fns, name, { timeout: 540000 });
 
 const APP_NAME = 'Finance Track';
-const APP_VERSION = '27.7';
-const APP_BUILD = '202611222330'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
+const APP_VERSION = '27.6';
+const APP_BUILD = '202611212125'; // changes with every file sent, so a fix kept under the same version number still shows up as an update
 const $ = (id) => document.getElementById(id);
 const S = {
   user: null, cats: {}, accounts: {}, items: {}, labels: {}, filters: {}, rules: {}, txs: [], txById: {},
@@ -3333,7 +3332,7 @@ function openSheet(html, opts = {}) {
 }
 // Duo cover screen: the iOS status pill covers the top right (down to ~240px). A sheet whose top reaches up there gets .pill-hit,
 // which moves its right-hand button left of the pill (CSS above; --pill-m is 0 on every other screen, so nothing moves there).
-const PILL_BOTTOM = 275; // pill grows with Live Activities (~255px with one)
+const PILL_BOTTOM = 250;
 let pillRO = null;
 function pillWatch(sh) {
   pillRO?.disconnect();
